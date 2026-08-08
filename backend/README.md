@@ -204,7 +204,7 @@ mysql -u root -p autopilot < app/db/schema.sql
 
 ```bash
 # 在 backend 目录下执行
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 参数说明：
@@ -302,7 +302,7 @@ docker rm autopilot-backend
 ```bash
 # ── 启动 ──
 cd backend
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # ── 测试 ──
 python tests/test_integration.py      # 完整联调测试（35 项）
