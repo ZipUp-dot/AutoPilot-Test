@@ -25,6 +25,20 @@
       </div>
     </div>
 
+    <!-- 批量生成进度条 -->
+    <div v-if="caseStore.generateProgress.status === 'running'" class="generate-progress-bar">
+      <el-alert type="info" :closable="false" show-icon>
+        <template #title>
+          <span>批量代码生成中…</span>
+          <el-progress
+            :percentage="caseStore.generateProgress.progressPct || 0"
+            :format="() => `${caseStore.generateProgress.completed + caseStore.generateProgress.failed}/${caseStore.generateProgress.total}`"
+            style="width: 300px; margin-left: 16px"
+          />
+        </template>
+      </el-alert>
+    </div>
+
     <!-- 搜索与筛选 -->
     <div class="filter-bar">
       <el-input
@@ -401,9 +415,9 @@ async function handleBatchGenerate() {
   try {
     const ids = selectedCases.value.map(c => c.id)
     await caseStore.generateBatch(projectId.value, ids)
-    ElMessage.success('批量生成成功')
     selectedCases.value = []
-    await fetchCases()
+    ElMessage.success('批量生成已启动，后台执行中…')
+    // 轮询完成时会自动刷新列表
   } catch {
     ElMessage.error('批量生成失败')
   }
@@ -480,6 +494,10 @@ onMounted(() => {
 .toolbar-left {
   display: flex;
   gap: 8px;
+}
+
+.generate-progress-bar {
+  margin-bottom: 12px;
 }
 
 .filter-bar {
