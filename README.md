@@ -152,5 +152,5 @@ npm run dev
 | **当前版本** | V1.0（开发中） |
 | **文档版本** | V2.0 |
 | **最后更新** | 2026-08-09 |
-| **维护者** | 彭意章（Mr-6Lawrence） |
+| **维护者** | ethan-peng（Mr-6Lawrence） |
 | **仓库地址** | https://gitee.com/Mr-6Lawrence/auto-pilot-test |

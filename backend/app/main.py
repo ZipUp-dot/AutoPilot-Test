@@ -1,5 +1,9 @@
 """AutoPilot FastAPI Application — AI 驱动自动化测试平台"""
 
+import os
+# 绕过 IDE 沙箱对 Playwright 子进程的拦截（必须在任何其他导入之前设置）
+os.environ["TOOLHOST_SANDBOX_DISABLED"] = "true"
+
 import logging
 from contextlib import asynccontextmanager
 
