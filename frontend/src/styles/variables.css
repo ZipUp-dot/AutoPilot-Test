@@ -1,0 +1,16 @@
+:root {
+  --primary: #409eff;
+  --success: #67c23a;
+  --warning: #e6a23c;
+  --danger: #f56c6c;
+  --info: #909399;
+  --sidebar-bg: #1d1e2c;
+  --sidebar-text: #bfcbd9;
+  --sidebar-active: #409eff;
+  --page-bg: #f0f2f5;
+  --border-color: #e4e7ed;
+  --card-bg: #ffffff;
+  --text-primary: #303133;
+  --text-regular: #606266;
+  --text-secondary: #909399;
+}
