@@ -91,7 +91,9 @@ class ElementService:
         except PlaywrightException:
             raise
         except Exception as e:
-            raise PlaywrightException(f"页面抓取失败: {str(e)}")
+            logger.exception("页面抓取异常")
+            msg = str(e) or repr(e) or type(e).__name__
+            raise PlaywrightException(f"页面抓取失败: {msg}")
 
         elapsed = int((time.perf_counter() - start_ts) * 1000)
         logger.info("提取到 %d 个元素，耗时 %dms", len(elements), elapsed)
@@ -177,25 +179,31 @@ class ElementService:
                 "webkit": p.webkit,
             }.get(browser_type, p.chromium)
 
-            browser = await browser_launcher.launch(
-                headless=settings.PLAYWRIGHT_HEADLESS,
-            )
-            context = await browser.new_context(
-                viewport={"width": 1920, "height": 1080},
-            )
-            page = await context.new_page()
+            try:
+                browser = await browser_launcher.launch(
+                    headless=settings.PLAYWRIGHT_HEADLESS,
+                )
+                context = await browser.new_context(
+                    viewport={"width": 1920, "height": 1080},
+                )
+                page = await context.new_page()
+            except Exception as e:
+                msg = str(e) or repr(e) or type(e).__name__
+                raise PlaywrightException(f"浏览器启动失败: {msg}")
 
             try:
                 await page.goto(url, wait_until="networkidle", timeout=timeout_ms)
             except Exception as e:
                 await browser.close()
-                raise PlaywrightException(f"无法访问页面 {url}: {str(e)}")
+                msg = str(e) or repr(e) or type(e).__name__
+                raise PlaywrightException(f"无法访问页面 {url}: {msg}")
 
             try:
                 raw_elements = await page.evaluate(_EXTRACT_JS)
             except Exception as e:
                 await browser.close()
-                raise PlaywrightException(f"元素提取脚本执行失败: {str(e)}")
+                msg = str(e) or repr(e) or type(e).__name__
+                raise PlaywrightException(f"元素提取脚本执行失败: {msg}")
 
             # 生成选择器（在页面上下文中验证唯一性）
             elements: list[CrawledElement] = []
