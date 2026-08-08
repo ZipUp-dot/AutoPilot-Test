@@ -118,7 +118,7 @@ cd backend
 pip install -r requirements.txt
 # 安装 Chromium 浏览器（首次执行可能需要管理员权限）
 playwright install chromium
-python -m uvicorn app.main:app --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # 前端启动（新开终端，需 Node 18+）
 cd frontend
