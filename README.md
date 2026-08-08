@@ -1,377 +1,156 @@
-# AutoPilot
+# 🤖 AutoPilot — AI 驱动的智能 Web UI 自动化测试平台
 
-> 🤖 AI 驱动的自动化测试平台 — 让测试用例编写和执行更智能
+> **“让测试回归业务，让 AI 搞定代码。”**
+>
+> 一个面向测试工程师与开发团队的轻量级、开箱即用的 AI 自动化测试助手。
+> 核心理念：**先感知页面，再生成用例**。
 
-AutoPilot 是一个完整的自动化测试平台，支持从 Excel 用例导入到 AI 代码生成、Playwright 执行、失败自愈、HTML 报告生成的全流程闭环。前端基于 Vue 3 + Element Plus，后端基于 FastAPI + Playwright + OpenAI。
 
----
+## 一、项目定位
 
-## 项目概览
+AutoPilot 是一个**环境感知型** AI Web UI 自动化测试平台。
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    AutoPilot                         │
-│                                                      │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐        │
-│  │ 创建项目  │ → │ 元素抓取  │ → │ 导入用例  │        │
-│  │ 配置URL   │   │ Playwright│   │ Excel上传 │        │
-│  └──────────┘   └──────────┘   └──────────┘        │
-│                                       ↓              │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐        │
-│  │ 查看报告  │ ← │ 执行测试  │ ← │ 代码生成  │        │
-│  │ HTML离线  │   │ 轮询进度  │   │ AI+校验   │        │
-│  └──────────┘   └──────────┘   └──────────┘        │
-│                      ↓ 失败                          │
-│                ┌──────────┐                          │
-│                │ 自愈修复  │                          │
-│                │ 重新生成  │                          │
-│                └──────────┘                          │
-└─────────────────────────────────────────────────────┘
-```
+传统 AI 生成脚本属于“盲猜式”——AI 不了解页面真实 DOM 结构，导致元素定位频繁失败。AutoPilot 在执行前先用 Playwright 抓取目标页面的**真实可交互元素**，将元素上下文与测试用例一并喂给 LLM，从而大幅提升首次生成准确率。
 
----
+**一句话总结**：给 AI 装上“眼睛”，让它基于真实环境写代码，而不是凭空猜测。
 
-## 技术架构
+
+## 二、解决什么问题
+
+| 痛点 | 传统方案 | AutoPilot 方案 |
+| :--- | :--- | :--- |
+| **编写门槛高** | 要求测试人员具备编程能力 | 零代码，Excel 导入即可生成脚本 |
+| **维护成本大** | 前端迭代导致定位器失效，维护占 60%+ 工时 | 智能元素抓取 + 执行容错重试，降低维护开销 |
+| **用例转化难** | Excel 用例需人工逐条翻译为代码 | 批量导入，AI 自动转化为 Playwright 代码 |
+| **AI 生成不稳定** | 纯自然语言生成，缺乏页面结构上下文 | **环境感知 → 精准生成**，准确率提升显著 |
+
+
+## 三、核心业务闭环
+
+AutoPilot 构建了完整的 7 步自动化工作流：
 
 ```
-┌──────────────────────────────────────────────────┐
-│                    前端 (Vue 3)                    │
-│  Element Plus  │  Pinia  │  Axios  │  Highlight   │
-│     localhost:5173  ← Vite 代理 →  :8000         │
-└──────────────────────┬───────────────────────────┘
-                       │ HTTP REST API
-┌──────────────────────┴───────────────────────────┐
-│                  后端 (FastAPI)                    │
-│  ┌─────────┐ ┌──────────┐ ┌───────────────────┐  │
-│  │ Routers │ │ Services │ │     Models        │  │
-│  │ 7个路由 │ │ 8个服务  │ │ 8张表 (SQLAlchemy)│  │
-│  └─────────┘ └──────────┘ └────────┬──────────┘  │
-│                                     │              │
-│  ┌──────────┐  ┌──────────┐  ┌─────┴──────┐      │
-│  │Playwright│  │ OpenAI   │  │   MySQL    │      │
-│  │ 浏览器自动化│  │ AI代码生成│  │  8.0 数据库 │      │
-│  └──────────┘  └──────────┘  └────────────┘      │
-└──────────────────────────────────────────────────┘
+环境配置 → 元素抓取 → 用例导入 → AI 精准生成 → 可视化执行 → [失败时容错重试] → 报告输出
 ```
 
----
+| 步骤 | 说明 |
+| :--- | :--- |
+| **1. 环境配置** | Web 端输入目标 URL 与测试路径，一键创建项目 |
+| **2. 智能元素抓取** | Playwright 自动遍历页面，提取所有可交互元素（按钮、输入框、链接等），结构化返回前端列表 |
+| **3. 用例导入** | 上传标准 Excel 测试用例，系统自动识别中英文列名，批量解析 |
+| **4. AI 精准生成** | 将**真实元素列表** + **用例步骤**作为上下文，调用 LLM 生成 Playwright 异步代码，并做基础语法校验 |
+| **5. 可视化执行与监控** | 支持有头/无头模式运行，Web 界面实时展示执行进度、每步截图与完整日志 |
+| **6. 执行容错重试（V1.0）** | 执行失败时自动截图、捕获错误日志，采用固定策略重试（超时加倍 + 刷新元素定位，最多 3 次） |
+| **7. 报告生成** | 自动生成离线 HTML 可视化报告，含通过率、失败详情、截图对比、日志追溯 |
 
-## 技术栈
 
-| 层级 | 技术 | 说明 |
-|------|------|------|
-| **前端** | Vue 3 + Vite | SPA 单页应用 |
-| | Element Plus | UI 组件库（中文 locale） |
-| | Pinia | 状态管理（4 个 Store） |
-| | Axios | HTTP 客户端 |
-| | Highlight.js | Python 代码高亮 |
-| **后端** | FastAPI | Python 异步 Web 框架 |
-| | SQLAlchemy 2.0 | ORM（MySQL / SQLite 双兼容） |
-| | Pydantic 2.9 | 数据校验 |
-| | Playwright 1.47 | 浏览器自动化（Chromium 无头） |
-| | OpenAI API | AI 代码生成（gpt-4o / deepseek） |
-| | Jinja2 | HTML 报告模板渲染 |
-| **数据库** | MySQL 8.0 | 生产环境（也支持 SQLite） |
-| **测试** | httpx + pytest | 35 项集成测试 |
+## 四、MVP 核心指标
 
----
+AutoPilot 在 MVP 阶段锚定以下可客观验证的验收标准：
 
-## 项目结构
+| 衡量维度 | 目标值 | 验证方式 |
+| :--- | :--- | :--- |
+| **AI 生成代码的元素定位准确率**（配合元素抓取上下文） | **≥ 70%** | 基于已抓取元素，生成的 selector 在首次执行时能成功定位到目标元素的比例 |
+| **单条用例从导入到执行完成** | **≤ 60 秒** | 端到端计时：Excel 导入 → AI 生成 → Playwright 执行 → 结果返回 |
+| **Excel 批量导入支持的最大行数** | **≥ 100 行** | 单次上传并完整解析 100 行以上用例无丢失、无格式错误 |
 
-```
-AutoPilot/
-├── backend/                     # 后端服务（FastAPI）
-│   ├── app/
-│   │   ├── main.py              # 应用入口 + 生命周期管理
-│   │   ├── config.py            # 配置加载（pydantic-settings）
-│   │   ├── dependencies.py      # 依赖注入
-│   │   ├── exceptions.py        # 全局异常处理
-│   │   ├── schemas.py           # 通用响应模型
-│   │   ├── db/                  # 数据库
-│   │   │   ├── database.py      # 引擎 + Session 工厂
-│   │   │   └── schema.sql       # 建表 DDL（8 张表）
-│   │   ├── models/              # ORM 模型（8 张表）
-│   │   ├── routers/             # API 路由（7 个模块，25 个接口）
-│   │   ├── services/            # 业务逻辑层（8 个服务）
-│   │   ├── utils/               # 工具模块
-│   │   ├── middlewares/         # 中间件
-│   │   └── prompts/             # AI Prompt 模板
-│   ├── tests/                   # 测试（35 项集成测试）
-│   ├── uploads/                 # 截图 + Excel 上传
-│   ├── reports/                 # HTML 报告输出
-│   ├── .env.example             # 环境变量模板
-│   ├── Dockerfile               # Docker 构建
-│   ├── requirements.txt         # Python 依赖
-│   └── README.md                # 后端详细文档
-├── frontend/                    # 前端应用（Vue 3）
-│   ├── src/
-│   │   ├── main.js              # 应用入口
-│   │   ├── App.vue              # 根组件
-│   │   ├── router/              # 路由配置（8 条路由）
-│   │   ├── stores/              # Pinia 状态（4 个 Store）
-│   │   ├── api/                 # 后端 API 封装（8 个模块）
-│   │   ├── components/          # 公共组件（8 个）
-│   │   ├── composables/         # 可组合函数
-│   │   ├── styles/              # 全局样式
-│   │   └── views/               # 页面组件（8 个页面）
-│   ├── index.html               # HTML 入口
-│   ├── vite.config.js           # Vite 配置 + 代理
-│   ├── package.json             # 项目配置
-│   └── README.md                # 前端详细文档
-└── README.md                    # 本文件
-```
 
----
+## 五、架构设计原则
 
-## 核心功能
+- **模块解耦**：AI 生成、执行引擎、容错重试、报告生成等模块通过统一调度层交互，可独立升级
+- **配置分离**：Prompt 模板、执行参数、报告类型等均外置配置，逻辑与数据分离
+- **模型无关**：AI 调用层基于 OpenAI SDK，兼容 DeepSeek 等模型，切换零成本
 
-### 1. 项目管理
-- 创建/编辑/删除项目
-- 配置目标 URL、测试路径、浏览器类型
-- 表单校验 + 级联删除
+> **技术栈概览**：Vue3 + FastAPI + Playwright + MySQL 8.0 + Docker Compose（已规划）
+> **详细技术细节、API 接口、数据库设计、环境配置**请参阅子目录文档：
+> - [📁 后端详细文档](backend/README.md)
+> - [📁 前端详细文档](frontend/README.md)
 
-### 2. 元素抓取（Playwright）
-- 无头浏览器自动抓取页面可交互元素
-- 7 级选择器优先级降级策略（data-testid → id → name → placeholder → class → text → nth-child）
-- 动态 class 过滤 + 去重
-- 元素列表搜索与筛选
 
-### 3. 用例管理（Excel 导入）
-- 上传 `.xlsx` / `.xls` 批量导入
-- 智能识别中文/英文列名
-- 支持 3 种步骤格式（JSON 数组 / 纯文本 / 操作-对象-数据）
-- 支持 9 种操作类型（navigate / fill / click / select / hover / assert_text / assert_visible / screenshot / wait）
+## 六、项目价值
 
-### 4. AI 代码生成
-- 智能匹配用例步骤到页面元素选择器
-- 调用 LLM 生成 Playwright Python 异步代码
-- `ast.parse` 语法校验 + 安全审计（禁止 eval / exec / __import__ 等）
-- 单条生成 + 批量异步生成 + 进度轮询
+### 对个人开发者
+- **面试核心竞争力**：展示全栈开发 + AI 工程化落地 + 测试工具产品设计的复合能力
+- **开源作品集**：一个完整的、可运行的开源项目，是面试时最有力的技术信任背书
+- **技术深度**：实践 Prompt Engineering、Playwright 自动化、异步 FastAPI、现代前端工程化
+- **开源影响力**：为国内 “AI + 测试” 社区贡献可落地的轻量级方案
 
-### 5. 执行引擎
-- Playwright 自动化执行（Headless / Headed）
-- 安全门禁：未生成代码的用例拦截
-- 每步执行前后自动截图
-- 实时状态轮询 + 进度展示
-- Headed 模式实时截图推送
-- 支持手动停止
+### 对团队与企业
+- **降低门槛**：手工测试人员无需编程即可参与 UI 自动化
+- **提升效率**：用例转化从“人工编写”变为“AI 精准生成”
+- **减少维护**：元素抓取提升定位器稳定性，容错重试覆盖暂时性加载异常，降低脚本维护成本
 
-### 6. 自愈修复
-- 失败步骤自动触发或手动触发
-- 重新抓取元素 + LLM 分析错误上下文
-- 生成修复代码并标记 `is_healed`
-- 重试执行修复后的代码
 
-### 7. 测试报告
-- 离线 HTML 报告（内联 CSS + JS + Chart.js）
-- 饼图 + 柱状图（通过率、耗时分布）
-- 步骤截图对比（执行前/后）
-- Lightbox 图片预览
-- JSON / CSV 导出
-- 打印样式优化
-- 30 天自动清理
+## 七、迭代路线图
 
----
+| 版本 | 状态 | 核心内容 |
+| :--- | :--- | :--- |
+| **V1.0** | 🚧 开发中 | 跑通“抓取 → 导入 → 生成 → 执行 → 容错重试 → 报告”全链路 |
+| **V1.1** | 📅 规划中 | AI 自愈升级（LLM 分析错误 + 重写定位器）、更丰富的测试对比报告 |
+| **V2.0** | 📅 规划中 | Web 端定时任务（CI/CD 集成）、用户权限管理、APP UI 自动化支持 |
 
-## 快速开始
 
-### 前置条件
+## 八、快速开始
 
-| 依赖 | 版本 |
-|------|------|
-| Python | 3.12+ |
-| Node.js | 18+ |
-| MySQL | 8.0+（可选，也支持 SQLite） |
-| Playwright | Chromium 浏览器 |
+### 最小配置
 
-### 1. 克隆项目
+在项目根目录创建 `.env` 文件：
 
 ```bash
-git clone <repo-url>
-cd AutoPilot
+# MySQL
+DATABASE_URL=mysql+pymysql://root:your_password@localhost:3306/autopilot
+
+# AI 模型（兼容 OpenAI / DeepSeek）
+OPENAI_BASE_URL=https://api.deepseek.com/v1
+OPENAI_API_KEY=sk-your-key
+OPENAI_MODEL=deepseek-chat
 ```
 
-### 2. 启动后端
+### 本地启动
 
 ```bash
+# 克隆仓库
+git clone https://gitee.com/Mr-6Lawrence/auto-pilot-test.git
+cd auto-pilot-test
+
+# 后端启动（需 Python 3.10+）
 cd backend
-
-# 安装依赖
 pip install -r requirements.txt
+# 安装 Chromium 浏览器（首次执行可能需要管理员权限）
 playwright install chromium
+python -m uvicorn app.main:app --reload
 
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 填入数据库连接信息
-
-# 创建 MySQL 数据库
-mysql -u root -p -e "CREATE DATABASE autopilot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-
-# 启动服务
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-验证：`curl http://localhost:8000/health`
-
-### 3. 启动前端
-
-```bash
+# 前端启动（新开终端，需 Node 18+）
 cd frontend
-
-# 安装依赖
 npm install
-
-# 启动开发服务器
 npm run dev
 ```
 
-验证：浏览器打开 `http://localhost:5173`
+访问 `http://localhost:5173` 即可使用。
 
-### 4. 运行测试
+> Docker Compose 一键启动配置即将上线。详细本地开发指南请参阅：
+> - [📁 后端文档](backend/README.md)
+> - [📁 前端文档](frontend/README.md)
 
-```bash
-cd backend
-python tests/test_integration.py
-```
 
----
+## 九、贡献指南
 
-## 数据库 ER 图
+欢迎 Star、Fork 与贡献代码！无论是 Prompt 优化、自愈策略改进，还是新功能模块，都期待你的参与。
 
-```
-projects (1)
-  ├── page_elements (N)     FK → projects.id  CASCADE
-  ├── test_cases (N)        FK → projects.id  CASCADE
-  │     └── generated_codes (N)  FK → test_cases.id  CASCADE
-  └── executions (N)        FK → projects.id  CASCADE
-        ├── execution_steps (N)  FK → executions.id + test_cases.id  CASCADE
-        │     └── heal_records (N)  FK → execution_steps.id  CASCADE
-        └── execution_reports (1)  FK → executions.id UNIQUE  CASCADE
-```
+如有问题，请提交 Issue 或联系维护者。
 
-**8 张表**，级联删除链路：删项目 → 元素/用例/执行全删 → 代码/步骤/报告/自愈全删。
 
----
+## 📄 开源许可
 
-## API 接口总览
+本项目基于 **MIT 许可证** 开源。
 
-基础路径：`/api/v1`
 
-| 模块 | 接口数 | 方法 |
-|------|--------|------|
-| 项目管理 | 5 | GET/POST/GET/PUT/DELETE `/projects/` |
-| 元素抓取 | 3 | POST `/elements/crawl` GET/DELETE `/elements/` |
-| 用例管理 | 5 | POST `/cases/import` GET/DELETE `/cases/` |
-| 代码生成 | 4 | POST `/cases/{id}/generate` POST `/cases/generate-batch` GET `/code` |
-| 执行引擎 | 5 | POST/GET `/executions` GET/DELETE `/executions/{id}` |
-| 报告 | 2 | POST `/reports/generate` GET `/reports` |
-| 自愈 | 2 | POST `/heal` GET `/heal-records` |
+## 📌 版本信息
 
-**总计 25 个业务接口，前后端一一对应。** 详细文档见 [backend/README.md](backend/README.md)。
-
----
-
-## 页面路由
-
-| 路径 | 页面 | 功能 |
-|------|------|------|
-| `/projects` | 项目列表 | 创建/编辑/删除项目 |
-| `/projects/:id/elements` | 元素抓取 | Playwright 抓取 + 元素列表 |
-| `/projects/:id/cases` | 用例管理 | Excel 导入 + 代码生成 |
-| `/projects/:id/executions` | 执行面板 | 创建执行 + 进度轮询 |
-| `/projects/:id/reports` | 报告查看 | 生成 + 预览报告 |
-| `/executions/:id` | 执行详情 | 步骤时间线 + 截图对比 |
-| `/reports` | 报告中心 | 所有报告列表 |
-
-详细文档见 [frontend/README.md](frontend/README.md)。
-
----
-
-## 开发指南
-
-### 推荐 IDE
-
-- **后端**：VS Code + Python 插件
-- **前端**：VS Code + Vue Language Features (Volar)
-
-### 开发流程
-
-```bash
-# 1. 启动后端（热重载）
-cd backend && python -m uvicorn app.main:app --reload
-
-# 2. 启动前端（热重载）
-cd frontend && npm run dev
-
-# 3. 修改代码后自动重载，无需手动重启
-```
-
-### 代码规范
-
-- **后端**：PEP 8 + 类型注解 + 中文 docstring
-- **前端**：Vue 3 Composition API + `<script setup>`
-- **命名**：后端 `snake_case`，前端 `camelCase`
-
-### 测试
-
-```bash
-# 完整集成测试（35 项）
-cd backend && python tests/test_integration.py
-
-# 单个模块测试
-python tests/test_generate.py
-python tests/test_execution.py
-python tests/test_heal.py
-python tests/test_report.py
-```
-
----
-
-## 配置项
-
-### 后端（`.env`）
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `DATABASE_URL` | `mysql+pymysql://root:password@localhost:3306/autopilot` | 数据库连接 |
-| `OPENAI_API_KEY` | `""` | OpenAI Key（空则 Mock） |
-| `OPENAI_MODEL` | `gpt-4o` | 默认模型 |
-| `PLAYWRIGHT_HEADLESS` | `true` | 无头模式 |
-| `PLAYWRIGHT_TIMEOUT` | `30000` | 页面超时（ms） |
-| `CORS_ORIGINS` | `["http://localhost:5173"]` | 前端域名白名单 |
-
-### 前端（`vite.config.js`）
-
-| 代理路径 | 目标 |
-|----------|------|
-| `/api` | `http://127.0.0.1:8000` |
-| `/reports` | `http://127.0.0.1:8000` |
-| `/uploads` | `http://127.0.0.1:8000` |
-
----
-
-## 完成度
-
-| 模块 | 完成度 | 说明 |
-|------|--------|------|
-| 核心业务流程 | 90% | 抓取→导入→生成→执行→自愈→报告 全链路可用 |
-| 前后端联调 | 100% | 35 项集成测试全部通过 |
-| 接口对接 | 100% | 25 个接口全部对接前端 |
-| 基础设施 | 35% | Dockerfile 已有，缺 docker-compose / CI/CD |
-| 认证授权 | 0% | 未实现 |
-| 并发执行 | 30% | 单线程，缺并发调度 |
-
----
-
-## 详细文档
-
-- [后端 README](backend/README.md) — 后端架构、API 文档、数据库设计、启动指南
-- [前端 README](frontend/README.md) — 前端架构、路由设计、状态管理、组件说明
-- [数据库 DDL](backend/app/db/schema.sql) — 完整建表语句
-- [Swagger 文档](http://localhost:8000/docs) — 后端启动后访问
-
----
-
-## License
-
-MIT
+| 项目 | 内容 |
+| :--- | :--- |
+| **当前版本** | V1.0（开发中） |
+| **文档版本** | V2.0 |
+| **最后更新** | 2026-08-09 |
+| **维护者** | 彭意章（Mr-6Lawrence） |
+| **仓库地址** | https://gitee.com/Mr-6Lawrence/auto-pilot-test |

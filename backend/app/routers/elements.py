@@ -1,5 +1,7 @@
 """页面元素路由 — 委托 ElementService 处理抓取 + 查询 + 清空"""
 
+import logging
+import traceback
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
@@ -12,6 +14,7 @@ from app.schemas import (
     PageElementResponse,
 )
 
+logger = logging.getLogger("autopilot.crawl")
 router = APIRouter(prefix="/projects/{project_id}/elements", tags=["元素抓取"])
 
 
@@ -28,7 +31,12 @@ async def crawl_elements(project_id: int, body: CrawlRequest, db: Session = Depe
     先清空旧数据，再批量插入新元素。
     """
     svc = ElementService(db)
-    result = await svc.crawl(project_id, max_depth=body.max_depth)
+    try:
+        result = await svc.crawl(project_id, max_depth=body.max_depth)
+    except Exception as e:
+        logger.error(f"元素抓取异常: {type(e).__name__}: {e}")
+        logger.error(traceback.format_exc())
+        raise
 
     elements_data = [
         {
