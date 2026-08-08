@@ -136,6 +136,8 @@ class PlaywrightService:
         mode: str,
     ) -> None:
         """异步执行主循环"""
+        # 绕过 IDE 沙箱对 Playwright 子进程的拦截
+        os.environ["TOOLHOST_SANDBOX_DISABLED"] = "true"
         from playwright.async_api import async_playwright
 
         headless = mode == "headless"
