@@ -61,8 +61,8 @@ frontend/
 │   │   ├── LoadingMask.vue       # 加载遮罩
 │   │   └── PriorityTag.vue       # 优先级标签
 │   ├── composables/              # 可组合函数
-│   │   ├── usePolling.js         # 通用轮询 Hook
-│   │   └── useWebSocket.js       # WebSocket 连接（预留）
+│   │   ├── usePolling.js         # 通用轮询 Hook（执行进度/批量生成状态）
+│   │   └── useWebSocket.js       # WebSocket 连接（预留，计划用于实时推送）
 │   ├── styles/                   # 全局样式
 │   │   ├── variables.css         # CSS 变量（颜色 / 间距 / 字体）
 │   │   └── global.css            # 全局样式重置
@@ -106,7 +106,8 @@ npm install
 `.env.development`（已内置，无需修改）：
 
 ```env
-VITE_API_BASE_URL=http://localhost:8000
+VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1
+VITE_APP_TITLE=AutoPilot Test Platform
 ```
 
 ### 4. 启动开发服务器
@@ -139,7 +140,20 @@ npm run preview
 
 ### 6. 代理配置
 
-Vite 开发服务器已配置代理，无需前端额外配置：
+Vite 开发服务器已配置代理（`vite.config.js`），无需前端额外配置：
+
+```js
+// vite.config.js
+server: {
+  port: 5173,
+  host: '127.0.0.1',
+  proxy: {
+    '/api':     { target: 'http://127.0.0.1:8000', changeOrigin: true },
+    '/reports': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+    '/uploads': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+  },
+}
+```
 
 | 前端请求路径 | 代理到 |
 |-------------|--------|
@@ -147,8 +161,7 @@ Vite 开发服务器已配置代理，无需前端额外配置：
 | `/reports/*` | `http://127.0.0.1:8000` |
 | `/uploads/*` | `http://127.0.0.1:8000` |
 
-> **前提**：后端服务已启动在 `http://127.0.0.1:8000`。
-> 如果后端端口不同，修改 `vite.config.js` 中的 `proxy.target`。
+> **前提**：后端服务已启动在 `http://127.0.0.1:8000`。如果后端端口不同，修改 `vite.config.js` 中 `proxy` 的 `target` 值。
 
 ---
 
@@ -166,6 +179,8 @@ Vite 开发服务器已配置代理，无需前端额外配置：
 | `/executions/:executionId` | ExecutionDetail | 执行详情 + 步骤截图对比 |
 | `/reports` | ReportCenter | 报告中心 |
 | `/*` | → 重定向到 `/projects` | 404 兜底 |
+
+> **注意**：`Dashboard.vue` 组件已实现但尚未加入路由，计划后续版本作为首页仪表盘。
 
 ---
 
@@ -251,10 +266,11 @@ Tab 容器，包含 4 个子页面：
 - 错误信息高亮显示
 - 自愈修复触发入口
 
-### 4. 仪表盘（Dashboard）
+### 4. 仪表盘（Dashboard）🛠️ 计划中
 
 - 项目总数、用例总数、执行总数统计卡片
 - 最近执行列表（快速跳转）
+- 组件已实现（`Dashboard.vue`），尚未加入路由
 
 ### 5. 报告中心（ReportCenter）
 
@@ -296,14 +312,16 @@ npm install
 ### 启动顺序
 
 ```bash
-# 1. 先启动后端
+# 1. 先启动后端（注意：不要加 --reload 参数）
 cd backend
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # 2. 再启动前端
 cd frontend
 npm run dev
 ```
+
+> ⚠️ **重要**：后端启动时**禁止使用 `--reload` 参数**，否则 IDE 沙箱会拦截 Playwright 子进程，导致元素抓取和执行引擎报错 `NotImplementedError`。
 
 ### 访问地址
 
@@ -346,7 +364,10 @@ npm run dev
 依赖未安装，执行 `npm install`。
 
 ### Q: 页面空白，控制台报 CORS 错误？
-检查后端是否启动在 `http://127.0.0.1:8000`，Vite 代理依赖后端运行。
+检查后端是否启动在 `http://127.0.0.1:8000`，Vite 代理依赖后端运行。后端已配置 CORS 白名单支持 `localhost:5173` / `127.0.0.1:5173` / `localhost:5174` / `127.0.0.1:5174`。
+
+### Q: 元素抓取或执行测试报错？
+确认后端启动时**没有使用 `--reload` 参数**。IDE 沙箱会拦截 Playwright 子进程调用，详见后端 README 的启动说明。
 
 ### Q: API 请求返回 404？
 确认后端路由前缀为 `/api/v1`，前端 Axios 基础路径已配置为 `/api/v1`。
