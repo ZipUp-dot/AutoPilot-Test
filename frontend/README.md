@@ -27,7 +27,10 @@
 frontend/
 ├── index.html                    # HTML 入口
 ├── package.json                  # 项目配置 + 依赖
+├── package-lock.json             # 依赖锁定
 ├── vite.config.js                # Vite 构建配置 + 代理
+├── Dockerfile                    # 多阶段构建（Node.js build → Nginx serve）
+├── nginx.conf                    # Nginx 反向代理配置
 ├── .env.development              # 开发环境变量
 ├── public/
 │   └── vite.svg                  # 静态资源
@@ -138,7 +141,29 @@ npm run build
 npm run preview
 ```
 
-### 6. 代理配置
+### 6. Docker 部署
+
+推荐使用项目根目录的 `docker-compose.yml` 一键启动全部服务：
+
+```bash
+# 在项目根目录执行
+cd ..
+docker compose up -d
+```
+
+访问 `http://localhost:8080`。
+
+前端 Dockerfile 采用**多阶段构建**：
+- **Stage 1**（`node:20-alpine`）：`npm ci` → `npm run build` 编译 Vue 产物
+- **Stage 2**（`nginx:alpine`）：托管静态文件 + 反向代理后端 API
+
+Nginx 配置（`frontend/nginx.conf`）负责：
+- 静态文件服务 + SPA 路由回退
+- `/api/*` → 反向代理到 `backend:8000`
+- `/reports/*`、`/uploads/*` → 反向代理到后端
+- Gzip 压缩 + 安全头
+
+### 7. 代理配置
 
 Vite 开发服务器已配置代理（`vite.config.js`），无需前端额外配置：
 

@@ -306,15 +306,28 @@ lsof -ti:8000 | xargs kill -9
 
 ### 10. Docker 部署
 
+推荐使用项目根目录的 `docker-compose.yml` 一键启动全部服务（MySQL + Backend + Frontend）：
+
+```bash
+# 在项目根目录执行
+cd ..
+docker compose up -d
+```
+
+访问 `http://localhost:8080` 打开前端界面。
+
+#### 单独构建后端镜像
+
 ```bash
 # 构建镜像
 docker build -t autopilot-backend .
 
-# 运行容器
+# 运行容器（需先启动 MySQL）
 docker run -d \
   --name autopilot-backend \
   -p 8000:8000 \
-  --env-file .env \
+  -e DATABASE_URL=mysql+pymysql://root:password@host.docker.internal:3306/autopilot \
+  -e TOOLHOST_SANDBOX_DISABLED=true \
   autopilot-backend
 
 # 查看日志
