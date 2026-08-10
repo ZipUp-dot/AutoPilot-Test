@@ -9,7 +9,7 @@ RUN playwright install chromium --with-deps
 
 COPY . .
 
-RUN mkdir -p data uploads/screenshots uploads/videos reports
+RUN mkdir -p data uploads/screenshots uploads/videos uploads/excels reports
 
 EXPOSE 8000
 
