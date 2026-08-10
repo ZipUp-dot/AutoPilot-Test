@@ -12,13 +12,16 @@
 |------|------|
 | Web 框架 | FastAPI 0.115 |
 | ORM | SQLAlchemy 2.0 |
-| 数据库 | MySQL 8.0 / SQLite（双兼容） |
+| 数据库驱动 | PyMySQL 1.1 |
+| 数据库 | MySQL 8.0（生产）/ SQLite（开发调试） |
 | 浏览器自动化 | Playwright 1.47（Chromium 无头模式） |
 | AI 代码生成 | OpenAI API（gpt-4o / deepseek-chat，支持 Mock 模式） |
-| 数据校验 | Pydantic 2.9 |
+| HTTP 客户端 | httpx 0.27 |
+| 数据校验 | Pydantic 2.9 + pydantic-settings 2.5 |
 | 异步 | asyncio + threading |
 | Excel 解析 | openpyxl 3.1 |
 | 报告模板 | Jinja2 3.1 |
+| 文件上传 | python-multipart + aiofiles |
 | 运行环境 | Python 3.12+ |
 
 ---
@@ -69,9 +72,16 @@ backend/
 │   │   ├── code_injector.py     # 截图/日志注入
 │   │   └── screenshot.py        # 截图工具类
 │   ├── prompts/                 # AI Prompt 模板
-│   └── middlewares/             # 中间件
-│       ├── logging.py           # 请求日志
-│       └── timing.py            # 响应时间
+│   │   ├── __init__.py
+│   │   ├── generate_prompt.txt   # 代码生成 Prompt（每次读取，支持热更新）
+│   │   └── heal_prompt.txt       # 自愈修复 Prompt
+│   ├── templates/                # Jinja2 模板
+│   │   └── report_template.html  # HTML 报告模板（内联 CSS/JS/Chart.js）
+│   ├── middlewares/              # 中间件
+│   │   ├── __init__.py
+│   │   ├── logging.py            # 请求日志（method/path/status/duration/ip）
+│   │   └── timing.py             # 响应时间头
+│   └── utils/                    # 工具模块
 ├── tests/                       # 测试
 │   ├── test_integration.py      # 前后端联调测试（35 项）
 │   ├── test_cases.py            # 用例管理测试
@@ -81,12 +91,13 @@ backend/
 │   ├── test_report.py           # 报告测试
 │   ├── test_security.py         # 安全测试
 │   └── ...
-├── data/                        # 数据目录（SQLite 模式）
+├── data/                        # 数据目录（SQLite 模式数据库文件）
 ├── uploads/                     # 上传文件
-│   ├── screenshots/             # 执行截图
-│   ├── excels/                  # 导入的 Excel 文件
-│   └── videos/                  # 视频录制（预留）
-├── reports/                     # 生成的 HTML 报告
+│   ├── screenshots/             # 执行截图（按 execution_id/case_id 组织）
+│   ├── excels/                  # 导入的 Excel 文件（按 project_id 组织）
+│   └── videos/                  # 视频录制（headed 模式自动录制）
+├── reports/                     # 生成的 HTML 报告（30 天自动清理）
+├── _logs/                       # 运行日志
 ├── .env.example                 # 环境变量模板
 ├── Dockerfile                   # Docker 构建
 ├── requirements.txt             # Python 依赖
@@ -167,11 +178,14 @@ cp .env.example .env
 编辑 `.env` 文件，根据你的环境修改：
 
 ```env
+# ── 应用 ──
+SECRET_KEY=change-me-in-production
+
 # ── 数据库（二选一）──
-# MySQL 模式
+# MySQL 模式（推荐生产使用）
 DATABASE_URL=mysql+pymysql://root:你的密码@localhost:3306/autopilot
 
-# SQLite 模式（注释掉上面那行，用这行）
+# SQLite 模式（注释掉上面那行，用这行，免安装）
 # DATABASE_URL=sqlite:///./data/autopilot.db
 
 # ── AI 代码生成（可选）──
@@ -183,6 +197,19 @@ OPENAI_MODEL=gpt-4o
 # ── Playwright ──
 PLAYWRIGHT_HEADLESS=true
 PLAYWRIGHT_TIMEOUT=30000
+MAX_HEAL_RETRY=3
+
+# ── 存储路径 ──
+UPLOAD_DIR=./uploads
+REPORT_DIR=./reports
+SCREENSHOT_DIR=./uploads/screenshots
+VIDEO_DIR=./uploads/videos
+EXCEL_DIR=./uploads/excels
+
+# ── 服务器 ──
+HOST=0.0.0.0
+PORT=8000
+CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173","http://localhost:5174","http://127.0.0.1:5174"]
 ```
 
 ### 6. 初始化数据库
@@ -200,7 +227,9 @@ mysql -u root -p autopilot < app/db/schema.sql
 
 ### 7. 启动服务
 
-#### 开发模式（带热重载）
+> ⚠️ **重要**：`main.py` 启动时自动设置 `TOOLHOST_SANDBOX_DISABLED=true`，这是 Playwright 正常工作的必要条件。**请勿使用 `--reload` 参数**，否则 IDE 沙箱会拦截 Playwright 的子进程调用，导致元素抓取和执行引擎报错。
+
+#### 开发模式
 
 ```bash
 # 在 backend 目录下执行
@@ -215,8 +244,9 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 | `--host 127.0.0.1` | 监听地址（仅本机访问） |
 | `--host 0.0.0.0` | 监听所有网卡（允许局域网访问） |
 | `--port 8000` | 监听端口 |
-| `--reload` | 代码变更自动重启（开发模式） |
-| `--workers 4` | 多进程模式（生产环境，不与 --reload 共用） |
+| `--workers 4` | 多进程模式（生产环境） |
+
+> ⚠️ **禁止使用 `--reload`**：热重载模式会导致 IDE 沙箱拦截 Playwright 子进程，引发 `NotImplementedError`。如需热重载，请使用 IDE 自带的重启功能。
 
 #### 生产模式
 
@@ -337,7 +367,9 @@ curl http://localhost:8000/api/v1/projects/  # 项目列表
 确认 `.env` 中 `DATABASE_URL` 的用户名密码正确，并已创建 `autopilot` 数据库。
 
 ### Q: 元素抓取/执行引擎报错 "NotImplementedError"？
-Playwright 浏览器未安装或版本不匹配：
+有以下几种可能原因：
+1. **使用了 `--reload` 参数**：请移除 `--reload`，IDE 沙箱会拦截 Playwright 子进程。详见上方启动说明。
+2. Playwright 浏览器未安装或版本不匹配：
 ```bash
 playwright install chromium
 ```
@@ -624,13 +656,24 @@ python tests/test_report.py
 
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
+| `SECRET_KEY` | `change-me-in-production` | 应用密钥（生产环境务必修改） |
 | `DATABASE_URL` | `mysql+pymysql://root:password@localhost:3306/autopilot` | 数据库连接 |
-| `OPENAI_API_KEY` | `""` | OpenAI API Key（空则 Mock） |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API 代理地址 |
+| `OPENAI_API_KEY` | `""` | OpenAI API Key（空则 Mock 模式） |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API 代理地址（兼容 deepseek 等） |
 | `OPENAI_MODEL` | `gpt-4o` | 默认模型 |
 | `PLAYWRIGHT_TIMEOUT` | `30000` | 页面加载超时（ms） |
 | `PLAYWRIGHT_HEADLESS` | `true` | 无头模式 |
 | `MAX_HEAL_RETRY` | `3` | 自愈最大重试次数 |
-| `CORS_ORIGINS` | `["http://localhost:5173"]` | 允许的前端域名 |
-| `APP_TITLE` | `AutoPilot API` | 应用标题 |
+| `UPLOAD_DIR` | `./uploads` | 上传文件目录 |
+| `REPORT_DIR` | `./reports` | HTML 报告输出目录 |
+| `SCREENSHOT_DIR` | `./uploads/screenshots` | 截图存储目录 |
+| `VIDEO_DIR` | `./uploads/videos` | 视频录制目录（headed 模式） |
+| `EXCEL_DIR` | `./uploads/excels` | 导入 Excel 存储目录 |
+| `HOST` | `0.0.0.0` | 监听地址 |
+| `PORT` | `8000` | 监听端口 |
+| `CORS_ORIGINS` | `["http://localhost:5173","http://127.0.0.1:5173","http://localhost:5174","http://127.0.0.1:5174"]` | 允许的前端域名 |
+| `APP_TITLE` | `AutoPilot API` | 应用标题（Swagger 显示） |
 | `API_PREFIX` | `/api/v1` | API 路径前缀 |
+| `APP_VERSION` | `1.0.0` | 应用版本号 |
+
+> **注意**：`TOOLHOST_SANDBOX_DISABLED=true` 由 `main.py` 在启动时自动设置，无需在 `.env` 中配置。
