@@ -24,9 +24,9 @@
 
       <div class="progress-body">
         <div class="progress-stats">
-          <span class="stat-passed">通过: {{ executionStatus.passed ?? 0 }}</span>
-          <span class="stat-failed">失败: {{ executionStatus.failed ?? 0 }}</span>
-          <span>总计: {{ executionStatus.total ?? 0 }}</span>
+          <span class="stat-passed">通过: {{ executionStatus.passed_cases ?? 0 }}</span>
+          <span class="stat-failed">失败: {{ executionStatus.failed_cases ?? 0 }}</span>
+          <span>总计: {{ executionStatus.total_cases ?? 0 }}</span>
         </div>
         <el-progress
           :percentage="progressPercent"
@@ -70,10 +70,10 @@
           <span class="row-link">{{ row.batch_name || '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="mode" label="执行模式" width="120" align="center">
+      <el-table-column label="执行模式" width="110" align="center">
         <template #default="{ row }">
-          <el-tag size="small" :type="row.mode === 'headed' ? 'warning' : 'info'">
-            {{ row.mode === 'headed' ? 'Headed' : 'Headless' }}
+          <el-tag size="small" :type="row.execution_mode === 'headed' ? 'warning' : 'info'">
+            {{ row.execution_mode === 'headed' ? '前台执行' : '后台执行' }}
           </el-tag>
         </template>
       </el-table-column>
@@ -85,7 +85,7 @@
               :stroke-width="8"
               :color="getRowProgressColor(row)"
             />
-            <span class="progress-text">{{ row.passed ?? 0 }}/{{ row.total_cases ?? 0 }}</span>
+            <span class="progress-text">{{ row.passed_cases ?? 0 }}/{{ row.total_cases ?? 0 }}</span>
           </div>
         </template>
       </el-table-column>
@@ -269,7 +269,7 @@ async function loadExecutions() {
 
 function getRowProgress(row) {
   const total = row.total_cases ?? 1
-  const done = (row.passed ?? 0) + (row.failed ?? 0)
+  const done = (row.passed_cases ?? 0) + (row.failed_cases ?? 0)
   return Math.round((done / total) * 100)
 }
 
@@ -364,8 +364,8 @@ const isRunning = computed(() => {
 })
 
 const progressPercent = computed(() => {
-  const total = executionStatus.value?.total || 1
-  const done = (executionStatus.value?.passed || 0) + (executionStatus.value?.failed || 0)
+  const total = executionStatus.value?.total_cases || 1
+  const done = (executionStatus.value?.passed_cases || 0) + (executionStatus.value?.failed_cases || 0)
   return Math.round((done / total) * 100)
 })
 

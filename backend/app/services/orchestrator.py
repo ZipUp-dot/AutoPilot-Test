@@ -96,6 +96,19 @@ class TestOrchestrator:
                 from app.services.playwright_service import PlaywrightService
                 svc = PlaywrightService(db_session)
                 svc.execute(project_id, case_ids, execution_id, mode)
+            except Exception:
+                logger.exception("后台执行线程异常: execution_id=%s", execution_id)
+                # 兜底：确保执行状态不为 running
+                try:
+                    from app.models.execution import Execution
+                    from datetime import datetime as dt
+                    exec_row = db_session.query(Execution).filter(Execution.id == execution_id).first()
+                    if exec_row and exec_row.status == "running":
+                        exec_row.status = "failed"
+                        exec_row.end_time = dt.utcnow()
+                        db_session.commit()
+                except Exception:
+                    pass
             finally:
                 db_session.close()
                 clear_stop_flag(execution_id)
@@ -159,6 +172,19 @@ class TestOrchestrator:
                 from app.services.playwright_service import PlaywrightService
                 svc = PlaywrightService(db_session)
                 svc.execute(project_id, case_ids, execution_id, mode)
+            except Exception:
+                logger.exception("后台执行线程异常: execution_id=%s", execution_id)
+                # 兜底：确保执行状态不为 running
+                try:
+                    from app.models.execution import Execution
+                    from datetime import datetime as dt
+                    exec_row = db_session.query(Execution).filter(Execution.id == execution_id).first()
+                    if exec_row and exec_row.status == "running":
+                        exec_row.status = "failed"
+                        exec_row.end_time = dt.utcnow()
+                        db_session.commit()
+                except Exception:
+                    pass
             finally:
                 db_session.close()
                 clear_stop_flag(execution_id)
@@ -200,8 +226,16 @@ class TestOrchestrator:
                 if status == "completed":
                     logger.info("编排器: execution_id=%s 已完成，自动生成报告", execution_id)
                     try:
-                        self.report_service.generate(execution_id)
-                        logger.info("编排器: 报告生成完成 execution_id=%s", execution_id)
+                        # 使用独立的 DB 会话生成报告（原会话可能已关闭）
+                        from app.db.database import SessionLocal
+                        db = SessionLocal()
+                        try:
+                            from app.services.report_service import ReportService
+                            report_svc = ReportService(db)
+                            report_svc.generate(execution_id)
+                            logger.info("编排器: 报告生成完成 execution_id=%s", execution_id)
+                        finally:
+                            db.close()
                     except Exception as e:
                         logger.error("编排器: 报告生成失败 execution_id=%s: %s", execution_id, e)
                     break

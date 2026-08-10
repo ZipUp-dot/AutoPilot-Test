@@ -119,6 +119,7 @@ def list_project_executions(project_id: int, db: Session = Depends(get_db)):
                 "failed_cases": e.failed_cases,
                 "status": e.status,
                 "execution_mode": e.execution_mode,
+                "duration": int((e.end_time - e.start_time).total_seconds()) if e.end_time and e.start_time else None,
                 "start_time": str(e.start_time) if e.start_time else None,
                 "end_time": str(e.end_time) if e.end_time else None,
                 "created_at": str(e.created_at) if e.created_at else None,

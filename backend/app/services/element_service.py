@@ -306,7 +306,8 @@ class ElementService:
 _EXTRACT_JS = """() => {
     const selectors = [
         'button',
-        'input[type="text"]', 'input[type="password"]', 'input[type="email"]', 'input[type="number"]',
+        'input:not([type])', 'input[type="text"]', 'input[type="password"]', 'input[type="email"]', 'input[type="number"]',
+        'input[type="tel"]', 'input[type="url"]', 'input[type="search"]', 'input[type="date"]', 'input[type="time"]',
         'textarea', 'select',
         'a[href]',
         '[role="button"]', '[role="link"]',
