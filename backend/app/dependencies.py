@@ -50,7 +50,7 @@ class PaginationParams:
     def __init__(
         self,
         page: int = FastQuery(default=1, ge=1, description="页码"),
-        size: int = FastQuery(default=20, ge=1, le=100, description="每页数量"),
+        size: int = FastQuery(default=20, ge=1, le=1000, description="每页数量"),
     ):
         self.page = page
         self.size = size

@@ -156,6 +156,16 @@ class PlaywrightService:
                 page = await context.new_page()
                 page.set_default_timeout(settings.PLAYWRIGHT_TIMEOUT)
 
+                # 导航到项目目标 URL
+                from app.models.project import Project
+                project = self._db.query(Project).filter(Project.id == project_id).first()
+                target_url = project.target_url if project and project.target_url else "https://example.com"
+                try:
+                    await page.goto(target_url, wait_until="networkidle")
+                    logger.info("已导航到目标 URL: %s", target_url)
+                except Exception as e:
+                    logger.warning("导航到 %s 失败: %s，继续执行", target_url, e)
+
                 passed = 0
                 failed = 0
 
@@ -176,12 +186,12 @@ class PlaywrightService:
                         failed += 1
                         logger.exception("用例执行异常: case_id=%s", case_id)
 
+                # 先更新执行统计（在关闭浏览器之前，避免异常丢失）
+                self._update_execution(execution_id, passed, failed)
+
                 # 关闭浏览器
                 await context.close()
                 await browser.close()
-
-                # 更新执行统计
-                self._update_execution(execution_id, passed, failed)
 
                 # 如果有失败步骤，进入自愈阶段
                 if failed > 0:
@@ -292,20 +302,26 @@ class PlaywrightService:
 
     def _update_execution(self, execution_id: int, passed: int, failed: int) -> None:
         """更新执行记录"""
-        exec_row = self._db.query(Execution).filter(Execution.id == execution_id).first()
-        if exec_row:
-            exec_row.passed_cases = passed
-            exec_row.failed_cases = failed
-            self._db.commit()
+        try:
+            exec_row = self._db.query(Execution).filter(Execution.id == execution_id).first()
+            if exec_row:
+                exec_row.passed_cases = passed
+                exec_row.failed_cases = failed
+                self._db.commit()
+        except Exception:
+            logger.exception("更新执行统计失败: execution_id=%s", execution_id)
 
     def _update_execution_status(self, execution_id: int, status: str) -> None:
         """更新执行状态"""
-        exec_row = self._db.query(Execution).filter(Execution.id == execution_id).first()
-        if exec_row:
-            exec_row.status = status
-            if status in ("completed", "failed", "stopped"):
-                exec_row.end_time = datetime.utcnow()
-            self._db.commit()
+        try:
+            exec_row = self._db.query(Execution).filter(Execution.id == execution_id).first()
+            if exec_row:
+                exec_row.status = status
+                if status in ("completed", "failed", "stopped"):
+                    exec_row.end_time = datetime.utcnow()
+                self._db.commit()
+        except Exception:
+            logger.exception("更新执行状态失败: execution_id=%s, status=%s", execution_id, status)
 
     def _is_stopped(self, execution_id: int) -> bool:
         with _stop_lock:

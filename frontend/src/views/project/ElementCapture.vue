@@ -17,11 +17,11 @@
       <div class="filter-type">
         <span class="filter-label">类型：</span>
         <el-checkbox-group v-model="filter.types">
-          <el-checkbox label="button">button</el-checkbox>
-          <el-checkbox label="input">input</el-checkbox>
-          <el-checkbox label="link">link</el-checkbox>
-          <el-checkbox label="select">select</el-checkbox>
-          <el-checkbox label="textarea">textarea</el-checkbox>
+          <el-checkbox label="button">按钮 (button)</el-checkbox>
+          <el-checkbox label="input">输入框 (input)</el-checkbox>
+          <el-checkbox label="link">链接 (link)</el-checkbox>
+          <el-checkbox label="select">下拉框 (select)</el-checkbox>
+          <el-checkbox label="textarea">文本域 (textarea)</el-checkbox>
         </el-checkbox-group>
       </div>
       <el-input
@@ -43,12 +43,12 @@
       highlight-current-row
       @row-click="handleRowClick"
     >
-      <el-table-column label="类型" width="100">
+      <el-table-column label="类型 (Type)" width="110">
         <template #default="{ row }">
-          <el-tag size="small" :type="getTypeTagType(row.type)">{{ row.type }}</el-tag>
+          <el-tag size="small" :type="getTypeTagType(row.element_type)">{{ getTypeLabel(row.element_type) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="选择器" min-width="220" show-overflow-tooltip>
+      <el-table-column label="选择器 (Selector)" min-width="220" show-overflow-tooltip>
         <template #default="{ row }">
           <span class="selector-cell">
             <span class="selector-text">{{ row.selector }}</span>
@@ -58,13 +58,13 @@
           </span>
         </template>
       </el-table-column>
-      <el-table-column label="文本内容" min-width="150" show-overflow-tooltip>
+      <el-table-column label="文本内容 (Text)" min-width="150" show-overflow-tooltip>
         <template #default="{ row }">
           <span v-if="row.text_content || row.text">{{ row.text_content || row.text }}</span>
           <span v-else class="text-muted">—</span>
         </template>
       </el-table-column>
-      <el-table-column label="Placeholder" min-width="150" show-overflow-tooltip>
+      <el-table-column label="占位文本 (Placeholder)" min-width="150" show-overflow-tooltip>
         <template #default="{ row }">
           <span v-if="row.placeholder">{{ row.placeholder }}</span>
           <span v-else class="text-muted">—</span>
@@ -106,25 +106,25 @@
         </div>
 
         <el-descriptions :column="1" border style="margin-top: 16px">
-          <el-descriptions-item label="标签 (tag)">
-            {{ currentElement.tag || '—' }}
+          <el-descriptions-item label="标签 (Tag)">
+            {{ currentElement.tag_name || currentElement.tag || '—' }}
           </el-descriptions-item>
-          <el-descriptions-item label="类型 (type)">
-            <el-tag size="small" :type="getTypeTagType(currentElement.type)">
-              {{ currentElement.type }}
+          <el-descriptions-item label="类型 (Type)">
+            <el-tag size="small" :type="getTypeTagType(currentElement.element_type)">
+              {{ getTypeLabel(currentElement.element_type) }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="选择器 (selector)">
+          <el-descriptions-item label="选择器 (Selector)">
             {{ currentElement.selector || '—' }}
           </el-descriptions-item>
-          <el-descriptions-item label="文本内容 (text_content)">
+          <el-descriptions-item label="文本内容 (Text)">
             {{ currentElement.text_content || currentElement.text || '—' }}
           </el-descriptions-item>
-          <el-descriptions-item label="Placeholder">
+          <el-descriptions-item label="占位文本 (Placeholder)">
             {{ currentElement.placeholder || '—' }}
           </el-descriptions-item>
           <el-descriptions-item label="ID">
-            {{ currentElement.id || '—' }}
+            {{ currentElement.element_id || currentElement.id || '—' }}
           </el-descriptions-item>
           <el-descriptions-item label="Class">
             {{ currentElement.class_name || '—' }}
@@ -133,7 +133,7 @@
 
         <!-- 属性键值对 -->
         <div v-if="attributesEntries.length > 0" style="margin-top: 20px">
-          <h4 class="section-title">属性 (attributes)</h4>
+          <h4 class="section-title">属性 (Attributes)</h4>
           <el-descriptions :column="1" border>
             <el-descriptions-item
               v-for="(value, key) in attributesEntries"
@@ -147,7 +147,7 @@
 
         <!-- 边界框 -->
         <div v-if="currentElement.bounding_box" style="margin-top: 20px">
-          <h4 class="section-title">边界框 (bounding_box)</h4>
+          <h4 class="section-title">边界框 (Bounding Box)</h4>
           <el-descriptions :column="2" border>
             <el-descriptions-item label="x">{{ currentElement.bounding_box.x }}</el-descriptions-item>
             <el-descriptions-item label="y">{{ currentElement.bounding_box.y }}</el-descriptions-item>
@@ -199,7 +199,7 @@ watch(
 const filteredElements = computed(() => {
   let result = elements.value
   if (filter.types.length > 0) {
-    result = result.filter((el) => filter.types.includes(el.type))
+    result = result.filter((el) => filter.types.includes(el.element_type))
   }
   if (debouncedKeyword.value) {
     const kw = debouncedKeyword.value.toLowerCase()
@@ -233,6 +233,17 @@ function getTypeTagType(type) {
     textarea: 'info',
   }
   return map[type] || ''
+}
+
+function getTypeLabel(type) {
+  const map = {
+    button: '按钮 (button)',
+    input: '输入框 (input)',
+    link: '链接 (link)',
+    select: '下拉框 (select)',
+    textarea: '文本域 (textarea)',
+  }
+  return map[type] || type
 }
 
 async function fetchList() {

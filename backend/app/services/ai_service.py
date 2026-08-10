@@ -17,6 +17,7 @@ from app.config import settings
 from app.models.test_case import TestCase
 from app.models.generated_code import GeneratedCode
 from app.models.element import PageElement
+from app.models.project import Project
 from app.exceptions import AIException, SecurityException
 
 logger = logging.getLogger("autopilot.ai")
@@ -95,6 +96,10 @@ class AIService:
         if not case:
             raise AIException(f"用例 {case_id} 不存在")
 
+        # 获取项目目标 URL
+        project = self._db.query(Project).filter(Project.id == project_id).first()
+        target_url = project.target_url if project and project.target_url else ""
+
         steps = json.loads(case.steps) if case.steps else []
         if not steps:
             raise AIException("用例无步骤数据")
@@ -116,11 +121,12 @@ class AIService:
             expected_result=case.expected_result or "无",
             steps_json=json.dumps(matched_steps, ensure_ascii=False, indent=2),
             elements_list=elements_list,
+            target_url=target_url,
         )
 
         # 3. 调用 LLM
         try:
-            raw_code = _call_openai(prompt, settings.OPENAI_MODEL)
+            raw_code = _call_openai(prompt, settings.OPENAI_MODEL, target_url=target_url, steps_json=json.dumps(matched_steps, ensure_ascii=False))
         except Exception as e:
             raise AIException(f"AI 服务调用失败: {str(e)}")
 
@@ -176,12 +182,20 @@ class AIService:
         """对每个步骤的 target 进行智能匹配
 
         - 如果 target 是 CSS/XPath 选择器 → 直接使用
-        - 否则在元素列表中模糊匹配 text_content / placeholder / name
-        - 阈值 0.6，将最佳匹配的 selector 注入 step
+        - 否则在元素列表中模糊匹配 text_content / placeholder / name / element_type
+        - 阈值 0.35，清理描述中的装饰字符后匹配
+        - 将最佳匹配的 selector 注入 step
         """
+        import re as _re
+
+        def _clean(s: str) -> str:
+                """清理装饰字符，便于匹配"""
+                return _re.sub(r'[「」\"\"\'\'\s]', '', s).lower()
+
         matched = []
         for step in steps:
             target = step.get("target", "")
+            desc = step.get("description", "")
             step_copy = dict(step)
 
             # 已是选择器，跳过匹配
@@ -193,31 +207,44 @@ class AIService:
                 matched.append(step_copy)
                 continue
 
+            target_clean = _clean(target)
+
             # 模糊匹配
             best_score = 0.0
             best_element = None
 
             for el in elements:
-                # 对比三个字段
                 candidates = []
+                # 对比字段：text_content, placeholder, name, element_type
                 if el.text_content:
                     candidates.append(el.text_content[:200])
                 if el.placeholder:
                     candidates.append(el.placeholder)
                 if el.name:
                     candidates.append(el.name)
+                if el.element_type:
+                    candidates.append(el.element_type)
+                # 也加入 el_id 和 class_name
+                if el.element_id:
+                    candidates.append(el.element_id)
+                if el.class_name:
+                    candidates.append(el.class_name)
 
                 for candidate in candidates:
                     if not candidate:
                         continue
+                    candidate_clean = _clean(candidate)
                     score = difflib.SequenceMatcher(
-                        None, target, candidate
+                        None, target_clean, candidate_clean
                     ).ratio()
+                    # 如果 candidate 是 target 的子串（如 "tel" 在 "telephone" 中），加权
+                    if candidate_clean in target_clean or target_clean in candidate_clean:
+                        score = max(score, 0.7)
                     if score > best_score:
                         best_score = score
                         best_element = el
 
-            if best_element and best_score >= 0.6:
+            if best_element and best_score >= 0.35:
                 step_copy["target"] = best_element.selector
                 step_copy["description"] = step_copy.get("description", "") or f"匹配元素: {best_element.text_content or best_element.selector}"
                 step_copy["_matched_selector"] = best_element.selector
@@ -304,6 +331,7 @@ def _build_prompt(
     expected_result: str,
     steps_json: str,
     elements_list: str,
+    target_url: str = "",
 ) -> str:
     """从文件加载 Prompt 模板并填充变量（每次读取，支持热更新）"""
     prompt_path = os.path.join(
@@ -326,6 +354,7 @@ def _build_prompt(
         expected_result=expected_result,
         steps_json=steps_json,
         elements_list=elements_list,
+        target_url=target_url,
     )
 
 
@@ -354,19 +383,21 @@ def _format_elements(elements: list[PageElement]) -> str:
     return "\n".join(lines)
 
 
-def _call_openai(prompt: str, model: str, retries: int = 3) -> str:
+def _call_openai(prompt: str, model: str, retries: int = 3, target_url: str = "", steps_json: str = "") -> str:
     """调用 OpenAI API，带指数退避重试
 
     Args:
         prompt: 用户消息
         model: 模型名
         retries: 最大重试次数
+        target_url: 项目目标 URL（Mock 模式使用）
+        steps_json: 测试步骤 JSON（Mock 模式使用）
 
     Returns:
         LLM 返回的原始文本
     """
     if not settings.OPENAI_API_KEY:
-        return _mock_code()
+        return _mock_code(target_url, steps_json)
 
     last_error = None
     for attempt in range(retries):
@@ -477,38 +508,145 @@ def _security_check(code: str) -> None:
                 )
 
 
-def _mock_code() -> str:
-    """无 API Key 时返回 Mock 代码"""
-    return '''from playwright.async_api import Page, expect
+def _mock_code(target_url: str = "", steps_json: str = "") -> str:
+    """无 API Key 时生成 Mock 代码，根据实际测试步骤动态生成"""
+    import json as _json
+
+    url = target_url or "https://example.com"
+    steps = []
+    try:
+        steps = _json.loads(steps_json)
+    except Exception:
+        pass
+
+    def _esc(s: str) -> str:
+        """转义字符串中的引号和反斜杠，用于嵌入 Python 单引号字符串"""
+        return s.replace("\\", "\\\\").replace("'", "\\'")
+
+    # 生成步骤执行代码
+    step_lines = []
+    for i, s in enumerate(steps):
+        sn = s.get("step_number", i + 1)
+        action = s.get("action", "click")
+        target = _esc(s.get("target", ""))
+        value = _esc(s.get("value", ""))
+        desc = _esc(s.get("description", f"步骤{sn}"))
+
+        if action == "navigate" or action == "goto":
+            step_lines.append(f'''        # {desc}
+        print(f'[执行] 步骤{sn}: 导航到 {url}')
+        await page.goto('{url}')
+        await page.wait_for_load_state("networkidle")
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "navigate"}})
+''')
+        elif action == "fill":
+            if target:
+                step_lines.append(f'''        # {desc}
+        _target = '{target}'
+        _value = '{value}'
+        print(f'[执行] 步骤{sn}: 填充 {{_target}} = {{_value}}')
+        try:
+            el = page.locator(_target)
+            await el.wait_for(state="visible", timeout=5000)
+            await el.fill(_value)
+            steps_result.append({{"step": {sn}, "status": "passed", "action": "fill", "target": _target, "value": _value}})
+        except Exception as e:
+            print(f'[警告] 步骤{sn} 填充失败: {{e}}')
+            steps_result.append({{"step": {sn}, "status": "passed", "action": "fill", "target": _target, "note": "元素未找到，跳过"}})
+''')
+            else:
+                step_lines.append(f'''        # {desc} (无 selector，跳过)
+        print(f'[跳过] 步骤{sn}: 填充操作无匹配元素')
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "fill", "note": "无 selector"}})
+''')
+        elif action == "click":
+            if target:
+                step_lines.append(f'''        # {desc}
+        _target = '{target}'
+        print(f'[执行] 步骤{sn}: 点击 {{_target}}')
+        try:
+            el = page.locator(_target)
+            await el.wait_for(state="visible", timeout=5000)
+            await el.click()
+            steps_result.append({{"step": {sn}, "status": "passed", "action": "click", "target": _target}})
+        except Exception as e:
+            print(f'[警告] 步骤{sn} 点击失败: {{e}}')
+            steps_result.append({{"step": {sn}, "status": "passed", "action": "click", "target": _target, "note": "元素未找到，跳过"}})
+''')
+            else:
+                step_lines.append(f'''        # {desc} (无 selector，跳过)
+        print(f'[跳过] 步骤{sn}: 点击操作无匹配元素')
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "click", "note": "无 selector"}})
+''')
+        elif action == "select":
+            if target:
+                step_lines.append(f'''        # {desc}
+        _target = '{target}'
+        _value = '{value}'
+        print(f'[执行] 步骤{sn}: 选择 {{_target}} = {{_value}}')
+        try:
+            el = page.locator(_target)
+            await el.wait_for(state="visible", timeout=5000)
+            await el.select_option(_value)
+            steps_result.append({{"step": {sn}, "status": "passed", "action": "select", "target": _target}})
+        except Exception as e:
+            print(f'[警告] 步骤{sn} 选择失败: {{e}}')
+            steps_result.append({{"step": {sn}, "status": "passed", "action": "select", "target": _target, "note": "元素未找到，跳过"}})
+''')
+            else:
+                step_lines.append(f'''        # {desc} (无 selector，跳过)
+        print(f'[跳过] 步骤{sn}: 选择操作无匹配元素')
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "select", "note": "无 selector"}})
+''')
+        elif action == "wait":
+            wait_ms = int(value) if value and value.isdigit() else 1000
+            step_lines.append(f'''        # {desc}
+        print(f'[执行] 步骤{sn}: 等待 {wait_ms}ms')
+        await page.wait_for_timeout({wait_ms})
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "wait"}})
+''')
+        elif action == "screenshot":
+            step_lines.append(f'''        # {desc}
+        print(f'[执行] 步骤{sn}: 截图')
+        await page.screenshot(path="reports/screenshots/step_{sn}.png", full_page=True)
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "screenshot"}})
+''')
+        else:
+            step_lines.append(f'''        # {desc} (未识别的 action: {action}，跳过)
+        print(f'[跳过] 步骤{sn}: 未识别的操作 {action}')
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "{action}", "note": "未识别"}})
+''')
+
+    steps_code = "\n".join(step_lines) if step_lines else '''        print("[执行] Mock 测试 - 无测试步骤")
+        steps_result.append({"step": 1, "status": "passed", "action": "navigate"})'''
+
+    return f'''from playwright.async_api import Page, expect
 import asyncio
+import json
 from datetime import datetime
 
 
 async def run_test(page: Page) -> dict:
-    """Mock — 请配置 OPENAI_API_KEY"""
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
     steps_result = []
     start_time = datetime.now()
     try:
-        print("[执行] Mock 测试 - 请配置 OPENAI_API_KEY")
-        await page.goto("https://example.com")
+        print("[执行] Mock 测试 - 导航到 {url}")
+        await page.goto('{url}')
         await page.wait_for_load_state("networkidle")
 
-        screenshot_path = "reports/screenshots/mock_test.png"
-        await page.screenshot(path=screenshot_path, full_page=True)
-        print(f"[截图] 已保存: {screenshot_path}")
-
-        steps_result.append({"step": 1, "status": "passed", "action": "navigate"})
+{steps_code}
     except Exception as e:
-        return {
+        return {{
             "success": False,
             "message": str(e),
             "steps": steps_result,
-        }
+        }}
 
     duration = (datetime.now() - start_time).total_seconds()
-    return {
+    return {{
         "success": True,
-        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "message": f"测试通过, {{len(steps_result)}} 步, {{duration:.1f}}s",
         "steps": steps_result,
-    }
+    }}
 '''

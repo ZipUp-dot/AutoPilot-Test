@@ -4,7 +4,7 @@
     <div class="action-bar">
       <div class="action-left">
         <el-button
-          v-if="detail.failed > 0"
+          v-if="detail.failed_cases > 0"
           type="warning"
           :loading="rerunning"
           @click="handleRerunFailed"
@@ -55,11 +55,11 @@
         </el-card>
         <el-card shadow="hover" class="stat-card stat-passed">
           <div class="stat-label">通过</div>
-          <div class="stat-value">{{ detail.passed ?? 0 }}</div>
+          <div class="stat-value">{{ detail.passed_cases ?? 0 }}</div>
         </el-card>
         <el-card shadow="hover" class="stat-card stat-failed">
           <div class="stat-label">失败</div>
-          <div class="stat-value">{{ detail.failed ?? 0 }}</div>
+          <div class="stat-value">{{ detail.failed_cases ?? 0 }}</div>
         </el-card>
         <el-card shadow="hover" class="stat-card stat-skipped">
           <div class="stat-label">跳过</div>
@@ -269,13 +269,13 @@ const isRunning = computed(() => detail.value.status === 'running' || detail.val
 const passRate = computed(() => {
   const total = detail.value.total_cases || 0
   if (total === 0) return 0
-  return Math.round((detail.value.passed || 0) / total * 100)
+  return Math.round((detail.value.passed_cases || 0) / total * 100)
 })
 
 const passRateText = computed(() => {
   const total = detail.value.total_cases || 0
   if (total === 0) return '0.0%'
-  return ((detail.value.passed || 0) / total * 100).toFixed(1) + '%'
+  return ((detail.value.passed_cases || 0) / total * 100).toFixed(1) + '%'
 })
 
 const passRateColor = computed(() => {
@@ -332,7 +332,8 @@ function formatTime(val) {
 
 function getScreenshotUrl(path) {
   if (!path) return ''
-  return '/' + path.replace(/^\.?\/?/, '')
+  // 统一路径分隔符为 /，去掉开头的 ./
+  return '/' + path.replace(/\\/g, '/').replace(/^\.?\/?/, '')
 }
 
 async function fetchDetail() {
@@ -345,8 +346,8 @@ async function pollStatus() {
   const res = await executionApi.status(executionId.value)
   const data = res.data || {}
   detail.value.status = data.status
-  detail.value.passed = data.passed ?? detail.value.passed
-  detail.value.failed = data.failed ?? detail.value.failed
+  detail.value.passed_cases = data.passed_cases ?? detail.value.passed_cases
+  detail.value.failed_cases = data.failed_cases ?? detail.value.failed_cases
   detail.value.skipped = data.skipped ?? detail.value.skipped
   detail.value.total_cases = data.total_cases ?? detail.value.total_cases
   detail.value.total_duration = data.total_duration ?? data.duration ?? detail.value.total_duration
@@ -406,12 +407,20 @@ async function handleRerunFailed() {
 
 async function handleViewReport() {
   try {
-    const res = await reportApi.getInfo(executionId.value)
-    const reportUrl = res.data?.url || res.data?.report_url
+    // 先尝试获取已有报告
+    let res = await reportApi.getInfo(executionId.value)
+    let reportUrl = res.data?.download_url || res.data?.url || res.data?.report_url
+
+    // 如果报告不存在，自动生成
+    if (!reportUrl) {
+      const genRes = await reportApi.generate(executionId.value)
+      reportUrl = genRes.data?.download_url || genRes.data?.url
+    }
+
     if (reportUrl) {
       window.open(reportUrl, '_blank')
     } else {
-      ElMessage.info('报告尚未生成，请先生成报告')
+      ElMessage.info('报告生成失败，请稍后重试')
     }
   } catch {
     ElMessage.error('获取报告信息失败')
@@ -437,8 +446,8 @@ function handleExportJSON() {
     batch_name: detail.value.batch_name,
     status: detail.value.status,
     total_cases: detail.value.total_cases,
-    passed: detail.value.passed,
-    failed: detail.value.failed,
+    passed: detail.value.passed_cases,
+    failed: detail.value.failed_cases,
     skipped: detail.value.skipped,
     total_duration: detail.value.total_duration,
     case_results: detail.value.case_results || [],

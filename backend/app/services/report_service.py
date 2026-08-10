@@ -383,13 +383,16 @@ class ReportService:
 
     @staticmethod
     def _determine_status(case_steps: list[ExecutionStep]) -> str:
-        """根据步骤判断用例最终状态"""
+        """根据步骤判断用例最终状态
+
+        - 任一 failed → failed
+        - 全部 success / skipped / pending 且至少一个 success → success
+        - 全部 skipped / pending → skipped
+        """
         statuses = [s.status for s in case_steps]
         if "failed" in statuses:
             return "failed"
-        if all(s == "success" for s in statuses):
-            return "success"
-        if all(s in ("success", "skipped") for s in statuses):
+        if all(s in ("success", "skipped", "pending") for s in statuses):
             return "success" if any(s == "success" for s in statuses) else "skipped"
         return "skipped"
 
@@ -491,13 +494,13 @@ class ReportService:
 
     @staticmethod
     def _relative_path(absolute: str) -> str:
-        """将绝对路径转为相对路径（HTML 中引用用 ../ 前缀）"""
+        """将绝对路径转为相对路径（HTML 中引用用 ../ 前缀，统一使用 / 分隔符）"""
         report_dir = Path(settings.REPORT_DIR).resolve()
         try:
             p = Path(absolute).resolve()
-            return "../" + str(p.relative_to(report_dir.parent))
+            return "../" + p.relative_to(report_dir.parent).as_posix()
         except ValueError:
-            return absolute
+            return absolute.replace("\\", "/")
 
     # ═══════════════════════════════════════════════
     # 查询
