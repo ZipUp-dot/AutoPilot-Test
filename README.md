@@ -1,42 +1,21 @@
-```markdown
 # 🤖 AutoPilot — AI 驱动的智能 Web UI 自动化测试平台
 
-> **"让测试回归业务，让 AI 搞定代码。"**
+> **“让测试回归业务，让 AI 搞定代码。”**
 >
 > 一个面向测试工程师与开发团队的轻量级、开箱即用的 AI 自动化测试助手。
 > 核心理念：**先感知页面，再生成用例**。
-
-> 🎯 **不是又一个 AI 测试框架，而是一个 Excel → 可执行脚本的转化器。**
 
 
 ## 一、项目定位
 
 AutoPilot 是一个**环境感知型** AI Web UI 自动化测试平台。
 
-传统 AI 生成脚本属于"盲猜式"——AI 不了解页面真实 DOM 结构，导致元素定位频繁失败。AutoPilot 在执行前先用 Playwright 抓取目标页面的**真实可交互元素**，将元素上下文与测试用例一并喂给 LLM，从而大幅提升首次生成准确率。
+传统 AI 生成脚本属于“盲猜式”——AI 不了解页面真实 DOM 结构，导致元素定位频繁失败。AutoPilot 在执行前先用 Playwright 抓取目标页面的**真实可交互元素**，将元素上下文与测试用例一并喂给 LLM，从而大幅提升首次生成准确率。
 
-**一句话总结**：给 AI 装上"眼睛"，让它基于真实环境写代码，而不是凭空猜测。
-
-
-## 二、市场定位：跟别人有什么不同？
-
-| 对比维度 | browser-use | Playwright MCP | Bugninja AI | **AutoPilot** |
-| :--- | :--- | :--- | :--- | :--- |
-| **使用方式** | 写 Python 代码 | 写 Python 代码 | Web 界面（商业 SaaS） | **Web 界面（开源免费）** |
-| **面向用户** | 开发者 | 开发者 | QA 团队 | **测试人员（含手工测试）** |
-| **输入** | 自然语言指令 | 自然语言指令 | Excel/Word | **Excel 用例** |
-| **输出** | AI 实时执行 | AI 实时执行 | 平台内部脚本 | **标准 .py 文件，可下载带走** |
-| **开源** | ✅ | ✅ | ❌ | ✅ |
-| **中文场景优化** | 通用 | 通用 | 部分支持 | **✅ Excel 列名智能匹配** |
-
-**差异化壁垒：**
-
-1. **形态壁垒**：Web 平台 vs 命令行库——测试人员不需要懂 Python
-2. **场景壁垒**：Excel 用例转化 vs 自然语言执行——贴合国内测试团队实际工作流
-3. **输出壁垒**：生成标准 `.py` 文件——用户不被平台锁定，可自由接入 CI/CD
+**一句话总结**：给 AI 装上“眼睛”，让它基于真实环境写代码，而不是凭空猜测。
 
 
-## 三、解决什么问题
+## 二、解决什么问题
 
 | 痛点 | 传统方案 | AutoPilot 方案 |
 | :--- | :--- | :--- |
@@ -46,7 +25,7 @@ AutoPilot 是一个**环境感知型** AI Web UI 自动化测试平台。
 | **AI 生成不稳定** | 纯自然语言生成，缺乏页面结构上下文 | **环境感知 → 精准生成**，准确率提升显著 |
 
 
-## 四、核心业务闭环
+## 三、核心业务闭环
 
 AutoPilot 构建了完整的 7 步自动化工作流：
 
@@ -65,14 +44,27 @@ AutoPilot 构建了完整的 7 步自动化工作流：
 | **7. 报告生成** | 自动生成离线 HTML 可视化报告，含通过率、失败详情、截图对比、日志追溯 |
 
 
-## 五、产品能力
+## 四、MVP 核心指标
 
-| 能力 | 说明 |
-| :--- | :--- |
-| **元素定位准确率** | 基于真实 DOM 上下文生成定位器，设计值 ≥ 70% |
-| **单条用例端到端耗时** | 标准用例、网络正常情况下 ≤ 60 秒 |
-| **Excel 批量导入** | 单次支持 100 行以上用例无丢失 |
-| **开源协议** | MIT |
+AutoPilot 在 MVP 阶段锚定以下可客观验证的验收标准：
+
+| 衡量维度 | 目标值 | 验证方式 |
+| :--- | :--- | :--- |
+| **AI 生成代码的元素定位准确率**（配合元素抓取上下文） | **≥ 70%** | 基于已抓取元素，生成的 selector 在首次执行时能成功定位到目标元素的比例 |
+| **单条用例从导入到执行完成** | **≤ 60 秒** | 端到端计时：Excel 导入 → AI 生成 → Playwright 执行 → 结果返回 |
+| **Excel 批量导入支持的最大行数** | **≥ 100 行** | 单次上传并完整解析 100 行以上用例无丢失、无格式错误 |
+
+
+## 五、架构设计原则
+
+- **模块解耦**：AI 生成、执行引擎、容错重试、报告生成等模块通过统一调度层交互，可独立升级
+- **配置分离**：Prompt 模板、执行参数、报告类型等均外置配置，逻辑与数据分离
+- **模型无关**：AI 调用层基于 OpenAI SDK，兼容 DeepSeek 等模型，切换零成本
+
+> **技术栈概览**：Vue3 + FastAPI + Playwright + MySQL 8.0 + Docker Compose（已规划）
+> **详细技术细节、API 接口、数据库设计、环境配置**请参阅子目录文档：
+> - [📁 后端详细文档](backend/README.md)
+> - [📁 前端详细文档](frontend/README.md)
 
 
 ## 六、项目价值
@@ -81,11 +73,11 @@ AutoPilot 构建了完整的 7 步自动化工作流：
 - **面试核心竞争力**：展示全栈开发 + AI 工程化落地 + 测试工具产品设计的复合能力
 - **开源作品集**：一个完整的、可运行的开源项目，是面试时最有力的技术信任背书
 - **技术深度**：实践 Prompt Engineering、Playwright 自动化、异步 FastAPI、现代前端工程化
-- **开源影响力**：为国内 "AI + 测试" 社区贡献可落地的轻量级方案
+- **开源影响力**：为国内 “AI + 测试” 社区贡献可落地的轻量级方案
 
 ### 对团队与企业
 - **降低门槛**：手工测试人员无需编程即可参与 UI 自动化
-- **提升效率**：用例转化从"人工编写"变为"AI 精准生成"
+- **提升效率**：用例转化从“人工编写”变为“AI 精准生成”
 - **减少维护**：元素抓取提升定位器稳定性，容错重试覆盖暂时性加载异常，降低脚本维护成本
 
 
@@ -93,9 +85,9 @@ AutoPilot 构建了完整的 7 步自动化工作流：
 
 | 版本 | 状态 | 核心内容 |
 | :--- | :--- | :--- |
-| **V1.0** | ✅ MVP 已发布 | 跑通"抓取 → 导入 → 生成 → 执行 → 容错重试 → 报告"全链路 |
+| **V1.0** | ✅ MVP 已发布 | 跑通“抓取 → 导入 → 生成 → 执行 → 容错重试 → 报告”全链路 |
 | **V1.1** | 📅 规划中 | AI 自愈升级（LLM 分析错误 + 重写定位器）、更丰富的测试对比报告 |
-| **V2.0** | 📅 规划中 | Web 端定时任务（CI/CD 集成）、用户权限管理、APP UI 自动化支持（扩展 Appium） |
+| **V2.0** | 📅 规划中 | Web 端定时任务（CI/CD 集成）、用户权限管理、APP UI 自动化支持 |
 
 
 ## 八、快速开始
@@ -106,31 +98,43 @@ AutoPilot 构建了完整的 7 步自动化工作流：
   <img src="demo/MVP_DEMO.gif" width="800" alt="AutoPilot 演示">
 </p>
 
-### 前置条件
+### 最小配置
 
-- Docker 20.10+（已内置 Docker Compose）
+在项目根目录创建 `.env` 文件：
 
-### 一键启动
+```bash
+# MySQL
+DATABASE_URL=mysql+pymysql://root:your_password@localhost:3306/autopilot
+
+# AI 模型（兼容 OpenAI / DeepSeek）
+OPENAI_BASE_URL=https://api.deepseek.com/v1
+OPENAI_API_KEY=sk-your-key
+OPENAI_MODEL=deepseek-chat
+```
+
+### 本地启动
 
 ```bash
 # 克隆仓库
 git clone https://gitee.com/Mr-6Lawrence/auto-pilot-test.git
 cd auto-pilot-test
 
-# 创建环境文件，填入你的 AI API Key
-# （Windows 用户请手动创建 .env 文件）
-cat > .env << 'EOF'
-OPENAI_API_KEY=sk-your-key
-OPENAI_BASE_URL=https://api.deepseek.com/v1
-OPENAI_MODEL=deepseek-chat
-EOF
+# 后端启动（需 Python 3.10+）
+cd backend
+pip install -r requirements.txt
+# 安装 Chromium 浏览器（首次执行可能需要管理员权限）
+playwright install chromium
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
-docker compose up -d
+# 前端启动（新开终端，需 Node 18+）
+cd frontend
+npm install
+npm run dev
 ```
 
-首次构建约 5~8 分钟，完成后访问 `http://localhost:8080` 即可使用。
+访问 `http://localhost:5173` 即可使用。
 
-> 详细技术文档、API 接口、数据库设计请参阅：
+> Docker Compose 一键启动配置即将上线。详细本地开发指南请参阅：
 > - [📁 后端文档](backend/README.md)
 > - [📁 前端文档](frontend/README.md)
 
@@ -152,9 +156,7 @@ docker compose up -d
 | 项目 | 内容 |
 | :--- | :--- |
 | **当前版本** | V1.0 MVP |
-| **文档版本** | V2.3 |
+| **文档版本** | V2.1 |
 | **最后更新** | 2026-08-11 |
 | **维护者** | ethan-peng（Mr-6Lawrence） |
-| **Gitee** | https://gitee.com/Mr-6Lawrence/auto-pilot-test |
-| **GitHub** | https://github.com/ZipUp-dot/AutoPilot-Test |
-```
+| **仓库地址** | https://gitee.com/Mr-6Lawrence/auto-pilot-test |
