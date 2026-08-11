@@ -1,14 +1,9 @@
-```markdown
 # 🤖 AutoPilot — AI 驱动的智能 Web UI 自动化测试平台
 
 > **“让测试回归业务，让 AI 搞定代码。”**
 >
 > 一个面向测试工程师与开发团队的轻量级、开箱即用的 AI 自动化测试助手。
 > 核心理念：**先感知页面，再生成用例**。
-
-<p align="center">
-  <img src="demo/demo.gif" width="800" alt="AutoPilot 演示">
-</p>
 
 
 ## 一、项目定位
@@ -66,7 +61,7 @@ AutoPilot 在 MVP 阶段锚定以下可客观验证的验收标准：
 - **配置分离**：Prompt 模板、执行参数、报告类型等均外置配置，逻辑与数据分离
 - **模型无关**：AI 调用层基于 OpenAI SDK，兼容 DeepSeek 等模型，切换零成本
 
-> **技术栈概览**：Vue3 + FastAPI + Playwright + MySQL 8.0 + Docker Compose
+> **技术栈概览**：Vue3 + FastAPI + Playwright + MySQL 8.0 + Docker Compose（已规划）
 > **详细技术细节、API 接口、数据库设计、环境配置**请参阅子目录文档：
 > - [📁 后端详细文档](backend/README.md)
 > - [📁 前端详细文档](frontend/README.md)
@@ -90,36 +85,28 @@ AutoPilot 在 MVP 阶段锚定以下可客观验证的验收标准：
 
 | 版本 | 状态 | 核心内容 |
 | :--- | :--- | :--- |
-| **V1.0** | ✅ MVP 已发布 | 跑通“抓取 → 导入 → 生成 → 执行 → 容错重试 → 报告”全链路 |
+| **V1.0** | 🚧 开发中 | 跑通“抓取 → 导入 → 生成 → 执行 → 容错重试 → 报告”全链路 |
 | **V1.1** | 📅 规划中 | AI 自愈升级（LLM 分析错误 + 重写定位器）、更丰富的测试对比报告 |
 | **V2.0** | 📅 规划中 | Web 端定时任务（CI/CD 集成）、用户权限管理、APP UI 自动化支持 |
 
 
 ## 八、快速开始
 
-### 前置条件
+### 最小配置
 
-- Docker 20.10+
-- Docker Compose 2.0+
-
-### 一键启动（推荐）
+在项目根目录创建 `.env` 文件：
 
 ```bash
-# 克隆仓库
-git clone https://gitee.com/Mr-6Lawrence/auto-pilot-test.git
-cd auto-pilot-test
+# MySQL
+DATABASE_URL=mysql+pymysql://root:your_password@localhost:3306/autopilot
 
-# 创建 .env 文件，填入你的 API Key
-cp .env.example .env
-# 编辑 .env，设置 OPENAI_API_KEY
-
-# 一键启动所有服务
-docker-compose up -d
+# AI 模型（兼容 OpenAI / DeepSeek）
+OPENAI_BASE_URL=https://api.deepseek.com/v1
+OPENAI_API_KEY=sk-your-key
+OPENAI_MODEL=deepseek-chat
 ```
 
-等待镜像构建完成（首次约 3-5 分钟），访问 `http://localhost:8080` 即可使用。
-
-### 手动启动（开发模式）
+### 本地启动
 
 ```bash
 # 克隆仓库
@@ -129,6 +116,7 @@ cd auto-pilot-test
 # 后端启动（需 Python 3.10+）
 cd backend
 pip install -r requirements.txt
+# 安装 Chromium 浏览器（首次执行可能需要管理员权限）
 playwright install chromium
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
@@ -140,12 +128,7 @@ npm run dev
 
 访问 `http://localhost:5173` 即可使用。
 
-### 示例用例
-
-仓库中提供了可直接导入的示例用例文件：
-- [`examples/httpbin_forms_post_test_cases.xlsx`](examples/httpbin_forms_post_test_cases.xlsx) — 20 条覆盖表单全场景的测试用例
-
-> 详细本地开发指南请参阅：
+> Docker Compose 一键启动配置即将上线。详细本地开发指南请参阅：
 > - [📁 后端文档](backend/README.md)
 > - [📁 前端文档](frontend/README.md)
 
@@ -166,9 +149,8 @@ npm run dev
 
 | 项目 | 内容 |
 | :--- | :--- |
-| **当前版本** | V1.0 MVP |
-| **文档版本** | V2.1 |
-| **最后更新** | 2026-08-11 |
+| **当前版本** | V1.0（开发中） |
+| **文档版本** | V2.0 |
+| **最后更新** | 2026-08-09 |
 | **维护者** | ethan-peng（Mr-6Lawrence） |
 | **仓库地址** | https://gitee.com/Mr-6Lawrence/auto-pilot-test |
-```
