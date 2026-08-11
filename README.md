@@ -95,7 +95,7 @@ AutoPilot 在 MVP 阶段锚定以下可客观验证的验收标准：
 ### 效果演示
 
 <p align="center">
-  <img src="\demo\MVP_demo.gif" width="800" alt="AutoPilot 演示">
+  <img src="demo/MVP_DEMO.gif" width="800" alt="AutoPilot 演示">
 </p>
 
 ### 最小配置
