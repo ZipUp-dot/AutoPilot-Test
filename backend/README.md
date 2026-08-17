@@ -81,16 +81,43 @@ backend/
 │   │   ├── __init__.py
 │   │   ├── logging.py            # 请求日志（method/path/status/duration/ip）
 │   │   └── timing.py             # 响应时间头
-│   └── utils/                    # 工具模块
-├── tests/                       # 测试
-│   ├── test_integration.py      # 前后端联调测试（35 项）
-│   ├── test_cases.py            # 用例管理测试
-│   ├── test_generate.py         # 代码生成测试
-│   ├── test_execution.py        # 执行引擎测试
-│   ├── test_heal.py             # 自愈测试
-│   ├── test_report.py           # 报告测试
-│   ├── test_security.py         # 安全测试
-│   └── ...
+├── tests/                       # pytest 测试套件（4 层架构）
+│   ├── __init__.py              # 包标记（空文件）
+│   ├── conftest.py              # 共享 Fixture（SQLite 内存库 + 外部依赖 Mock）
+│   ├── factories.py             # 8 个 factory-boy 工厂类
+│   ├── README_TEST.md           # 测试运行说明
+│   ├── unit/                    # 第一层：单元测试（基础设施/模型/工具）
+│   │   ├── test_config.py       # pydantic-settings 配置解析
+│   │   ├── test_database.py     # SQLAlchemy 建表 + init() 生命周期
+│   │   ├── test_dependencies.py # 分页/项目查询依赖注入
+│   │   ├── test_exceptions.py   # 自定义异常 + 全局处理器
+│   │   ├── test_middlewares.py  # Logging/Timing 中间件
+│   │   ├── test_models.py       # 8 个 ORM 模型 + 级联删除
+│   │   ├── test_utils_excel.py  # Excel 解析（中文列名、3 种步骤格式）
+│   │   ├── test_utils_validator.py # AST 语法校验 + 安全黑名单
+│   │   ├── test_utils_injector.py  # AST 代码注入 __monitor_before/after
+│   │   └── test_utils_screenshot.py # 截图路径生成
+│   ├── services/                # 第二层：服务层测试
+│   │   ├── test_service_project.py    # Project CRUD
+│   │   ├── test_service_ai.py         # LLM 代码生成
+│   │   ├── test_service_playwright.py # 执行引擎 + MonitorHooks + 沙箱
+│   │   ├── test_service_element.py    # 元素抓取 + 7 级选择器
+│   │   ├── test_service_orchestrator.py # 全流水线编排
+│   │   ├── test_service_case.py       # Excel 导入 + 用例管理
+│   │   ├── test_service_heal.py       # 自愈修复逻辑
+│   │   └── test_service_report.py     # HTML 报告 + 过期清理
+│   ├── routers/                 # 第三层：路由集成测试
+│   │   ├── test_routers_init.py      # router 聚合导入验证
+│   │   ├── test_routers_projects.py  # 项目 CRUD 路由
+│   │   ├── test_routers_elements.py  # 元素抓取/查询路由
+│   │   ├── test_routers_cases.py     # 用例导入/查询路由
+│   │   ├── test_routers_generate.py  # 代码生成路由
+│   │   ├── test_routers_executions.py # 执行管理路由
+│   │   ├── test_routers_heal.py      # 自愈修复路由
+│   │   └── test_routers_reports.py   # 报告生成路由
+│   └── integration/             # 第四层：端到端集成测试
+│       ├── test_integration_main.py     # 健康检查/CORS/静态文件/生命周期
+│       └── test_integration_pipeline.py # 完整 7 步闭环 + 异常流水线
 ├── data/                        # 数据目录（SQLite 模式数据库文件）
 ├── uploads/                     # 上传文件
 │   ├── screenshots/             # 执行截图（按 execution_id/case_id 组织）
@@ -348,11 +375,15 @@ cd backend
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # ── 测试 ──
-python tests/test_integration.py      # 完整联调测试（35 项）
-python tests/test_generate.py         # 代码生成测试
-python tests/test_execution.py        # 执行引擎测试
-python tests/test_heal.py             # 自愈测试
-python tests/test_report.py           # 报告测试
+pytest                                # 运行全部测试（含覆盖率报告）
+pytest tests/unit/                    # 单元测试（基础设施/模型/工具）
+pytest tests/services/                # 服务层测试
+pytest tests/routers/                 # 路由层测试
+pytest tests/integration/             # 端到端集成测试
+pytest tests/unit/test_models.py      # 运行单个测试文件
+pytest tests/unit/test_models.py::TestModel -k "cascade"  # 按类/关键字筛选
+pytest -m "not integration"           # 跳过集成测试（快速验证）
+pytest --cov=app --cov-report=html    # 生成 HTML 覆盖率报告（htmlcov/）
 
 # ── 数据库 ──
 mysql -u root -p autopilot < app/db/schema.sql   # 手动建表
@@ -620,29 +651,54 @@ pending → running → healing → completed
 
 ## 测试
 
-```bash
-# 运行完整联调测试（35 项）
-python tests/test_integration.py
+测试套件采用 **4 层架构**（unit / services / routers / integration），全部运行于 SQLite 内存数据库，LLM API、Playwright、文件系统等外部依赖均通过 Mock 隔离，零外部依赖。
 
-# 运行单个模块测试
-python tests/test_generate.py
-python tests/test_execution.py
-python tests/test_heal.py
-python tests/test_report.py
+### 运行测试
+
+```bash
+# 运行全部测试（含覆盖率报告）
+pytest
+
+# 按层级运行
+pytest tests/unit/                    # 单元测试（基础设施/模型/工具）
+pytest tests/services/                # 服务层测试
+pytest tests/routers/                 # 路由层测试
+pytest tests/integration/             # 端到端集成测试
+
+# 运行单个测试文件 / 用例
+pytest tests/unit/test_models.py
+pytest tests/services/test_service_ai.py::TestGenerateCode -k "syntax_error"
+
+# 按标记筛选
+pytest -m integration                 # 仅集成测试
+pytest -m "not integration"           # 跳过集成测试（快速验证）
+pytest -m unit -m service             # 多标记（单元 + 服务层）
+
+# 覆盖率报告
+pytest --cov=app --cov-report=term-missing   # 终端摘要（缺失行）
+pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html）
 ```
 
-**测试覆盖：**
+> `pytest.ini` 已内置 `--cov=app --cov-branch --cov-report=term-missing --cov-report=html`，直接运行 `pytest` 即可输出覆盖率。
 
-| 模块 | 测试数 | 覆盖内容 |
-|------|--------|----------|
-| 项目 CRUD | 6 | 创建/列表/详情/编辑/校验/删除 |
-| 元素抓取 | 3 | 抓取/列表/搜索 |
-| 用例导入 | 4 | 导入/列表/搜索/详情 |
-| 代码生成 | 3 | 单条/批量/获取代码 |
-| 执行引擎 | 6 | 门禁/创建/轮询/详情/截图/列表 |
-| 报告 | 10 | 生成/HTML/图表/导出/打印/缓存 |
-| 自愈 | 1 | 记录列表 |
-| 停止/清理 | 2 | 停止/删除 |
+### 覆盖率现状
+
+| 指标 | 数值 | 目标 |
+|------|------|------|
+| 测试用例 | 662 passed / 1 skipped | 全通过 |
+| **语句覆盖率** | **92%** | ≥ 90% ✅ |
+| **分支覆盖率** | **89.6%**（748 分支，78 部分覆盖） | ≥ 80% ✅ |
+
+### 各层覆盖情况
+
+| 层级 | 目录 | 覆盖内容 |
+|------|------|----------|
+| 单元测试 | `tests/unit/`（10 文件） | 配置、数据库、异常、中间件、8 个 ORM 模型、Excel 解析、AST 校验/注入、截图 |
+| 服务层 | `tests/services/`（8 文件） | Project CRUD、LLM 生成、执行引擎+沙箱、元素抓取+7 级选择器、编排器、Excel 导入、自愈、报告 |
+| 路由层 | `tests/routers/`（8 文件） | 项目/元素/用例/生成/执行/自愈/报告全部 API 端点 |
+| 集成测试 | `tests/integration/`（2 文件） | 健康检查/CORS/静态文件/生命周期 + 完整 7 步业务闭环 + 异常流水线 |
+
+详细运行说明见 [tests/README_TEST.md](tests/README_TEST.md)。
 
 ---
 

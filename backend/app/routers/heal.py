@@ -154,10 +154,9 @@ def get_heal_records(execution_id: int, db: Session = Depends(get_db)):
     返回:
         { "code": 0, "data": { "items": [...], "total": 5 } }
     """
-    step_ids = (
-        db.query(ExecutionStep.id)
-        .filter(ExecutionStep.execution_id == execution_id)
-        .subquery()
+    from sqlalchemy import select
+    step_ids = select(ExecutionStep.id).where(
+        ExecutionStep.execution_id == execution_id
     )
     records = (
         db.query(HealRecord)

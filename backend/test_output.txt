@@ -1,0 +1,712 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.3, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\24833\AppData\Local\Programs\Python\Python313\python.exe
+rootdir: C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend
+configfile: pytest.ini
+plugins: Faker-40.36.0, cov-7.1.0, allure-pytest-2.15.0, anyio-4.9.0, assume-2.4.3, asyncio-1.4.0, base-url-2.1.0, dependency-0.5.1, mock-3.15.1, playwright-0.7.1, rerunfailures-16.1, xdist-3.8.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 446 items
+
+tests/test_ai_service.py::TestGenerateSingle::test_generate_single_valid_case PASSED [  0%]
+tests/test_ai_service.py::TestGenerateSingle::test_generate_single_nonexistent_case PASSED [  0%]
+tests/test_ai_service.py::TestGenerateSingle::test_generate_single_no_steps PASSED [  0%]
+tests/test_ai_service.py::TestGenerateSingle::test_generate_single_stores_code PASSED [  0%]
+tests/test_ai_service.py::TestGenerateSingle::test_generate_single_invalid_code PASSED [  1%]
+tests/test_ai_service.py::TestGenerateSingle::test_generate_single_network_error PASSED [  1%]
+tests/test_ai_service.py::TestMatchElements::test_match_elements_exact_match PASSED [  1%]
+tests/test_ai_service.py::TestMatchElements::test_match_elements_no_match PASSED [  1%]
+tests/test_ai_service.py::TestMatchElements::test_match_elements_selector_pattern PASSED [  2%]
+tests/test_ai_service.py::TestMatchElements::test_match_elements_best_match PASSED [  2%]
+tests/test_ai_service.py::TestBuildPrompt::test_build_prompt_placeholders_filled PASSED [  2%]
+tests/test_ai_service.py::TestBuildPrompt::test_build_prompt_default_values PASSED [  2%]
+tests/test_ai_service.py::TestCallOpenAI::test_call_openai_no_api_key_returns_mock PASSED [  2%]
+tests/test_ai_service.py::TestExtractCode::test_extract_code_from_markdown_python PASSED [  3%]
+tests/test_ai_service.py::TestExtractCode::test_extract_code_from_markdown_plain PASSED [  3%]
+tests/test_ai_service.py::TestExtractCode::test_extract_code_plain PASSED [  3%]
+tests/test_ai_service.py::TestExtractCode::test_extract_code_whitespace PASSED [  3%]
+tests/test_ai_service.py::TestValidateSyntax::test_validate_syntax_valid PASSED [  4%]
+tests/test_ai_service.py::TestValidateSyntax::test_validate_syntax_error PASSED [  4%]
+tests/test_ai_service.py::TestSecurityCheck::test_security_check_import_os PASSED [  4%]
+tests/test_ai_service.py::TestSecurityCheck::test_security_check_eval PASSED [  4%]
+tests/test_ai_service.py::TestSecurityCheck::test_security_check_valid PASSED [  4%]
+tests/test_ai_service.py::TestSecurityCheck::test_security_check_import_sys PASSED [  5%]
+tests/test_ai_service.py::TestSecurityCheck::test_security_check_exec PASSED [  5%]
+tests/test_ai_service.py::TestSecurityCheck::test_security_check_syntax_error_skips PASSED [  5%]
+tests/test_ai_service.py::TestGenerateBatch::test_batch_partial_failure PASSED [  5%]
+tests/test_ai_service.py::TestGetLatestCode::test_get_latest_code_with_data PASSED [  6%]
+tests/test_ai_service.py::TestGetLatestCode::test_get_latest_code_no_code PASSED [  6%]
+tests/test_ai_service.py::TestGetLatestCode::test_get_latest_code_nonexistent_case PASSED [  6%]
+tests/test_ai_service.py::TestMockCode::test_mock_code_structure PASSED  [  6%]
+tests/test_ai_service.py::TestMockCode::test_mock_code_with_steps PASSED [  6%]
+tests/test_ai_service.py::TestElementMatchingIntegration::test_match_elements_in_generate_single PASSED [  7%]
+tests/test_case_service.py::TestCaseServiceImportExcel::test_import_json_steps PASSED [  7%]
+tests/test_case_service.py::TestCaseServiceImportExcel::test_import_plain_text_steps PASSED [  7%]
+tests/test_case_service.py::TestCaseServiceImportExcel::test_import_action_target_value_columns PASSED [  7%]
+tests/test_case_service.py::TestCaseServiceImportExcel::test_import_duplicate_case_no_skipped PASSED [  8%]
+tests/test_case_service.py::TestCaseServiceImportExcel::test_import_empty_file PASSED [  8%]
+tests/test_case_service.py::TestCaseServiceImportExcel::test_import_non_xlsx_extension PASSED [  8%]
+tests/test_case_service.py::TestCaseServiceImportExcel::test_import_large_file_handled PASSED [  8%]
+tests/test_case_service.py::TestCaseServiceImportExcel::test_import_missing_required_columns PASSED [  8%]
+tests/test_case_service.py::TestCaseServiceListPaginated::test_with_status_filter PASSED [  9%]
+tests/test_case_service.py::TestCaseServiceListPaginated::test_with_priority_filter PASSED [  9%]
+tests/test_case_service.py::TestCaseServiceListPaginated::test_with_keyword_search PASSED [  9%]
+tests/test_case_service.py::TestCaseServiceListPaginated::test_keyword_search_on_case_no PASSED [  9%]
+tests/test_case_service.py::TestCaseServiceListPaginated::test_keyword_search_on_steps PASSED [ 10%]
+tests/test_case_service.py::TestCaseServiceListPaginated::test_steps_summary_only_first_3 PASSED [ 10%]
+tests/test_case_service.py::TestCaseServiceGetDetail::test_full_steps_returned_not_truncated PASSED [ 10%]
+tests/test_case_service.py::TestCaseServiceGetDetail::test_nonexistent_case_raises_not_found PASSED [ 10%]
+tests/test_case_service.py::TestCaseServiceDelete::test_delete_one PASSED [ 10%]
+tests/test_case_service.py::TestCaseServiceDelete::test_delete_one_nonexistent PASSED [ 11%]
+tests/test_case_service.py::TestCaseServiceDelete::test_delete_batch PASSED [ 11%]
+tests/test_case_service.py::TestCaseServiceDelete::test_delete_batch_some_ids_missing PASSED [ 11%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_valid_code_has_monitor_before PASSED [ 11%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_monitors_around_goto PASSED [ 12%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_monitors_around_fill PASSED [ 12%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_monitors_around_click PASSED [ 12%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_monitors_around_hover PASSED [ 12%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_monitors_around_select_option PASSED [ 13%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_monitors_around_dblclick PASSED [ 13%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_monitors_around_expect_to_contain_text PASSED [ 13%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_monitors_around_expect_to_be_visible PASSED [ 13%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_monitors_around_screenshot PASSED [ 13%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_monitors_around_wait_for_timeout PASSED [ 14%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_monitors_around_wait_for_load_state PASSED [ 14%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_syntax_error_raises_security_exception PASSED [ 14%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_inject_non_playwright_returns_original PASSED [ 14%]
+tests/test_code_injector.py::TestCodeInjectorInject::test_injected_code_is_valid_python PASSED [ 15%]
+tests/test_code_injector.py::TestExtractOpInfo::test_page_goto_returns_navigate PASSED [ 15%]
+tests/test_code_injector.py::TestExtractOpInfo::test_fill_returns_fill_with_selector_and_value PASSED [ 15%]
+tests/test_code_injector.py::TestExtractOpInfo::test_click_returns_click_with_selector PASSED [ 15%]
+tests/test_code_injector.py::TestExtractOpInfo::test_non_playwright_returns_none PASSED [ 15%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_valid_code_returns_none PASSED [ 16%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_import_os_blocked PASSED [ 16%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_from_os_import_blocked PASSED [ 16%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_import_subprocess_blocked PASSED [ 16%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_import_socket_blocked PASSED [ 17%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_import_sys_blocked PASSED [ 17%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_eval_blocked PASSED [ 17%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_exec_blocked PASSED [ 17%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_open_blocked PASSED [ 17%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_dunder_import_blocked PASSED [ 18%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_compile_blocked PASSED [ 18%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_getattr_blocked PASSED [ 18%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_missing_run_test PASSED [ 18%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_syntax_error PASSED [ 19%]
+tests/test_code_validator.py::TestCodeValidatorValidate::test_has_run_test_no_dangerous_code PASSED [ 19%]
+tests/test_code_validator.py::TestCodeValidatorCheckSyntax::test_valid_syntax_returns_none PASSED [ 19%]
+tests/test_code_validator.py::TestCodeValidatorCheckSyntax::test_invalid_syntax_returns_error PASSED [ 19%]
+tests/test_code_validator.py::TestHasRunTest::test_async_def_run_test_returns_true PASSED [ 19%]
+tests/test_code_validator.py::TestHasRunTest::test_no_run_test_returns_false PASSED [ 20%]
+tests/test_code_validator.py::TestHasRunTest::test_sync_run_test_returns_false PASSED [ 20%]
+tests/test_code_validator.py::TestCheckImports::test_import_json_returns_none PASSED [ 20%]
+tests/test_code_validator.py::TestCheckImports::test_import_requests_returns_error PASSED [ 20%]
+tests/test_code_validator.py::TestCheckImports::test_from_import_requests_returns_error PASSED [ 21%]
+tests/test_code_validator.py::TestCheckBuiltins::test_print_returns_none PASSED [ 21%]
+tests/test_code_validator.py::TestCheckBuiltins::test_setattr_returns_error PASSED [ 21%]
+tests/test_code_validator.py::TestCheckBuiltins::test_delattr_returns_error PASSED [ 21%]
+tests/test_config.py::TestSettingsDefaults::test_default_database_url_is_mysql PASSED [ 21%]
+tests/test_config.py::TestSettingsDefaults::test_default_openai_api_key_is_empty_string PASSED [ 22%]
+tests/test_config.py::TestSettingsDefaults::test_default_openai_model_is_gpt4o PASSED [ 22%]
+tests/test_config.py::TestSettingsDefaults::test_default_playwright_timeout_is_30000 PASSED [ 22%]
+tests/test_config.py::TestSettingsDefaults::test_default_playwright_headless_is_true PASSED [ 22%]
+tests/test_config.py::TestSettingsDefaults::test_default_upload_dir PASSED [ 23%]
+tests/test_config.py::TestSettingsDefaults::test_default_report_dir PASSED [ 23%]
+tests/test_config.py::TestSettingsDefaults::test_default_screenshot_dir PASSED [ 23%]
+tests/test_config.py::TestSettingsDefaults::test_default_video_dir PASSED [ 23%]
+tests/test_config.py::TestSettingsDefaults::test_default_excel_dir PASSED [ 23%]
+tests/test_config.py::TestSettingsDefaults::test_default_cors_origins_includes_localhost_5173 PASSED [ 24%]
+tests/test_config.py::TestSettingsDefaults::test_default_app_title PASSED [ 24%]
+tests/test_config.py::TestSettingsDefaults::test_default_app_version PASSED [ 24%]
+tests/test_config.py::TestSettingsDefaults::test_default_api_prefix PASSED [ 24%]
+tests/test_config.py::TestSettingsDefaults::test_default_host PASSED     [ 25%]
+tests/test_config.py::TestSettingsDefaults::test_default_port PASSED     [ 25%]
+tests/test_config.py::TestSettingsDefaults::test_default_max_heal_retry PASSED [ 25%]
+tests/test_config.py::TestSettingsDefaults::test_default_openai_base_url PASSED [ 25%]
+tests/test_config.py::TestEnvVarOverride::test_env_var_overrides_database_url PASSED [ 26%]
+tests/test_config.py::TestEnvVarOverride::test_env_var_overrides_openai_api_key PASSED [ 26%]
+tests/test_config.py::TestEnvVarOverride::test_env_var_overrides_openai_model PASSED [ 26%]
+tests/test_config.py::TestEnvVarOverride::test_env_var_overrides_playwright_timeout PASSED [ 26%]
+tests/test_config.py::TestEnvVarOverride::test_env_var_overrides_playwright_headless_false PASSED [ 26%]
+tests/test_config.py::TestEnvVarOverride::test_env_var_overrides_upload_dir PASSED [ 27%]
+tests/test_config.py::TestEnvVarOverride::test_env_var_overrides_port PASSED [ 27%]
+tests/test_config.py::TestEnvVarOverride::test_env_var_overrides_app_title PASSED [ 27%]
+tests/test_config.py::TestEnvVarOverride::test_multiple_env_var_overrides PASSED [ 27%]
+tests/test_config.py::TestLoadSettings::test_load_settings_creates_directories PASSED [ 28%]
+tests/test_config.py::TestLoadSettings::test_load_settings_warns_when_openai_api_key_empty PASSED [ 28%]
+tests/test_config.py::TestLoadSettings::test_load_settings_creates_all_required_dirs PASSED [ 28%]
+tests/test_config.py::TestLoadSettings::test_load_settings_mkdir_with_parents PASSED [ 28%]
+tests/test_config.py::TestSettingsEdgeCases::test_settings_config_has_env_file PASSED [ 28%]
+tests/test_config.py::TestSettingsEdgeCases::test_settings_model_dump PASSED [ 29%]
+tests/test_config.py::TestSettingsEdgeCases::test_secret_key_default PASSED [ 29%]
+tests/test_dependencies.py::TestPaginationParams::test_defaults PASSED   [ 29%]
+tests/test_dependencies.py::TestPaginationParams::test_page_1_size_20_offset_0 PASSED [ 29%]
+tests/test_dependencies.py::TestPaginationParams::test_page_3_size_10_offset_20 PASSED [ 30%]
+tests/test_dependencies.py::TestPaginationParams::test_page_2_size_50_offset_50 PASSED [ 30%]
+tests/test_dependencies.py::TestPaginationParams::test_page_5_size_100_offset_400 PASSED [ 30%]
+tests/test_dependencies.py::TestPaginationParams::test_page_1_size_1_offset_0 PASSED [ 30%]
+tests/test_dependencies.py::TestPaginationParams::test_page_10_size_1000_offset_9000 PASSED [ 30%]
+tests/test_dependencies.py::TestPaginate::test_paginate_25_items_page_1_size_10 PASSED [ 31%]
+tests/test_dependencies.py::TestPaginate::test_paginate_25_items_page_3_size_10 PASSED [ 31%]
+tests/test_dependencies.py::TestPaginate::test_paginate_zero_items PASSED [ 31%]
+tests/test_dependencies.py::TestPaginate::test_paginate_items_less_than_page_size PASSED [ 31%]
+tests/test_dependencies.py::TestPaginate::test_paginate_single_item_page_1_size_20 PASSED [ 32%]
+tests/test_dependencies.py::TestPaginate::test_paginate_page_beyond_total_returns_empty PASSED [ 32%]
+tests/test_dependencies.py::TestPaginate::test_paginate_100_items_page_1_size_10 PASSED [ 32%]
+tests/test_dependencies.py::TestPaginate::test_paginate_100_items_page_5_size_10 PASSED [ 32%]
+tests/test_dependencies.py::TestPaginate::test_paginate_items_are_in_order PASSED [ 32%]
+tests/test_dependencies.py::TestGetProjectOr404::test_existing_project_returns_project PASSED [ 33%]
+tests/test_dependencies.py::TestGetProjectOr404::test_nonexistent_project_raises_not_found PASSED [ 33%]
+tests/test_dependencies.py::TestGetProjectOr404::test_multiple_existing_projects_returns_correct_one PASSED [ 33%]
+tests/test_dependencies.py::TestGetProjectOr404::test_deleted_project_raises_not_found PASSED [ 33%]
+tests/test_excel_parser.py::TestParseJsonSteps::test_json_steps_parsed PASSED [ 34%]
+tests/test_excel_parser.py::TestParseJsonSteps::test_json_steps_with_description PASSED [ 34%]
+tests/test_excel_parser.py::TestParsePlainTextSteps::test_numbered_text_steps PASSED [ 34%]
+tests/test_excel_parser.py::TestParsePlainTextSteps::test_numbered_steps_with_chinese_dot PASSED [ 34%]
+tests/test_excel_parser.py::TestParseActionTargetValueColumns::test_three_column_merge PASSED [ 34%]
+tests/test_excel_parser.py::TestParseActionTargetValueColumns::test_three_column_with_value PASSED [ 35%]
+tests/test_excel_parser.py::TestParseActionTargetValueColumns::test_three_column_english_headers PASSED [ 35%]
+tests/test_excel_parser.py::TestChineseColumnNames::test_chinese_column_names PASSED [ 35%]
+tests/test_excel_parser.py::TestChineseColumnNames::test_alternative_chinese_column_names PASSED [ 35%]
+tests/test_excel_parser.py::TestFuzzyColumnMatching::test_slight_typo_in_header PASSED [ 36%]
+tests/test_excel_parser.py::TestFuzzyColumnMatching::test_extra_spaces_in_header PASSED [ 36%]
+tests/test_excel_parser.py::TestActionNormalization::test_chinese_action_normalized[\u70b9\u51fb-click] PASSED [ 36%]
+tests/test_excel_parser.py::TestActionNormalization::test_chinese_action_normalized[\u8f93\u5165-fill] PASSED [ 36%]
+tests/test_excel_parser.py::TestActionNormalization::test_chinese_action_normalized[\u6253\u5f00-navigate] PASSED [ 36%]
+tests/test_excel_parser.py::TestActionNormalization::test_chinese_action_normalized[\u5bfc\u822a-navigate] PASSED [ 37%]
+tests/test_excel_parser.py::TestActionNormalization::test_chinese_action_normalized[\u9009\u62e9-select] PASSED [ 37%]
+tests/test_excel_parser.py::TestActionNormalization::test_chinese_action_normalized[\u60ac\u505c-hover] PASSED [ 37%]
+tests/test_excel_parser.py::TestActionNormalization::test_chinese_action_normalized[\u9a8c\u8bc1-assert_text] PASSED [ 37%]
+tests/test_excel_parser.py::TestActionNormalization::test_chinese_action_normalized[\u622a\u56fe-screenshot] PASSED [ 38%]
+tests/test_excel_parser.py::TestActionNormalization::test_chinese_action_normalized[\u7b49\u5f85-wait] PASSED [ 38%]
+tests/test_excel_parser.py::TestActionNormalization::test_english_action_preserved PASSED [ 38%]
+tests/test_excel_parser.py::TestPriorityNormalization::test_priority_normalized[\u9ad8-P0] PASSED [ 38%]
+tests/test_excel_parser.py::TestPriorityNormalization::test_priority_normalized[HIGH-P0] PASSED [ 39%]
+tests/test_excel_parser.py::TestPriorityNormalization::test_priority_normalized[\u4e2d-P2] PASSED [ 39%]
+tests/test_excel_parser.py::TestPriorityNormalization::test_priority_normalized[\u4f4e-P3] PASSED [ 39%]
+tests/test_excel_parser.py::TestPriorityNormalization::test_priority_normalized[P0-P0] PASSED [ 39%]
+tests/test_excel_parser.py::TestPriorityNormalization::test_priority_normalized[P1-P1] PASSED [ 39%]
+tests/test_excel_parser.py::TestPriorityNormalization::test_priority_normalized[P2-P2] PASSED [ 40%]
+tests/test_excel_parser.py::TestPriorityNormalization::test_priority_normalized[P3-P3] PASSED [ 40%]
+tests/test_excel_parser.py::TestPriorityNormalization::test_priority_normalized[-P1] PASSED [ 40%]
+tests/test_excel_parser.py::TestDuplicateCaseNo::test_duplicate_case_no_accepted PASSED [ 40%]
+tests/test_excel_parser.py::TestEmptyFileValidation::test_only_header_row_returns_error PASSED [ 41%]
+tests/test_excel_parser.py::TestEmptyFileValidation::test_empty_case_name_counted_as_failed PASSED [ 41%]
+tests/test_excel_parser.py::TestMissingRequiredColumns::test_missing_case_name_column PASSED [ 41%]
+tests/test_excel_parser.py::TestMissingRequiredColumns::test_missing_steps_column_without_merge PASSED [ 41%]
+tests/test_excel_parser.py::TestNonXlsxValidation::test_invalid_bytes_raises_exception PASSED [ 41%]
+tests/test_excel_parser.py::TestNonXlsxValidation::test_garbage_bytes_raises PASSED [ 42%]
+tests/test_excel_parser.py::TestMultipleRows::test_multiple_cases_parsed PASSED [ 42%]
+tests/test_excel_parser.py::TestMultipleRows::test_mixed_success_and_failure PASSED [ 42%]
+tests/test_excel_parser.py::TestXlsExtension::test_xls_extension_tries_xlrd PASSED [ 42%]
+tests/test_exceptions.py::TestAppException::test_defaults PASSED         [ 43%]
+tests/test_exceptions.py::TestAppException::test_custom_code PASSED      [ 43%]
+tests/test_exceptions.py::TestAppException::test_custom_message PASSED   [ 43%]
+tests/test_exceptions.py::TestAppException::test_custom_status_code PASSED [ 43%]
+tests/test_exceptions.py::TestAppException::test_all_custom PASSED       [ 43%]
+tests/test_exceptions.py::TestAppException::test_is_instance_of_exception PASSED [ 44%]
+tests/test_exceptions.py::TestNotFoundException::test_defaults PASSED    [ 44%]
+tests/test_exceptions.py::TestNotFoundException::test_custom_message PASSED [ 44%]
+tests/test_exceptions.py::TestNotFoundException::test_is_subclass_of_app_exception PASSED [ 44%]
+tests/test_exceptions.py::TestValidationException::test_defaults PASSED  [ 45%]
+tests/test_exceptions.py::TestValidationException::test_custom_message PASSED [ 45%]
+tests/test_exceptions.py::TestValidationException::test_is_subclass_of_app_exception PASSED [ 45%]
+tests/test_exceptions.py::TestAIException::test_defaults PASSED          [ 45%]
+tests/test_exceptions.py::TestAIException::test_custom_message PASSED    [ 45%]
+tests/test_exceptions.py::TestAIException::test_is_subclass_of_app_exception PASSED [ 46%]
+tests/test_exceptions.py::TestPlaywrightException::test_defaults PASSED  [ 46%]
+tests/test_exceptions.py::TestPlaywrightException::test_custom_message PASSED [ 46%]
+tests/test_exceptions.py::TestPlaywrightException::test_is_subclass_of_app_exception PASSED [ 46%]
+tests/test_exceptions.py::TestSecurityException::test_defaults PASSED    [ 47%]
+tests/test_exceptions.py::TestSecurityException::test_custom_message PASSED [ 47%]
+tests/test_exceptions.py::TestSecurityException::test_is_subclass_of_app_exception PASSED [ 47%]
+tests/test_exceptions.py::TestAppExceptionHandler::test_returns_json_response_with_correct_format PASSED [ 47%]
+tests/test_exceptions.py::TestAppExceptionHandler::test_with_not_found_exception PASSED [ 47%]
+tests/test_exceptions.py::TestAppExceptionHandler::test_with_ai_exception PASSED [ 48%]
+tests/test_exceptions.py::TestHttpExceptionHandler::test_returns_json_response_with_correct_format PASSED [ 48%]
+tests/test_exceptions.py::TestHttpExceptionHandler::test_with_500_status PASSED [ 48%]
+tests/test_exceptions.py::TestHttpExceptionHandler::test_with_403_status PASSED [ 48%]
+tests/test_exceptions.py::TestValidationExceptionHandler::test_single_field_error PASSED [ 49%]
+tests/test_exceptions.py::TestValidationExceptionHandler::test_multiple_field_errors_aggregated_with_semicolons PASSED [ 49%]
+tests/test_exceptions.py::TestValidationExceptionHandler::test_nested_loc_path PASSED [ 49%]
+tests/test_exceptions.py::TestValidationExceptionHandler::test_empty_errors PASSED [ 49%]
+tests/test_exceptions.py::TestGeneralExceptionHandler::test_wraps_message_with_prefix PASSED [ 50%]
+tests/test_exceptions.py::TestGeneralExceptionHandler::test_with_runtime_error PASSED [ 50%]
+tests/test_exceptions.py::TestGeneralExceptionHandler::test_with_empty_message_exception PASSED [ 50%]
+tests/test_heal_service.py::TestClassifyError::test_timeout PASSED       [ 50%]
+tests/test_heal_service.py::TestClassifyError::test_element_not_found_locator PASSED [ 50%]
+tests/test_heal_service.py::TestClassifyError::test_element_not_found_element PASSED [ 51%]
+tests/test_heal_service.py::TestClassifyError::test_assertion_failed PASSED [ 51%]
+tests/test_heal_service.py::TestClassifyError::test_assertion_expect PASSED [ 51%]
+tests/test_heal_service.py::TestClassifyError::test_navigation_error PASSED [ 51%]
+tests/test_heal_service.py::TestClassifyError::test_unknown PASSED       [ 52%]
+tests/test_heal_service.py::TestExtractCode::test_markdown_python PASSED [ 52%]
+tests/test_heal_service.py::TestExtractCode::test_markdown_no_lang PASSED [ 52%]
+tests/test_heal_service.py::TestExtractCode::test_plain_code PASSED      [ 52%]
+tests/test_heal_service.py::TestExtractCode::test_only_opening_backticks PASSED [ 52%]
+tests/test_heal_service.py::TestExtractCode::test_markdown_multiline PASSED [ 53%]
+tests/test_heal_service.py::TestValidateHealed::test_valid_code_returns_none PASSED [ 53%]
+tests/test_heal_service.py::TestValidateHealed::test_dangerous_import_os PASSED [ 53%]
+tests/test_heal_service.py::TestValidateHealed::test_dangerous_import_subprocess PASSED [ 53%]
+tests/test_heal_service.py::TestValidateHealed::test_missing_run_test PASSED [ 54%]
+tests/test_heal_service.py::TestValidateHealed::test_syntax_error PASSED [ 54%]
+tests/test_heal_service.py::TestBuildHealPrompt::test_all_placeholders_filled PASSED [ 54%]
+tests/test_heal_service.py::TestCallHealAI::test_no_api_key_returns_mock_response PASSED [ 54%]
+tests/test_heal_service.py::TestSaveHealRecord::test_creates_heal_record_with_all_fields PASSED [ 54%]
+tests/test_heal_service.py::TestUpdateHealRecord::test_updates_retry_status PASSED [ 55%]
+tests/test_heal_service.py::TestInsertHealedCode::test_creates_generated_code_with_is_healed PASSED [ 55%]
+tests/test_middlewares.py::TestTimingMiddleware::test_timing_middleware_adds_header PASSED [ 55%]
+tests/test_middlewares.py::TestTimingMiddleware::test_timing_middleware_on_api_endpoint PASSED [ 55%]
+tests/test_middlewares.py::TestLoggingMiddleware::test_logging_middleware_does_not_break_request PASSED [ 56%]
+tests/test_middlewares.py::TestLoggingMiddleware::test_logging_middleware_with_404 PASSED [ 56%]
+tests/test_middlewares.py::TestBothMiddlewares::test_both_middlewares_on_health PASSED [ 56%]
+tests/test_middlewares.py::TestBothMiddlewares::test_both_middlewares_on_api PASSED [ 56%]
+tests/test_models.py::TestProjectModel::test_create_project_all_fields PASSED [ 56%]
+tests/test_models.py::TestProjectModel::test_project_defaults PASSED     [ 57%]
+tests/test_models.py::TestProjectModel::test_project_name_not_null_skip SKIPPED [ 57%]
+tests/test_models.py::TestPageElementModel::test_create_with_project_fk PASSED [ 57%]
+tests/test_models.py::TestPageElementModel::test_json_fields_stored_as_text PASSED [ 57%]
+tests/test_models.py::TestTestCaseModel::test_create_with_steps_json PASSED [ 58%]
+tests/test_models.py::TestTestCaseModel::test_steps_json_round_trip PASSED [ 58%]
+tests/test_models.py::TestGeneratedCodeModel::test_create_with_case_fk PASSED [ 58%]
+tests/test_models.py::TestGeneratedCodeModel::test_is_valid_and_is_healed_defaults PASSED [ 58%]
+tests/test_models.py::TestExecutionModel::test_default_status_running PASSED [ 58%]
+tests/test_models.py::TestExecutionModel::test_datetime_fields PASSED    [ 59%]
+tests/test_models.py::TestExecutionStepModel::test_create_with_all_action_types PASSED [ 59%]
+tests/test_models.py::TestReportModel::test_create_report PASSED         [ 59%]
+tests/test_models.py::TestReportModel::test_unique_execution_id PASSED   [ 59%]
+tests/test_models.py::TestHealRecordModel::test_create_heal_record PASSED [ 60%]
+tests/test_models.py::TestCascadeDelete::test_delete_project_removes_related_elements PASSED [ 60%]
+tests/test_models.py::TestCascadeDelete::test_cascade_delete_project_from_db PASSED [ 60%]
+tests/test_models.py::TestDateTimeAutoPopulation::test_created_at_set_on_creation PASSED [ 60%]
+tests/test_models.py::TestDateTimeAutoPopulation::test_updated_at_changes_on_update PASSED [ 60%]
+tests/test_models.py::TestStrRepr::test_models_have_str_or_repr PASSED   [ 61%]
+tests/test_orchestrator.py::TestRunFullPipeline::test_all_pre_generated_returns_execution_id PASSED [ 61%]
+tests/test_orchestrator.py::TestRunFullPipeline::test_need_generation_returns_generated_count PASSED [ 61%]
+tests/test_orchestrator.py::TestRunFullPipeline::test_ai_fails_pipeline_continues PASSED [ 61%]
+tests/test_orchestrator.py::TestRunGenerateOnly::test_returns_generated_and_failed_counts PASSED [ 62%]
+tests/test_orchestrator.py::TestRunExecuteOnly::test_returns_execution_id PASSED [ 62%]
+tests/test_orchestrator.py::TestCheckCasesNeedGeneration::test_returns_cases_without_valid_code PASSED [ 62%]
+tests/test_orchestrator.py::TestCheckCasesNeedGeneration::test_db_error_falls_back_to_all_case_ids PASSED [ 62%]
+tests/test_orchestrator.py::TestEmptyOrchestrator::test_no_services_does_not_crash_on_attribute_access PASSED [ 63%]
+tests/test_orchestrator.py::TestThreadStart::test_thread_start_called PASSED [ 63%]
+tests/test_orchestrator.py::TestClearStopFlag::test_clear_stop_flag_called_before_execution PASSED [ 63%]
+tests/test_playwright_service.py::TestCreateExecution::test_create_execution_returns_id PASSED [ 63%]
+tests/test_playwright_service.py::TestCreateExecution::test_create_execution_creates_steps PASSED [ 63%]
+tests/test_playwright_service.py::TestCreateExecution::test_create_execution_invalid_case_skipped PASSED [ 64%]
+tests/test_playwright_service.py::TestInitSteps::test_init_steps_creates_pending_records PASSED [ 64%]
+tests/test_playwright_service.py::TestInitSteps::test_init_steps_no_case PASSED [ 64%]
+tests/test_playwright_service.py::TestUpdateExecution::test_update_execution_updates_counts PASSED [ 64%]
+tests/test_playwright_service.py::TestUpdateExecutionStatus::test_update_execution_status PASSED [ 65%]
+tests/test_playwright_service.py::TestStopFlag::test_set_stop_flag_and_check PASSED [ 65%]
+tests/test_playwright_service.py::TestStopFlag::test_clear_stop_flag PASSED [ 65%]
+tests/test_playwright_service.py::TestMonitorHooks::test_on_step_before_creates_record PASSED [ 65%]
+tests/test_playwright_service.py::TestMonitorHooks::test_on_step_after_success PASSED [ 65%]
+tests/test_playwright_service.py::TestMonitorHooks::test_on_step_after_failure PASSED [ 66%]
+tests/test_playwright_service.py::TestBuildNamespace::test_build_namespace_contains_key_modules PASSED [ 66%]
+tests/test_playwright_service.py::TestBuildNamespace::test_build_namespace_banned_builtins_excluded PASSED [ 66%]
+tests/test_playwright_service.py::TestBuildNamespace::test_build_namespace_safe_builtins_included PASSED [ 66%]
+tests/test_project_service.py::TestProjectServiceCreate::test_create_with_valid_data PASSED [ 67%]
+tests/test_project_service.py::TestProjectServiceCreate::test_create_with_name_and_target_url_only PASSED [ 67%]
+tests/test_project_service.py::TestProjectServiceCreate::test_create_invalid_browser_type PASSED [ 67%]
+tests/test_project_service.py::TestProjectServiceGetOr404::test_get_existing_project PASSED [ 67%]
+tests/test_project_service.py::TestProjectServiceGetOr404::test_get_nonexistent_raises_not_found PASSED [ 67%]
+tests/test_project_service.py::TestProjectServiceListPaginated::test_with_multiple_projects PASSED [ 68%]
+tests/test_project_service.py::TestProjectServiceListPaginated::test_with_zero_projects PASSED [ 68%]
+tests/test_project_service.py::TestProjectServiceListPaginated::test_includes_case_count PASSED [ 68%]
+tests/test_project_service.py::TestProjectServiceUpdate::test_update_partial_fields PASSED [ 68%]
+tests/test_project_service.py::TestProjectServiceUpdate::test_update_nonexistent_raises_not_found PASSED [ 69%]
+tests/test_project_service.py::TestProjectServiceUpdate::test_update_headless_bool_stored_as_int PASSED [ 69%]
+tests/test_project_service.py::TestProjectServiceDelete::test_delete_existing PASSED [ 69%]
+tests/test_project_service.py::TestProjectServiceDelete::test_delete_nonexistent_raises_not_found PASSED [ 69%]
+tests/test_report_service.py::TestGenerate::test_execution_not_found_raises_value_error PASSED [ 69%]
+tests/test_report_service.py::TestGenerate::test_existing_report_returns_cached PASSED [ 70%]
+tests/test_report_service.py::TestGenerate::test_new_report_generates_html_and_db_record PASSED [ 70%]
+tests/test_report_service.py::TestDetermineStatus::test_all_success PASSED [ 70%]
+tests/test_report_service.py::TestDetermineStatus::test_one_failed PASSED [ 70%]
+tests/test_report_service.py::TestDetermineStatus::test_all_skipped PASSED [ 71%]
+tests/test_report_service.py::TestDetermineStatus::test_mix_success_and_pending PASSED [ 71%]
+tests/test_report_service.py::TestDetermineStatus::test_all_pending PASSED [ 71%]
+tests/test_report_service.py::TestAnalyzeErrors::test_correct_error_type_counts PASSED [ 71%]
+tests/test_report_service.py::TestAnalyzeErrors::test_no_errors_returns_empty PASSED [ 71%]
+tests/test_report_service.py::TestClassifyErrorType::test_timeout PASSED [ 72%]
+tests/test_report_service.py::TestClassifyErrorType::test_element_not_found PASSED [ 72%]
+tests/test_report_service.py::TestClassifyErrorType::test_element_locator PASSED [ 72%]
+tests/test_report_service.py::TestClassifyErrorType::test_assertion PASSED [ 72%]
+tests/test_report_service.py::TestClassifyErrorType::test_expect PASSED  [ 73%]
+tests/test_report_service.py::TestClassifyErrorType::test_navigation PASSED [ 73%]
+tests/test_report_service.py::TestClassifyErrorType::test_navigation_word PASSED [ 73%]
+tests/test_report_service.py::TestClassifyErrorType::test_other PASSED   [ 73%]
+tests/test_report_service.py::TestTopFailedSelectors::test_returns_top_n_by_failure_count PASSED [ 73%]
+tests/test_report_service.py::TestTopFailedSelectors::test_no_failed_steps_returns_empty PASSED [ 74%]
+tests/test_report_service.py::TestPriorityDistribution::test_pass_fail_counts_per_priority PASSED [ 74%]
+tests/test_report_service.py::TestRelativePath::test_converts_to_relative PASSED [ 74%]
+tests/test_report_service.py::TestGetReportInfo::test_existing_returns_dict_with_summary PASSED [ 74%]
+tests/test_report_service.py::TestGetReportInfo::test_nonexistent_returns_none PASSED [ 75%]
+tests/test_report_service.py::TestCleanupOldReports::test_no_reports_dir_returns_zero PASSED [ 75%]
+tests/test_report_service.py::TestCleanupOldReports::test_cleans_old_reports PASSED [ 75%]
+tests/test_router_cases.py::TestImportCases::test_import_excel_valid PASSED [ 75%]
+tests/test_router_cases.py::TestImportCases::test_import_no_file PASSED  [ 76%]
+tests/test_router_cases.py::TestListCases::test_list_cases PASSED        [ 76%]
+tests/test_router_cases.py::TestListCases::test_filter_by_status PASSED  [ 76%]
+tests/test_router_cases.py::TestListCases::test_filter_by_status_no_match PASSED [ 76%]
+tests/test_router_cases.py::TestListCases::test_filter_by_priority PASSED [ 76%]
+tests/test_router_cases.py::TestListCases::test_search_by_keyword PASSED [ 77%]
+tests/test_router_cases.py::TestListCases::test_search_by_keyword_no_match PASSED [ 77%]
+tests/test_router_cases.py::TestGetCaseDetail::test_get_detail PASSED    [ 77%]
+tests/test_router_cases.py::TestGetCaseDetail::test_get_detail_nonexistent PASSED [ 77%]
+tests/test_router_cases.py::TestDeleteCase::test_delete_single PASSED    [ 78%]
+tests/test_router_cases.py::TestBatchDeleteCases::test_batch_delete PASSED [ 78%]
+tests/test_router_elements.py::TestCrawlElements::test_crawl_elements PASSED [ 78%]
+tests/test_router_elements.py::TestCrawlElements::test_crawl_nonexistent_project PASSED [ 78%]
+tests/test_router_elements.py::TestListElements::test_list_elements PASSED [ 78%]
+tests/test_router_elements.py::TestListElements::test_filter_by_element_type PASSED [ 79%]
+tests/test_router_elements.py::TestListElements::test_filter_by_keyword PASSED [ 79%]
+tests/test_router_elements.py::TestListElements::test_filter_by_keyword_no_match PASSED [ 79%]
+tests/test_router_elements.py::TestClearElements::test_clear_elements PASSED [ 79%]
+tests/test_router_executions.py::test_create_execution PASSED            [ 80%]
+tests/test_router_executions.py::test_execute_without_generated_code PASSED [ 80%]
+tests/test_router_executions.py::test_execute_invalid_mode PASSED        [ 80%]
+tests/test_router_executions.py::test_list_executions PASSED             [ 80%]
+tests/test_router_executions.py::test_get_execution_detail PASSED        [ 80%]
+tests/test_router_executions.py::test_get_execution_detail_nonexistent PASSED [ 81%]
+tests/test_router_executions.py::test_get_execution_status PASSED        [ 81%]
+tests/test_router_executions.py::test_stop_execution PASSED              [ 81%]
+tests/test_router_executions.py::test_stop_execution_already_completed PASSED [ 81%]
+tests/test_router_generate.py::test_single_generate PASSED               [ 82%]
+tests/test_router_generate.py::test_single_generate_nonexistent_case PASSED [ 82%]
+tests/test_router_generate.py::test_batch_generate PASSED                [ 82%]
+tests/test_router_generate.py::test_batch_generate_status PASSED         [ 82%]
+tests/test_router_generate.py::test_batch_generate_status_unknown PASSED [ 82%]
+tests/test_router_generate.py::test_get_latest_code PASSED               [ 83%]
+tests/test_router_generate.py::test_get_latest_code_no_code PASSED       [ 83%]
+tests/test_router_heal.py::TestManualHeal::test_manual_heal PASSED       [ 83%]
+tests/test_router_heal.py::TestManualHeal::test_manual_heal_step_not_found PASSED [ 83%]
+tests/test_router_heal.py::TestManualHeal::test_manual_heal_step_not_failed PASSED [ 84%]
+tests/test_router_heal.py::TestHealRecords::test_get_heal_records PASSED [ 84%]
+tests/test_router_heal.py::TestHealRecords::test_get_heal_records_empty PASSED [ 84%]
+tests/test_router_projects.py::TestListProjects::test_empty_list PASSED  [ 84%]
+tests/test_router_projects.py::TestListProjects::test_list_with_data PASSED [ 84%]
+tests/test_router_projects.py::TestCreateProject::test_create_valid PASSED [ 85%]
+tests/test_router_projects.py::TestCreateProject::test_create_empty_name PASSED [ 85%]
+tests/test_router_projects.py::TestCreateProject::test_create_missing_target_url PASSED [ 85%]
+tests/test_router_projects.py::TestGetProject::test_get_existing PASSED  [ 85%]
+tests/test_router_projects.py::TestGetProject::test_get_nonexistent PASSED [ 86%]
+tests/test_router_projects.py::TestUpdateProject::test_update_partial PASSED [ 86%]
+tests/test_router_projects.py::TestUpdateProject::test_update_nonexistent PASSED [ 86%]
+tests/test_router_projects.py::TestDeleteProject::test_delete_existing PASSED [ 86%]
+tests/test_router_projects.py::TestDeleteProject::test_delete_nonexistent PASSED [ 86%]
+tests/test_router_reports.py::TestGenerateReport::test_generate_report PASSED [ 87%]
+tests/test_router_reports.py::TestGenerateReport::test_generate_report_no_execution PASSED [ 87%]
+tests/test_router_reports.py::TestGenerateReport::test_generate_report_cached PASSED [ 87%]
+tests/test_router_reports.py::TestGetReport::test_get_report PASSED      [ 87%]
+tests/test_router_reports.py::TestGetReport::test_get_report_not_found PASSED [ 88%]
+tests/test_schemas.py::TestProjectCreate::test_valid_data PASSED         [ 88%]
+tests/test_schemas.py::TestProjectCreate::test_empty_name_raises_validation_error PASSED [ 88%]
+tests/test_schemas.py::TestProjectCreate::test_empty_target_url_raises_validation_error PASSED [ 88%]
+tests/test_schemas.py::TestProjectCreate::test_defaults PASSED           [ 89%]
+tests/test_schemas.py::TestProjectCreate::test_headless_out_of_range PASSED [ 89%]
+tests/test_schemas.py::TestProjectUpdate::test_partial_update_exclude_unset PASSED [ 89%]
+tests/test_schemas.py::TestProjectUpdate::test_empty_update PASSED       [ 89%]
+tests/test_schemas.py::TestProjectUpdate::test_all_fields PASSED         [ 89%]
+tests/test_schemas.py::TestProjectResponse::test_from_attributes_with_orm_object PASSED [ 90%]
+tests/test_schemas.py::TestProjectListItem::test_case_count_default PASSED [ 90%]
+tests/test_schemas.py::TestProjectListItem::test_from_attributes_with_orm PASSED [ 90%]
+tests/test_schemas.py::TestPageElementResponse::test_optional_fields_are_none PASSED [ 90%]
+tests/test_schemas.py::TestPageElementResponse::test_with_json_fields PASSED [ 91%]
+tests/test_schemas.py::TestTestStep::test_full_step PASSED               [ 91%]
+tests/test_schemas.py::TestTestStep::test_defaults PASSED                [ 91%]
+tests/test_schemas.py::TestTestCaseResponse::test_steps_is_list_of_test_step PASSED [ 91%]
+tests/test_schemas.py::TestTestCaseResponse::test_from_attributes_with_orm PASSED [ 91%]
+tests/test_schemas.py::TestTestCaseImportResult::test_defaults PASSED    [ 92%]
+tests/test_schemas.py::TestTestCaseImportResult::test_with_errors PASSED [ 92%]
+tests/test_schemas.py::TestBatchDeleteBody::test_valid_ids PASSED        [ 92%]
+tests/test_schemas.py::TestBatchDeleteBody::test_empty_ids_raises_validation_error PASSED [ 92%]
+tests/test_schemas.py::TestGeneratedCodeResponse::test_all_fields PASSED [ 93%]
+tests/test_schemas.py::TestBatchGenerateResponse::test_fields PASSED     [ 93%]
+tests/test_schemas.py::TestBatchGenerateResponse::test_default_status PASSED [ 93%]
+tests/test_schemas.py::TestBatchGenerateStatus::test_progress_pct_default PASSED [ 93%]
+tests/test_schemas.py::TestBatchGenerateStatus::test_with_progress PASSED [ 93%]
+tests/test_schemas.py::TestExecutionCreate::test_valid PASSED            [ 94%]
+tests/test_schemas.py::TestExecutionCreate::test_empty_case_ids_raises_validation_error PASSED [ 94%]
+tests/test_schemas.py::TestExecutionCreate::test_defaults PASSED         [ 94%]
+tests/test_schemas.py::TestExecutionResponse::test_datetime_fields PASSED [ 94%]
+tests/test_schemas.py::TestExecutionResponse::test_optional_datetime_none PASSED [ 95%]
+tests/test_schemas.py::TestExecutionStepResponse::test_all_fields PASSED [ 95%]
+tests/test_schemas.py::TestExecutionStepResponse::test_optional_fields_none PASSED [ 95%]
+tests/test_schemas.py::TestExecutionDetailResponse::test_inherits_execution_response PASSED [ 95%]
+tests/test_schemas.py::TestExecutionDetailResponse::test_with_steps PASSED [ 95%]
+tests/test_schemas.py::TestExecutionStatusResponse::test_all_fields PASSED [ 96%]
+tests/test_schemas.py::TestExecutionStatusResponse::test_defaults PASSED [ 96%]
+tests/test_schemas.py::TestReportResponse::test_report_summary_optional_dict PASSED [ 96%]
+tests/test_schemas.py::TestReportResponse::test_report_summary_none PASSED [ 96%]
+tests/test_schemas.py::TestHealRequest::test_fields PASSED               [ 97%]
+tests/test_schemas.py::TestHealRecordResponse::test_error_context_optional_dict PASSED [ 97%]
+tests/test_schemas.py::TestHealRecordResponse::test_optional_fields_none PASSED [ 97%]
+tests/test_schemas.py::TestDashboardStats::test_all_defaults_zero PASSED [ 97%]
+tests/test_schemas.py::TestDashboardStats::test_with_values PASSED       [ 97%]
+tests/test_schemas.py::TestApiResponse::test_defaults PASSED             [ 98%]
+tests/test_schemas.py::TestApiResponse::test_with_data PASSED            [ 98%]
+tests/test_schemas.py::TestApiResponse::test_with_string_data PASSED     [ 98%]
+tests/test_schemas.py::TestApiResponse::test_with_dict_data PASSED       [ 98%]
+tests/test_schemas.py::TestApiResponse::test_error_response PASSED       [ 99%]
+tests/test_schemas.py::TestPaginatedData::test_with_items PASSED         [ 99%]
+tests/test_schemas.py::TestPaginatedData::test_defaults PASSED           [ 99%]
+tests/test_schemas.py::TestPaginatedData::test_with_dict_items PASSED    [ 99%]
+tests/test_schemas.py::TestPaginatedData::test_empty_pages PASSED        [100%]
+
+============================== warnings summary ===============================
+..\..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\pydantic\_internal\_config.py:323
+  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\pydantic\_internal\_config.py:323: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+app\models\test_case.py:15
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\models\test_case.py:15: PytestCollectionWarning: cannot collect test class 'TestCase' because it has a __init__ constructor (from: tests/test_case_service.py)
+    class TestCase(Base):
+
+app\models\test_case.py:15
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\models\test_case.py:15: PytestCollectionWarning: cannot collect test class 'TestCase' because it has a __init__ constructor (from: tests/test_models.py)
+    class TestCase(Base):
+
+app\services\orchestrator.py:27
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\services\orchestrator.py:27: PytestCollectionWarning: cannot collect test class 'TestOrchestrator' because it has a __init__ constructor (from: tests/test_orchestrator.py)
+    class TestOrchestrator:
+
+app\models\test_case.py:15
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\models\test_case.py:15: PytestCollectionWarning: cannot collect test class 'TestCase' because it has a __init__ constructor (from: tests/test_project_service.py)
+    class TestCase(Base):
+
+app\schemas.py:110
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\schemas.py:110: PytestCollectionWarning: cannot collect test class 'TestStep' because it has a __init__ constructor (from: tests/test_schemas.py)
+    class TestStep(BaseModel):
+
+app\schemas.py:118
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\schemas.py:118: PytestCollectionWarning: cannot collect test class 'TestCaseResponse' because it has a __init__ constructor (from: tests/test_schemas.py)
+    class TestCaseResponse(BaseModel):
+
+app\schemas.py:136
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\schemas.py:136: PytestCollectionWarning: cannot collect test class 'TestCaseImportResult' because it has a __init__ constructor (from: tests/test_schemas.py)
+    class TestCaseImportResult(BaseModel):
+
+tests/test_heal_service.py: 2 warnings
+tests/test_playwright_service.py: 3 warnings
+tests/test_report_service.py: 3 warnings
+tests/test_router_executions.py: 4 warnings
+tests/test_router_reports.py: 4 warnings
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\conftest.py:497: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=dt.utcnow(),
+
+tests/test_heal_service.py: 2 warnings
+tests/test_playwright_service.py: 3 warnings
+tests/test_report_service.py: 3 warnings
+tests/test_router_executions.py: 4 warnings
+tests/test_router_reports.py: 4 warnings
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\conftest.py:498: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    end_time=dt.utcnow(),
+
+tests/test_models.py::TestExecutionModel::test_datetime_fields
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_models.py:282: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_models.py::TestReportModel::test_unique_execution_id
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\conftest.py:96: SAWarning: transaction already deassociated from connection
+    transaction.rollback()
+
+tests/test_models.py::TestDateTimeAutoPopulation::test_created_at_set_on_creation
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_models.py:531: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    delta = (datetime.utcnow() - project.created_at).total_seconds()
+
+tests/test_playwright_service.py::TestCreateExecution::test_create_execution_returns_id
+tests/test_playwright_service.py::TestCreateExecution::test_create_execution_creates_steps
+tests/test_playwright_service.py::TestCreateExecution::test_create_execution_invalid_case_skipped
+tests/test_router_executions.py::test_create_execution
+tests/test_router_executions.py::test_stop_execution
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\services\playwright_service.py:82: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=datetime.utcnow(),
+
+tests/test_playwright_service.py::TestInitSteps::test_init_steps_creates_pending_records
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_playwright_service.py:107: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=dt.utcnow(),
+
+tests/test_playwright_service.py::TestInitSteps::test_init_steps_no_case
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_playwright_service.py:139: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=dt.utcnow(),
+
+tests/test_playwright_service.py::TestUpdateExecution::test_update_execution_updates_counts
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_playwright_service.py:166: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=dt.utcnow(),
+
+tests/test_playwright_service.py::TestUpdateExecutionStatus::test_update_execution_status
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_playwright_service.py:196: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=dt.utcnow(),
+
+tests/test_playwright_service.py::TestUpdateExecutionStatus::test_update_execution_status
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\services\playwright_service.py:321: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    exec_row.end_time = datetime.utcnow()
+
+tests/test_playwright_service.py::TestStopFlag::test_set_stop_flag_and_check
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_playwright_service.py:226: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=dt.utcnow(),
+
+tests/test_playwright_service.py::TestStopFlag::test_clear_stop_flag
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_playwright_service.py:250: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=dt.utcnow(),
+
+tests/test_router_executions.py::test_create_execution
+tests/test_router_executions.py::test_stop_execution
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\services\playwright_service.py:157: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    page.set_default_timeout(settings.PLAYWRIGHT_TIMEOUT)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_router_executions.py::test_stop_execution
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\routers\executions.py:276: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    execution.end_time = datetime.utcnow()
+
+tests/test_router_heal.py::TestManualHeal::test_manual_heal
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_router_heal.py:29: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=dt.utcnow(),
+
+tests/test_router_heal.py::TestManualHeal::test_manual_heal
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\routers\heal.py:101: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    page.set_default_timeout(settings.PLAYWRIGHT_TIMEOUT)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_router_heal.py::TestManualHeal::test_manual_heal_step_not_found
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_router_heal.py:83: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=dt.utcnow(),
+
+tests/test_router_heal.py::TestManualHeal::test_manual_heal_step_not_failed
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_router_heal.py:112: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=dt.utcnow(),
+
+tests/test_router_heal.py::TestHealRecords::test_get_heal_records
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_router_heal.py:154: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=dt.utcnow(),
+
+tests/test_router_heal.py::TestHealRecords::test_get_heal_records
+tests/test_router_heal.py::TestHealRecords::test_get_heal_records_empty
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\app\routers\heal.py:164: SAWarning: Coercing Subquery object into a select() for use in IN(); please pass a select() construct explicitly
+    .filter(HealRecord.execution_step_id.in_(step_ids))
+
+tests/test_router_heal.py::TestHealRecords::test_get_heal_records_empty
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_router_heal.py:203: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=dt.utcnow(),
+
+tests/test_schemas.py::TestProjectListItem::test_case_count_default
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+tests/test_schemas.py::TestProjectListItem::test_case_count_default
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:151: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    updated_at=datetime.utcnow(),
+
+tests/test_schemas.py::TestPageElementResponse::test_optional_fields_are_none
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:188: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+tests/test_schemas.py::TestPageElementResponse::test_with_json_fields
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:195: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_schemas.py::TestTestCaseResponse::test_steps_is_list_of_test_step
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:248: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_schemas.py::TestGeneratedCodeResponse::test_all_fields
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:356: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_schemas.py::TestExecutionResponse::test_datetime_fields
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:458: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_schemas.py::TestExecutionResponse::test_optional_datetime_none
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:477: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_schemas.py::TestExecutionStepResponse::test_all_fields
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:501: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_schemas.py::TestExecutionStepResponse::test_optional_fields_none
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:529: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_schemas.py::TestExecutionDetailResponse::test_inherits_execution_response
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:556: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_schemas.py::TestExecutionDetailResponse::test_with_steps
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:576: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_schemas.py::TestReportResponse::test_report_summary_optional_dict
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:641: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_schemas.py::TestReportResponse::test_report_summary_none
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:653: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_schemas.py::TestHealRecordResponse::test_error_context_optional_dict
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:684: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_schemas.py::TestHealRecordResponse::test_optional_fields_none
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\test_schemas.py:701: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+_______________ coverage: platform win32, python 3.13.3-final-0 _______________
+
+Name                                 Stmts   Miss Branch BrPart  Cover   Missing
+--------------------------------------------------------------------------------
+app\__init__.py                          0      0      0      0   100%
+app\config.py                           39      3      4      1    91%   57-59, 62->66
+app\db\__init__.py                       0      0      0      0   100%
+app\db\database.py                      35     24     10      1    27%   19, 38-69, 76-80
+app\dependencies.py                     32      4      2      0    88%   12-16
+app\exceptions.py                       36      0      2      0   100%
+app\main.py                             51      1      2      1    96%   56->58, 114
+app\middlewares\__init__.py              3      0      0      0   100%
+app\middlewares\logging.py              13      0      0      0   100%
+app\middlewares\timing.py               10      0      0      0   100%
+app\models\__init__.py                   9      0      0      0   100%
+app\models\element.py                   61      0      0      0   100%
+app\models\execution.py                 35      0      0      0   100%
+app\models\execution_step.py            43      0      0      0   100%
+app\models\generated_code.py            37      0      0      0   100%
+app\models\heal_record.py               34      0      0      0   100%
+app\models\project.py                   40      0      0      0   100%
+app\models\report.py                    26      0      0      0   100%
+app\models\test_case.py                 53      0      0      0   100%
+app\models\test_step.py                  7      0      0      0   100%
+app\prompts\__init__.py                  0      0      0      0   100%
+app\routers\__init__.py                  8      0      0      0   100%
+app\routers\cases.py                    43      3      6      3    88%   42, 45, 49
+app\routers\elements.py                 36      0      2      0   100%
+app\routers\executions.py               87     12     28      5    83%   92-93, 205, 221-224, 230-231, 233-234, 264
+app\routers\generate.py                 80      1      4      0    99%   126
+app\routers\heal.py                     63      5     14      4    88%   76, 83->88, 105-106, 115, 132
+app\routers\projects.py                 34      0      0      0   100%
+app\routers\reports.py                  30      3      2      0    91%   48-50
+app\schemas.py                         197      0      0      0   100%
+app\services\__init__.py                 9      0      0      0   100%
+app\services\ai_service.py             273     55    110     21    77%   145-147, 207-208, 219->221, 222, 224, 225->228, 229, 231, 235, 268-274, 346, 370, 372, 374, 375->378, 379, 402-441, 460, 494->485, 497, 519-520, 558, 577-615
+app\services\case_service.py           133      6     22      2    95%   99, 151-157, 258
+app\services\element_service.py        178     73     42      2    51%   92-97, 105, 175-176, 193-195, 199-202, 206-209, 214-215, 239-287, 292-299, 368, 373-382
+app\services\heal_service.py           303    204     92      3    29%   131-190, 209-267, 283-309, 327-333, 341-356, 360-394, 398-404, 408-425, 443, 469-503, 572-611, 644->exit, 668, 672-681
+app\services\orchestrator.py           149     62     20      1    56%   99-111, 175-187, 215->exit, 217-244, 247-248, 255-267
+app\services\playwright_service.py     309    158     56      4    47%   93-94, 127-129, 162-201, 216-268, 288-289, 307->exit, 311-312, 318->exit, 320->322, 332-333, 337-450, 492-493, 515-516, 548-554, 556-561
+app\services\project_service.py         61      4     16      2    90%   82-85, 89->88
+app\services\report_service.py         231     34     96     18    80%   111->120, 117, 121->132, 128-129, 192, 200-203, 209, 215, 230-231, 243-247, 283-291, 314, 319, 326->331, 397, 446->441, 479-481, 502-503, 549-550, 551->553
+app\utils\__init__.py                    5      0      0      0   100%
+app\utils\code_injector.py             132     25     64     18    74%   81-82, 90-91, 102->114, 119, 123->125, 130, 133-138, 146, 165->174, 169->174, 174->187, 179->187, 187->199, 192->199, 194->199, 209, 212-218, 243, 280-281, 285
+app\utils\code_validator.py             55      0     30      1    99%   85->78
+app\utils\excel_parser.py              303     64    124     16    77%   89-92, 107-110, 155-157, 162-165, 179-181, 278, 295, 302->313, 309-310, 318, 333, 364-385, 404-416, 431-432, 441, 488-495, 501-509, 520, 533
+app\utils\screenshot.py                 12      4      0      0    67%   15-17, 22
+--------------------------------------------------------------------------------
+TOTAL                                 3295    745    748    103    74%
+Coverage HTML written to dir htmlcov
+================ 445 passed, 1 skipped, 82 warnings in 14.83s =================

@@ -10,15 +10,20 @@ from app.config import settings
 _extra_args = {}
 if settings.DATABASE_URL.startswith("sqlite"):
     _extra_args["connect_args"] = {"check_same_thread": False}
-
-engine = create_engine(
-    settings.DATABASE_URL,
-    echo=False,
-    pool_size=10,
-    max_overflow=20,
-    pool_recycle=3600,
-    **_extra_args,
-)
+    engine = create_engine(
+        settings.DATABASE_URL,
+        echo=False,
+        **_extra_args,
+    )
+else:
+    engine = create_engine(
+        settings.DATABASE_URL,
+        echo=False,
+        pool_size=10,
+        max_overflow=20,
+        pool_recycle=3600,
+        **_extra_args,
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
