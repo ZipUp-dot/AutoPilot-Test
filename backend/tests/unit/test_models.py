@@ -374,7 +374,7 @@ class TestReportModel:
 
     def test_unique_execution_id(self, db_session):
         """验证 execution_id 唯一约束：同一 execution 不能创建两个报告"""
-        import sqlite3
+        from sqlalchemy import text
         project = Project(name="Unique Project", target_url="https://example.com")
         db_session.add(project)
         db_session.commit()
@@ -389,11 +389,13 @@ class TestReportModel:
         db_session.add(report1)
         db_session.commit()
 
-        report2 = ExecutionReport(execution_id=execution.id)
-        db_session.add(report2)
+        # 直接在当前绑定连接上插入重复记录，验证数据库层唯一约束。
+        # 不通过 session flush + rollback，避免真实 rollback 破坏 conftest 外层事务。
         with pytest.raises(Exception):
-            db_session.commit()
-        db_session.rollback()
+            db_session.bind.execute(
+                text("INSERT INTO execution_reports (execution_id) VALUES (:eid)"),
+                {"eid": execution.id},
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -591,11 +591,13 @@ class TestExecuteCase:
                       return_value=sample_generated_code.code_content)
         mocker.patch("pathlib.Path.mkdir")
 
-        # 用 async wrapper 先 await 协程再抛超时，避免 run_test(page) 协程泄漏
-        async def _raise_timeout(aw, timeout):
-            await aw
+        # mock asyncio.wait_for 时先关闭传入的 run_test(page) 协程，
+        # 否则该协程从未被 await 会触发 RuntimeWarning
+        def _mock_wait_for(coro, *args, **kwargs):
+            coro.close()
             raise asyncio.TimeoutError("timeout")
-        mocker.patch("asyncio.wait_for", side_effect=_raise_timeout)
+
+        mocker.patch("asyncio.wait_for", side_effect=_mock_wait_for)
 
         from app.models.execution import Execution
         from datetime import datetime as dt
@@ -784,9 +786,9 @@ class TestMonitorHooksErrorHandling:
 
         hooks = _MonitorHooks(db_session, sample_execution.id, sample_test_case.id, mock_page)
 
-        # 模拟 commit 失败；rollback 也 mock，避免真实回滚破坏 db_session 事务
-        # （否则 fixture teardown 时 transaction.rollback() 报 "already deassociated"）
+        # 模拟 commit 失败
         mocker.patch.object(db_session, "commit", side_effect=Exception("DB error"))
+        # 使用 patch 而非 spy：spy 会真实执行 rollback，回滚外层事务导致 teardown 报错
         mock_rollback = mocker.patch.object(db_session, "rollback")
 
         # 不应抛出异常
@@ -874,7 +876,7 @@ def mock_playwright_for_execution_service_func(mocker):
     mock_page = mocker.AsyncMock()
     mock_page.goto.return_value = None
     mock_page.screenshot.return_value = b"fake_image"
-    # set_default_timeout 是同步方法，必须用 MagicMock，否则调用返回未 await 的协程
+    # set_default_timeout 是 Playwright 同步方法，必须用 MagicMock 而非 AsyncMock
     mock_page.set_default_timeout = mocker.MagicMock(return_value=None)
 
     mock_context = mocker.AsyncMock()

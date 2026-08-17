@@ -865,9 +865,15 @@ class TestRetryExecution:
 
         mocker.patch("builtins.exec", side_effect=mock_exec)
 
-        # patch asyncio.wait_for 抛出 TimeoutError
+        # patch asyncio.wait_for 抛出 TimeoutError，同时关闭传入的 run_test(page) 协程，
+        # 避免协程从未被 await 触发 RuntimeWarning
         import asyncio
-        mocker.patch("asyncio.wait_for", side_effect=asyncio.TimeoutError())
+
+        def _mock_wait_for(coro, *args, **kwargs):
+            coro.close()
+            raise asyncio.TimeoutError()
+
+        mocker.patch("asyncio.wait_for", side_effect=_mock_wait_for)
 
         page = AsyncMock()
         step = ExecutionStep(

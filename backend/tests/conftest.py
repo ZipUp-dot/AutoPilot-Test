@@ -286,7 +286,8 @@ def mock_playwright_for_execution_service(mocker):
     mock_page = mocker.AsyncMock()
     mock_page.goto.return_value = None
     mock_page.screenshot.return_value = b"fake_image"
-    # set_default_timeout 是同步方法，必须用 MagicMock，否则调用返回未 await 的协程
+    # set_default_timeout 是 Playwright 同步方法，必须用 MagicMock 而非 AsyncMock，
+    # 否则生产代码同步调用时会创建未 await 的协程（RuntimeWarning）
     mock_page.set_default_timeout = mocker.MagicMock(return_value=None)
 
     mock_context = mocker.AsyncMock()
@@ -417,7 +418,7 @@ def mock_playwright_for_heal_router(mocker):
     mock_page.content.return_value = "<html></html>"
     mock_page.evaluate.return_value = []
     mock_page.screenshot.return_value = b"fake_image"
-    # set_default_timeout 是同步方法，必须用 MagicMock，否则调用返回未 await 的协程
+    # set_default_timeout 是 Playwright 同步方法，必须用 MagicMock（见 heal.py 中同步调用）
     mock_page.set_default_timeout = mocker.MagicMock(return_value=None)
 
     mock_context = mocker.AsyncMock()
