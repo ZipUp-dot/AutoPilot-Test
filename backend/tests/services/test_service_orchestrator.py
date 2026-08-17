@@ -60,10 +60,11 @@ def _patch_check_cases(orch, return_value):
 
 # ── Tests ──
 
+@pytest.mark.usefixtures("mock_monitor_task")
 class TestRunFullPipeline:
     """run_full_pipeline() 场景"""
 
-    def test_all_pre_generated_returns_execution_id(self, orch, mock_monitor_task):
+    def test_all_pre_generated_returns_execution_id(self, orch):
         """所有用例已有代码 → generated=0，返回 execution_id"""
         _patch_check_cases(orch, [])  # 无需生成
 
@@ -73,7 +74,7 @@ class TestRunFullPipeline:
         assert result["status"] == "running"
         assert result["generated"] == 0
 
-    def test_need_generation_returns_generated_count(self, orch, mock_ai, mock_monitor_task):
+    def test_need_generation_returns_generated_count(self, orch, mock_ai):
         """部分用例需要生成 → generated_count > 0"""
         _patch_check_cases(orch, [3, 4])
         mock_ai.generate_batch.return_value = [
@@ -86,7 +87,7 @@ class TestRunFullPipeline:
         assert result["execution_id"] == 42
         assert result["generated"] == 1  # only 1 success
 
-    def test_ai_fails_pipeline_continues(self, orch, mock_pw, mock_monitor_task):
+    def test_ai_fails_pipeline_continues(self, orch, mock_pw):
         """AI 生成异常 → 异常隔离，流水线继续，仍返回 execution_id"""
         _patch_check_cases(orch, [1])
         orch.ai_service.generate_batch.side_effect = RuntimeError("AI service down")
@@ -117,10 +118,11 @@ class TestRunGenerateOnly:
         assert len(result["results"]) == 3
 
 
+@pytest.mark.usefixtures("mock_monitor_task")
 class TestRunExecuteOnly:
     """run_execute_only() 场景"""
 
-    def test_returns_execution_id(self, orch, mock_monitor_task):
+    def test_returns_execution_id(self, orch):
         """返回 execution_id 和 running 状态"""
         result = asyncio.run(orch.run_execute_only(1, [1, 2], "headless", "TestBatch"))
 
@@ -174,10 +176,11 @@ class TestEmptyOrchestrator:
         assert orch.report_service is None
 
 
+@pytest.mark.usefixtures("mock_monitor_task")
 class TestThreadStart:
     """验证 threading.Thread.start 被调用"""
 
-    def test_thread_start_called(self, mock_threading_in_orchestrator, mock_ai, mock_monitor_task):
+    def test_thread_start_called(self, mock_threading_in_orchestrator, mock_ai):
         """run_execute_only 启动后台线程"""
         mock_pw = MagicMock()
         mock_pw.create_execution.return_value = 42
@@ -191,10 +194,11 @@ class TestThreadStart:
         mock_threading_in_orchestrator.return_value.start.assert_called_once()
 
 
+@pytest.mark.usefixtures("mock_monitor_task")
 class TestClearStopFlag:
     """验证 clear_stop_flag 在执行前被调用"""
 
-    def test_clear_stop_flag_called_before_execution(self, mock_ai, mock_monitor_task):
+    def test_clear_stop_flag_called_before_execution(self, mock_ai):
         """clear_stop_flag 在创建执行记录后、启动线程前被调用"""
         from unittest.mock import MagicMock
 
@@ -213,10 +217,11 @@ class TestClearStopFlag:
 # 新增测试：覆盖未测试的代码路径
 # ═══════════════════════════════════════════════
 
+@pytest.mark.usefixtures("mock_monitor_task")
 class TestRunFullPipelineEdgeCases:
     """run_full_pipeline() 边缘场景 — 覆盖 lines 99-111"""
 
-    def test_all_cases_need_generation_all_succeed(self, orch, mock_ai, mock_monitor_task):
+    def test_all_cases_need_generation_all_succeed(self, orch, mock_ai):
         """所有用例都需要生成且全部成功 → generated 等于用例数"""
         _patch_check_cases(orch, [1, 2, 3])
         mock_ai.generate_batch.return_value = [
@@ -231,7 +236,7 @@ class TestRunFullPipelineEdgeCases:
         assert result["execution_id"] == 42
 
     def test_background_thread_exception_fallback(
-        self, orch, mock_ai, mock_threading_in_orchestrator, mock_monitor_task, mocker
+        self, orch, mock_ai, mock_threading_in_orchestrator, mocker
     ):
         """后台线程 execute 异常 → lines 99-111 兜底将 execution 状态设为 failed"""
         _patch_check_cases(orch, [])
@@ -268,7 +273,7 @@ class TestRunFullPipelineEdgeCases:
         assert mock_clear_stop.call_count >= 2
 
     def test_background_thread_fallback_db_error_pass(
-        self, orch, mock_ai, mock_threading_in_orchestrator, mock_monitor_task, mocker
+        self, orch, mock_ai, mock_threading_in_orchestrator, mocker
     ):
         """后台线程兜底 DB 查询也异常 → lines 110-111 pass 被覆盖"""
         _patch_check_cases(orch, [])
@@ -295,11 +300,12 @@ class TestRunFullPipelineEdgeCases:
         mock_clear_stop.assert_called()
 
 
+@pytest.mark.usefixtures("mock_monitor_task")
 class TestRunExecuteOnlyEdgeCases:
     """run_execute_only() 边缘场景 — 覆盖 lines 175-187"""
 
     def test_background_thread_exception_fallback(
-        self, orch, mock_ai, mock_threading_in_orchestrator, mock_monitor_task, mocker
+        self, orch, mock_ai, mock_threading_in_orchestrator, mocker
     ):
         """后台线程 execute 异常 → lines 175-187 兜底更新 execution 状态"""
         mock_clear_stop = mocker.patch("app.services.playwright_service.clear_stop_flag")
@@ -330,7 +336,7 @@ class TestRunExecuteOnlyEdgeCases:
         assert mock_clear_stop.call_count >= 2
 
     def test_background_thread_fallback_db_error_pass(
-        self, orch, mock_ai, mock_threading_in_orchestrator, mock_monitor_task, mocker
+        self, orch, mock_ai, mock_threading_in_orchestrator, mocker
     ):
         """后台线程兜底 DB 查询也异常 → lines 186-187 pass 被覆盖"""
         mock_clear_stop = mocker.patch("app.services.playwright_service.clear_stop_flag")
@@ -353,7 +359,7 @@ class TestRunExecuteOnlyEdgeCases:
         mock_session.close.assert_called_once()
         mock_clear_stop.assert_called()
 
-    def test_without_batch_name_still_works(self, orch, mock_monitor_task):
+    def test_without_batch_name_still_works(self, orch):
         """batch_name 为 None 时正常返回 execution_id"""
         result = asyncio.run(orch.run_execute_only(1, [1, 2]))
         assert result["execution_id"] == 42
@@ -592,7 +598,9 @@ class TestMonitorAndGenerateReport:
         # 不应抛出异常
         asyncio.run(orch._monitor_and_generate_report(42))
 
-        mock_sleep.assert_called_once_with(2)
+        # 使用 assert_any_call 而非 assert_called_once_with：
+        # asyncio 事件循环内部可能调用 asyncio.sleep(0)，导致 mock 计数超出预期
+        mock_sleep.assert_any_call(2)
         mock_report_svc.return_value.generate.assert_called_once_with(42)
         mock_db.close.assert_called_once()
 

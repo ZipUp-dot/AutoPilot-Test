@@ -15,6 +15,7 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
@@ -154,7 +155,6 @@ def get_heal_records(execution_id: int, db: Session = Depends(get_db)):
     返回:
         { "code": 0, "data": { "items": [...], "total": 5 } }
     """
-    from sqlalchemy import select
     step_ids = select(ExecutionStep.id).where(
         ExecutionStep.execution_id == execution_id
     )
