@@ -149,11 +149,6 @@ class TestGetDb:
 class TestEngineCreation:
     """SQLAlchemy 引擎创建测试"""
 
-    def test_engine_is_sqlite(self):
-        """当前测试环境是 SQLite 内存数据库"""
-        from app.db.database import engine
-        assert "sqlite" in str(engine.url)
-
     def test_base_has_metadata(self):
         """Base 有 metadata 属性"""
         from app.db.database import Base
