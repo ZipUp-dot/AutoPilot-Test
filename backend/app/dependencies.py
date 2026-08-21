@@ -17,18 +17,21 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def get_orchestrator(db: Session = Depends(get_db)):
-    """获取编排器实例（依赖注入：AI + Playwright + Report）
+    """获取编排器实例（依赖注入：AI + Playwright + Appium + Report）
 
     每次请求创建新的编排器实例，注入独立 DB 会话的 service 实例。
+    根据项目 platform 自动路由到 PlaywrightService（Web）或 AppiumService（Android）。
     """
     from app.services.ai_service import AIService
     from app.services.playwright_service import PlaywrightService
+    from app.services.appium_service import AppiumService
     from app.services.report_service import ReportService
     from app.services.orchestrator import TestOrchestrator
 
     return TestOrchestrator(
         ai_service=AIService(db),
         playwright_service=PlaywrightService(db),
+        appium_service=AppiumService(db),
         report_service=ReportService(db),
     )
 

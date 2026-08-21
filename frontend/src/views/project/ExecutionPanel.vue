@@ -68,6 +68,8 @@
       <el-table-column prop="batch_name" label="批次名称" min-width="160" show-overflow-tooltip>
         <template #default="{ row }">
           <span class="row-link">{{ row.batch_name || '-' }}</span>
+          <el-tag v-if="row.platform === 'android'" type="success" size="small" style="margin-left:6px">Android</el-tag>
+          <el-tag v-else-if="row.platform === 'web'" size="small" style="margin-left:6px">Web</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="执行模式" width="110" align="center">

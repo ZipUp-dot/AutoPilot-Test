@@ -9,9 +9,8 @@ from app.services.playwright_service import (
     PlaywrightService,
     _MonitorHooks,
     _build_namespace,
-    set_stop_flag,
-    clear_stop_flag,
 )
+from app.services.execution_state import set_stop_flag, clear_stop_flag
 from app.models.execution import Execution
 from app.models.execution_step import ExecutionStep
 

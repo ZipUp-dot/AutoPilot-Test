@@ -13,8 +13,9 @@
 | Web 框架 | FastAPI 0.115 |
 | ORM | SQLAlchemy 2.0 |
 | 数据库驱动 | PyMySQL 1.1 |
-| 数据库 | MySQL 8.0（生产）/ SQLite（开发调试） |
+| 数据库 | MySQL 8.0（生产） |
 | 浏览器自动化 | Playwright 1.47（Chromium 无头模式） |
+| 移动端自动化 | Appium Python Client 4.2（UiAutomator2） |
 | AI 代码生成 | OpenAI API（gpt-4o / deepseek-chat，支持 Mock 模式） |
 | HTTP 客户端 | httpx 0.27 |
 | 数据校验 | Pydantic 2.9 + pydantic-settings 2.5 |
@@ -35,94 +36,101 @@ backend/
 │   ├── config.py                # 配置加载（pydantic-settings）
 │   ├── dependencies.py          # 依赖注入（get_db 等）
 │   ├── exceptions.py            # 全局异常处理器
-│   ├── schemas.py               # Pydantic 响应模型
+│   ├── schemas.py               # Pydantic 响应模型（含 platform + config_json）
 │   ├── db/
 │   │   ├── database.py          # SQLAlchemy 引擎 + Session 工厂
 │   │   └── schema.sql           # 数据库建表脚本
-│   ├── models/                  # ORM 模型
-│   │   ├── project.py           # 项目表
-│   │   ├── element.py           # 页面元素表
+│   ├── models/                  # ORM 模型（9 张表）
+│   │   ├── project.py           # 项目表（含 platform + config_json）
+│   │   ├── element.py           # 页面元素表（含 platform + selector_type + metadata）
 │   │   ├── test_case.py         # 测试用例表
 │   │   ├── test_step.py         # 测试步骤（已合并到 test_case 的 JSON 字段）
 │   │   ├── generated_code.py    # 生成代码表
 │   │   ├── execution.py         # 执行批次表
-│   │   ├── execution_step.py    # 执行步骤表
+│   │   ├── execution_step.py    # 执行步骤表（含 exception_type）
 │   │   ├── report.py            # 执行报告表
-│   │   └── heal_record.py       # 自愈记录表
-│   ├── routers/                 # API 路由
-│   │   ├── projects.py          # 项目 CRUD
-│   │   ├── elements.py          # 元素抓取 / 列表 / 清空
+│   │   └── heal_record.py       # 自愈记录表（含 attempts JSON 数组）
+│   ├── routers/                 # API 路由（8 个）
+│   │   ├── projects.py          # 项目 CRUD（含 platform + config_json）
+│   │   ├── elements.py          # 元素抓取 / 列表 / 清空（平台感知）
 │   │   ├── cases.py             # 用例导入 / 列表 / 删除
-│   │   ├── generate.py          # 代码生成（单条 + 批量）
-│   │   ├── executions.py        # 执行管理（创建 / 轮询 / 停止）
+│   │   ├── generate.py          # 代码生成（单条 + 批量，平台感知）
+│   │   ├── executions.py        # 执行管理（创建 / 轮询 / 停止，平台分发）
 │   │   ├── reports.py           # 报告生成 / 查询
-│   │   └── heal.py              # 自愈修复
-│   ├── services/                # 业务逻辑层
-│   │   ├── project_service.py   # 项目 CRUD
-│   │   ├── element_service.py   # 元素抓取 + 7 级选择器生成
+│   │   └── heal.py              # 自愈修复（Web / Android 双分支）
+│   ├── services/                # 业务逻辑层（10 个服务）
+│   │   ├── project_service.py   # 项目 CRUD（含 platform 只读保护）
+│   │   ├── element_service.py   # 元素抓取 + 7 级选择器生成（平台感知）
 │   │   ├── case_service.py      # Excel 解析 + 用例管理
-│   │   ├── ai_service.py        # LLM 调用 + 代码生成
-│   │   ├── playwright_service.py # Playwright 执行引擎
-│   │   ├── orchestrator.py      # 执行编排器（生成→执行→监听→报告）
-│   │   ├── heal_service.py      # 自愈修复
-│   │   └── report_service.py    # HTML 报告生成
-│   ├── utils/                   # 工具模块
+│   │   ├── ai_service.py        # LLM 调用 + 代码生成（Web/Android 双平台）
+│   │   ├── playwright_service.py # Playwright 执行引擎（Web）
+│   │   ├── appium_service.py    # Appium 执行引擎（Android，同步链式调用）
+│   │   ├── android_crawl_service.py # Android 元素抓取（Appium）
+│   │   ├── orchestrator.py      # 执行编排器（平台分发 → 同步/异步线程）
+│   │   ├── heal_service.py      # 自愈修复（Web/Android 双分支）
+│   │   └── report_service.py    # HTML 报告生成（含异常类型分类）
+│   ├── utils/                   # 工具模块（6 个）
 │   │   ├── excel_parser.py      # Excel 智能解析（中文列名）
-│   │   ├── code_validator.py    # AST 语法校验 + 安全审计
-│   │   ├── code_injector.py     # 截图/日志注入
+│   │   ├── code_validator.py    # AST 语法校验 + 安全审计 + 平台合约检查
+│   │   ├── code_injector.py     # Web 截图/日志注入（异步）
+│   │   ├── appium_code_injector.py # Android 监控注入（同步，独立定义）
 │   │   └── screenshot.py        # 截图工具类
-│   ├── prompts/                 # AI Prompt 模板
-│   │   ├── __init__.py
-│   │   ├── generate_prompt.txt   # 代码生成 Prompt（每次读取，支持热更新）
-│   │   └── heal_prompt.txt       # 自愈修复 Prompt
+│   ├── prompts/                 # AI Prompt 模板（3 个）
+│   │   ├── generate_prompt.txt   # Web 代码生成 Prompt
+│   │   ├── heal_prompt.txt       # Web 自愈修复 Prompt
+│   │   └── heal_prompt_android.txt # Android 自愈修复 Prompt
 │   ├── templates/                # Jinja2 模板
 │   │   └── report_template.html  # HTML 报告模板（内联 CSS/JS/Chart.js）
 │   ├── middlewares/              # 中间件
-│   │   ├── __init__.py
 │   │   ├── logging.py            # 请求日志（method/path/status/duration/ip）
 │   │   └── timing.py             # 响应时间头
-├── tests/                       # pytest 测试套件（4 层架构）
-│   ├── __init__.py              # 包标记（空文件）
+├── tests/                       # pytest 测试套件（4 层架构，780+ 测试）
 │   ├── conftest.py              # 共享 Fixture（SQLite 内存库 + 外部依赖 Mock）
-│   ├── factories.py             # 8 个 factory-boy 工厂类
+│   ├── factories.py             # 工厂类
 │   ├── README_TEST.md           # 测试运行说明
-│   ├── unit/                    # 第一层：单元测试（基础设施/模型/工具）
-│   │   ├── test_config.py       # pydantic-settings 配置解析
-│   │   ├── test_database.py     # SQLAlchemy 建表 + init() 生命周期
-│   │   ├── test_dependencies.py # 分页/项目查询依赖注入
-│   │   ├── test_exceptions.py   # 自定义异常 + 全局处理器
-│   │   ├── test_middlewares.py  # Logging/Timing 中间件
-│   │   ├── test_models.py       # 8 个 ORM 模型 + 级联删除
-│   │   ├── test_utils_excel.py  # Excel 解析（中文列名、3 种步骤格式）
-│   │   ├── test_utils_validator.py # AST 语法校验 + 安全黑名单
-│   │   ├── test_utils_injector.py  # AST 代码注入 __monitor_before/after
-│   │   └── test_utils_screenshot.py # 截图路径生成
-│   ├── services/                # 第二层：服务层测试
-│   │   ├── test_service_project.py    # Project CRUD
-│   │   ├── test_service_ai.py         # LLM 代码生成
-│   │   ├── test_service_playwright.py # 执行引擎 + MonitorHooks + 沙箱
-│   │   ├── test_service_element.py    # 元素抓取 + 7 级选择器
-│   │   ├── test_service_orchestrator.py # 全流水线编排
-│   │   ├── test_service_case.py       # Excel 导入 + 用例管理
-│   │   ├── test_service_heal.py       # 自愈修复逻辑
-│   │   └── test_service_report.py     # HTML 报告 + 过期清理
-│   ├── routers/                 # 第三层：路由集成测试
-│   │   ├── test_routers_init.py      # router 聚合导入验证
-│   │   ├── test_routers_projects.py  # 项目 CRUD 路由
-│   │   ├── test_routers_elements.py  # 元素抓取/查询路由
-│   │   ├── test_routers_cases.py     # 用例导入/查询路由
-│   │   ├── test_routers_generate.py  # 代码生成路由
-│   │   ├── test_routers_executions.py # 执行管理路由
-│   │   ├── test_routers_heal.py      # 自愈修复路由
-│   │   └── test_routers_reports.py   # 报告生成路由
-│   └── integration/             # 第四层：端到端集成测试
-│       ├── test_integration_main.py     # 健康检查/CORS/静态文件/生命周期
-│       └── test_integration_pipeline.py # 完整 7 步闭环 + 异常流水线
-├── data/                        # 数据目录（SQLite 模式数据库文件）
+│   ├── unit/                    # 第一层：单元测试（14 文件）
+│   │   ├── test_config.py
+│   │   ├── test_database.py
+│   │   ├── test_dependencies.py
+│   │   ├── test_exceptions.py
+│   │   ├── test_middlewares.py
+│   │   ├── test_models.py
+│   │   ├── test_utils_excel.py
+│   │   ├── test_utils_validator.py
+│   │   ├── test_utils_injector.py
+│   │   ├── test_utils_screenshot.py
+│   │   ├── test_utils_appium_injector.py # Appium 代码注入测试
+│   │   ├── test_validator_android.py     # Android 合约校验测试
+│   │   ├── test_element_locator.py       # 元素定位器测试
+│   │   └── test_platform.py              # 平台隔离测试
+│   ├── services/                # 第二层：服务层测试（10 文件）
+│   │   ├── test_service_project.py
+│   │   ├── test_service_ai.py
+│   │   ├── test_service_playwright.py
+│   │   ├── test_service_appium.py        # Appium 执行引擎测试
+│   │   ├── test_service_element.py
+│   │   ├── test_service_orchestrator.py  # 平台分发编排测试
+│   │   ├── test_service_case.py
+│   │   ├── test_service_heal.py
+│   │   ├── test_service_report.py
+│   │   └── test_migration.py             # 数据库迁移测试
+│   ├── routers/                 # 第三层：路由集成测试（8 文件）
+│   │   ├── test_routers_init.py
+│   │   ├── test_routers_projects.py
+│   │   ├── test_routers_elements.py
+│   │   ├── test_routers_cases.py
+│   │   ├── test_routers_generate.py
+│   │   ├── test_routers_executions.py
+│   │   ├── test_routers_heal.py
+│   │   └── test_routers_reports.py
+│   └── integration/             # 第四层：端到端集成测试（2 文件）
+│       ├── test_integration_main.py
+│       └── test_integration_pipeline.py
+├── data/                        # 数据目录
 ├── uploads/                     # 上传文件
 │   ├── screenshots/             # 执行截图（按 execution_id/case_id 组织）
-│   ├── excels/                  # 导入的 Excel 文件（按 project_id 组织）
-│   └── videos/                  # 视频录制（headed 模式自动录制）
+│   ├── excels/                  # 导入的 Excel 文件
+│   └── videos/                  # 视频录制
 ├── reports/                     # 生成的 HTML 报告（30 天自动清理）
 ├── _logs/                       # 运行日志
 ├── .env.example                 # 环境变量模板
@@ -443,18 +451,27 @@ projects (1)
 
 **级联规则**：删除项目 → 级联删除所有关联数据（元素、用例、执行、报告、自愈记录）
 
-### 8 张表
+### 9 张表
 
 | 表名 | 说明 | 核心字段 |
 |------|------|----------|
-| `projects` | 项目 | name, target_url, test_path, browser_type, headless |
-| `page_elements` | 页面元素 | element_type, selector, text_content, bounding_box |
+| `projects` | 项目 | name, target_url, test_path, browser_type, headless, platform, config_json |
+| `page_elements` | 页面元素 | element_type, selector, text_content, bounding_box, platform, selector_type, metadata |
 | `test_cases` | 测试用例 | case_name, case_no, priority, steps(JSON), status |
 | `generated_codes` | 生成代码 | code_content, is_valid, is_healed, ai_model |
-| `executions` | 执行批次 | total_cases, passed_cases, failed_cases, status |
-| `execution_steps` | 执行步骤 | action, target_selector, screenshot_before/after, status |
+| `executions` | 执行批次 | total_cases, passed_cases, failed_cases, status, platform |
+| `execution_steps` | 执行步骤 | action, target_selector, screenshot_before/after, status, exception_type |
 | `execution_reports` | 执行报告 | report_html, report_summary(JSON), download_url |
-| `heal_records` | 自愈记录 | original_code, healed_code, retry_status, retry_count |
+| `heal_records` | 自愈记录 | original_code, healed_code, retry_status, retry_count, attempts(JSON) |
+
+**V1.1 新增字段**：
+- `projects.platform` — 项目平台（web/android），创建后只读
+- `projects.config_json` — JSON 配置（Android：appium_server_url, app_package 等）
+- `page_elements.platform` — 元素所属平台（web/android）
+- `page_elements.selector_type` — 定位器类型（css/xpath/resource-id/content-desc 等）
+- `page_elements.metadata` — 元素额外元数据（JSON）
+- `execution_steps.exception_type` — 异常类型（NoSuchElementException 等）
+- `heal_records.attempts` — 自愈尝试记录（JSON 数组）
 
 完整建表语句见 [app/db/schema.sql](app/db/schema.sql)。
 
@@ -468,13 +485,13 @@ projects (1)
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET` | `/projects/` | 分页项目列表（?page=1&size=20） |
-| `POST` | `/projects/` | 创建项目 |
-| `GET` | `/projects/{id}` | 项目详情 |
-| `PUT` | `/projects/{id}` | 更新项目 |
+| `GET` | `/projects/` | 分页项目列表（含 platform 标签） |
+| `POST` | `/projects/` | 创建项目（含 platform + config_json） |
+| `GET` | `/projects/{id}` | 项目详情（含完整 config_json） |
+| `PUT` | `/projects/{id}` | 更新项目（platform 创建后只读） |
 | `DELETE` | `/projects/{id}` | 删除项目（级联删除所有关联数据） |
 
-**创建项目示例：**
+**创建项目请求：**
 
 ```json
 {
@@ -482,17 +499,31 @@ projects (1)
   "target_url": "https://example.com",
   "test_path": "/",
   "browser_type": "chromium",
-  "headless": true
+  "headless": true,
+  "platform": "web",
+  "config_json": {
+    "appium_server_url": "http://localhost:4723",
+    "app_package": "com.example.app",
+    "app_activity": ".MainActivity",
+    "device_name": "emulator-5554",
+    "platform_version": "12.0",
+    "automation_engine": "uiautomator2"
+  }
 }
 ```
+
+> **platform** 可选 web / android，创建后不可修改。
+> **config_json** 用于 Android 平台配置，Web 项目可省略。
 
 ### 元素抓取
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/projects/{id}/elements/crawl` | 触发 Playwright 元素抓取 |
-| `GET` | `/projects/{id}/elements/` | 元素列表（?keyword=&element_type=&page=&size=） |
-| `DELETE` | `/projects/{id}/elements/` | 清空所有元素 |
+| `POST` | `/projects/{id}/elements/crawl` | 触发元素抓取（Web 用 Playwright，Android 用 Appium） |
+| `GET` | `/projects/{id}/elements/` | 元素列表（平台感知，仅返回当前项目平台的元素） |
+| `DELETE` | `/projects/{id}/elements/` | 清空元素（仅当前项目平台） |
+
+**Web 选择器生成优先级**（7 级降级策略）：
 
 **抓取请求：**
 
@@ -509,6 +540,14 @@ projects (1)
 5. 稳定 class（排除动态 hash 类）
 6. 文本内容 `:has-text()`
 7. `nth-child` 兜底
+
+**Android 定位器优先级**（5 级策略）：
+
+1. `resource-id`（AppiumBy.ID）
+2. `content-desc`（AppiumBy.ACCESSIBILITY_ID）
+3. `text` 文本（AppiumBy.XPATH）
+4. `class` + 属性（AppiumBy.XPATH）
+5. XPath 兜底
 
 ### 用例管理
 
@@ -539,19 +578,19 @@ projects (1)
 
 **生成流程：**
 
-1. 查询用例 steps + 项目 elements
+1. 查询用例 steps + 项目 elements（平台感知，仅查询当前平台元素）
 2. 智能匹配步骤 target 到页面元素 selector
-3. 调用 LLM 生成 Playwright Python 异步代码
-4. `ast.parse` 语法校验 + 安全黑名单检查
+3. 调用 LLM 生成代码（Web 生成 Playwright 异步代码，Android 生成 Appium 同步链式代码）
+4. `ast.parse` 语法校验 + 安全黑名单检查 + 平台合约检查（Web: async def run_test(page)，Android: def run_test(driver)）
 5. 存入 `generated_codes` 表，更新用例状态为 `generated`
 
 ### 执行引擎
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/projects/{id}/executions` | 创建并启动执行批次 |
+| `POST` | `/projects/{id}/executions` | 创建并启动执行批次（平台感知，自动分发到对应执行引擎） |
 | `GET` | `/projects/{id}/executions` | 项目执行历史列表 |
-| `GET` | `/executions/{id}` | 执行详情（含步骤列表 + 截图） |
+| `GET` | `/executions/{id}` | 执行详情（含步骤列表 + 截图 + 平台标签） |
 | `GET` | `/executions/{id}/status` | 轮询执行进度（前端 2s 轮询） |
 | `POST` | `/executions/{id}/stop` | 停止正在进行的执行 |
 
@@ -573,7 +612,11 @@ pending → running → healing → completed
         stopped     stopped
 ```
 
-**安全门禁**：未生成有效代码的用例将被拦截，拒绝执行。
+**平台分发机制**：
+- Web 项目 → `PlaywrightService.execute()`（异步 `asyncio.run`）
+- Android 项目 → `AppiumService.execute()`（同步 `Thread` 内直接调用）
+
+**安全门禁**：未生成有效代码的用例将被拦截，拒绝执行。跨项目 case_id 将被拒绝。
 
 ### 报告
 
@@ -587,6 +630,8 @@ pending → running → healing → completed
 - 离线 HTML（内联 CSS + JS + Chart.js）
 - 饼图 + 柱状图（通过/失败/耗时分布）
 - 步骤截图对比（执行前 / 执行后）
+- 平台标签（Web / Android）
+- 异常类型分类（NoSuchElementException / StaleElementReferenceException / TimeoutException / WebDriverException）
 - Lightbox 图片预览
 - JSON / CSV 导出
 - 打印样式优化
@@ -600,11 +645,18 @@ pending → running → healing → completed
 | `GET` | `/executions/{id}/heal-records` | 查询自愈记录 |
 
 **自愈策略：**
-1. 页面重新抓取当前元素
+1. 页面重新抓取当前元素（Web 用 Playwright，Android 用 Appium）
 2. 基于失败步骤的 error context 重新生成选择器
-3. LLM 分析错误上下文，生成修复代码
-4. `ast.parse` 校验修复代码
+3. LLM 分析错误上下文（Web：通用错误信息，Android：异常类型 + 截图 + 页面源码），生成修复代码
+4. `ast.parse` 校验修复代码 + 平台合约检查
 5. 标记 `is_healed=1`，更新 `generated_codes`
+6. 自愈尝试记录保存到 `heal_records.attempts` JSON 数组
+
+**Android 异常分类**：
+- `NoSuchElementException` → ElementNotFoundError
+- `StaleElementReferenceException` → StaleElementError
+- `TimeoutException` → TimeoutError
+- `WebDriverException` → DriverError（通用）
 
 ### 统一响应格式
 
@@ -634,16 +686,19 @@ pending → running → healing → completed
 ┌──────────┐    ┌──────────┐    ┌──────────┐
 │ 创建项目  │ →  │ 元素抓取  │ →  │ 导入用例  │
 │ 配置URL   │    │ Playwright│    │ Excel上传 │
+│ 或Android │    │ 或Appium │    │ 统一格式  │
 └──────────┘    └──────────┘    └──────────┘
                                       ↓
 ┌──────────┐    ┌──────────┐    ┌──────────┐
 │ 查看报告  │ ←  │ 执行测试  │ ←  │ 代码生成  │
 │ HTML离线  │    │ 轮询进度  │    │ AI+校验   │
+│ 异常分类  │    │ 平台分发  │    │ 平台感知  │
 └──────────┘    └──────────┘    └──────────┘
                      ↓ 失败
                ┌──────────┐
                │ 自愈修复  │
-               │ 重新生成  │
+               │ Web/Android│
+               │ 异常分类  │
                └──────────┘
 ```
 
@@ -685,16 +740,16 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 
 | 指标 | 数值 | 目标 |
 |------|------|------|
-| 测试用例 | 662 passed / 1 skipped | 全通过 |
-| **语句覆盖率** | **92%** | ≥ 90% ✅ |
-| **分支覆盖率** | **89.6%**（748 分支，78 部分覆盖） | ≥ 80% ✅ |
+| 测试用例 | 780 passed / 1 skipped | 全通过 |
+| **语句覆盖率** | **≥ 90%** | ≥ 90% ✅ |
+| **分支覆盖率** | **≥ 80%** | ≥ 80% ✅ |
 
 ### 各层覆盖情况
 
 | 层级 | 目录 | 覆盖内容 |
 |------|------|----------|
-| 单元测试 | `tests/unit/`（10 文件） | 配置、数据库、异常、中间件、8 个 ORM 模型、Excel 解析、AST 校验/注入、截图 |
-| 服务层 | `tests/services/`（8 文件） | Project CRUD、LLM 生成、执行引擎+沙箱、元素抓取+7 级选择器、编排器、Excel 导入、自愈、报告 |
+| 单元测试 | `tests/unit/`（14 文件） | 配置、数据库、异常、中间件、9 个 ORM 模型、Excel 解析、AST 校验/注入、Appium 注入、Android 合约、元素定位器、平台隔离、截图 |
+| 服务层 | `tests/services/`（10 文件） | Project CRUD、LLM 生成、Web 执行引擎、Appium 执行引擎、元素抓取+7 级选择器、编排器+平台分发、Excel 导入、自愈+Android 分支、报告+异常分类、数据库迁移 |
 | 路由层 | `tests/routers/`（8 文件） | 项目/元素/用例/生成/执行/自愈/报告全部 API 端点 |
 | 集成测试 | `tests/integration/`（2 文件） | 健康检查/CORS/静态文件/生命周期 + 完整 7 步业务闭环 + 异常流水线 |
 
@@ -733,6 +788,7 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 | `PLAYWRIGHT_TIMEOUT` | `30000` | 页面加载超时（ms） |
 | `PLAYWRIGHT_HEADLESS` | `true` | 无头模式 |
 | `MAX_HEAL_RETRY` | `3` | 自愈最大重试次数 |
+| `APPIUM_URL` | `http://localhost:4723` | Appium Server 地址 |
 | `UPLOAD_DIR` | `./uploads` | 上传文件目录 |
 | `REPORT_DIR` | `./reports` | HTML 报告输出目录 |
 | `SCREENSHOT_DIR` | `./uploads/screenshots` | 截图存储目录 |
@@ -743,6 +799,6 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 | `CORS_ORIGINS` | `["http://localhost:5173","http://127.0.0.1:5173","http://localhost:5174","http://127.0.0.1:5174"]` | 允许的前端域名 |
 | `APP_TITLE` | `AutoPilot API` | 应用标题（Swagger 显示） |
 | `API_PREFIX` | `/api/v1` | API 路径前缀 |
-| `APP_VERSION` | `1.0.0` | 应用版本号 |
+| `APP_VERSION` | `1.1.0` | 应用版本号 |
 
 > **注意**：`TOOLHOST_SANDBOX_DISABLED=true` 由 `main.py` 在启动时自动设置，无需在 `.env` 中配置。

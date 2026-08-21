@@ -20,6 +20,7 @@
       <el-table :data="recentExecutions" size="small" @row-click="(row) => router.push(`/executions/${row.id}`)" style="cursor:pointer">
         <el-table-column prop="batch_name" label="批次名称" />
         <el-table-column prop="project_name" label="项目" />
+        <el-table-column label="平台" width="80"><template #default="{row}"><el-tag :type="row.platform === 'android' ? 'success' : ''" size="small">{{ row.platform === 'android' ? 'Android' : 'Web' }}</el-tag></template></el-table-column>
         <el-table-column label="模式" width="90"><template #default="{row}"><el-tag size="small">{{ row.execution_mode }}</el-tag></template></el-table-column>
         <el-table-column label="状态" width="100"><template #default="{row}"><ExecutionStatusTag :status="row.status" /></template></el-table-column>
         <el-table-column label="通过" width="60"><template #default="{row}">{{ row.passed_cases }}/{{ row.total_cases }}</template></el-table-column>

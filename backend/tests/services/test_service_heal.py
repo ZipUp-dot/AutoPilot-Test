@@ -1289,3 +1289,302 @@ class TestFilterStableClasses:
     def test_empty_input(self):
         result = _filter_stable_classes([])
         assert result == []
+
+
+# ═══════════════════════════════════════════════
+# _save_heal_record / _update_heal_record — Attempt 追踪
+# ═══════════════════════════════════════════════
+
+class TestHealAttempts:
+    """_save_heal_record() 和 _update_heal_record() 的 attempt 追踪"""
+
+    def test_attempt_1_created(self, db_session, sample_project, sample_test_case, sample_execution):
+        """第一次保存创建 attempt 1"""
+        step = ExecutionStep(
+            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            action="click", status="failed",
+        )
+        db_session.add(step)
+        db_session.commit()
+
+        svc = HealService(db_session)
+        record = svc._save_heal_record(
+            step_id=step.id,
+            original_code="await page.click('#btn')",
+            error_ctx={"error": "timeout", "type": "TimeoutError"},
+            healed_code="await page.click('#new-btn')",
+            prompt="fix this",
+            retry_count=1,
+        )
+
+        attempts = json.loads(record.attempts)
+        assert len(attempts) == 1
+        assert attempts[0]["attempt"] == 1
+        assert attempts[0]["status"] == "retrying"
+        assert "await page.click('#new-btn')" in attempts[0]["generated_code"]
+
+    def test_attempt_2_updated(self, db_session, sample_project, sample_test_case, sample_execution):
+        """第二次更新时 attempts 状态变更"""
+        step = ExecutionStep(
+            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            action="click", status="failed",
+        )
+        db_session.add(step)
+        db_session.commit()
+
+        svc = HealService(db_session)
+        record = svc._save_heal_record(
+            step_id=step.id,
+            original_code="await page.click('#btn')",
+            error_ctx={"error": "timeout"},
+            healed_code="await page.click('#new-btn')",
+            prompt="fix this",
+            retry_count=2,
+        )
+
+        # 初始状态为 retrying
+        attempts = json.loads(record.attempts)
+        assert attempts[0]["status"] == "retrying"
+
+        # 更新为 success
+        svc._update_heal_record(record.id, "success")
+        db_session.refresh(record)
+        attempts = json.loads(record.attempts)
+        assert attempts[0]["status"] == "success"
+        assert attempts[0]["error"] == ""
+
+    def test_attempts_order(self, db_session, sample_project, sample_test_case, sample_execution):
+        """多记录按创建时间有序"""
+        step = ExecutionStep(
+            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            action="click", status="failed",
+        )
+        db_session.add(step)
+        db_session.commit()
+
+        svc = HealService(db_session)
+        r1 = svc._save_heal_record(
+            step_id=step.id, original_code="code1", error_ctx={},
+            healed_code="fixed1", prompt="p1", retry_count=1,
+        )
+        r2 = svc._save_heal_record(
+            step_id=step.id, original_code="code2", error_ctx={},
+            healed_code="fixed2", prompt="p2", retry_count=2,
+        )
+
+        assert r1.id < r2.id
+        assert json.loads(r1.attempts)[0]["attempt"] == 1
+        assert json.loads(r2.attempts)[0]["attempt"] == 2
+
+
+# ═══════════════════════════════════════════════
+# Android 自愈上下文
+# ═══════════════════════════════════════════════
+
+class TestHealAndroidContext:
+    """Android 自愈上下文"""
+
+    def test_android_context_fields(self, db_session, sample_project, sample_test_case, sample_execution):
+        """Android 上下文包含所有 9 个必填字段"""
+        step = ExecutionStep(
+            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            action="click", status="failed",
+        )
+        db_session.add(step)
+        db_session.commit()
+
+        android_ctx = {
+            "action": "click",
+            "target": "#btn",
+            "value": "",
+            "error_type": "TimeoutError",
+            "error_message": "Timeout 30000ms exceeded",
+            "exception_type": "TimeoutException",
+            "selector_type": "xpath",
+            "page_source": '<?xml version="1.0"?><hierarchy><node class="android.widget.Button" text="Submit"/></hierarchy>',
+            "screenshot_before": "/path/to/before.png",
+            "screenshot_after": "/path/to/after.png",
+            "visible_elements": '[Button] text="Submit" clickable',
+        }
+
+        svc = HealService(db_session)
+        record = svc._save_heal_record(
+            step_id=step.id,
+            original_code="def run_test(driver): pass",
+            error_ctx=android_ctx,
+            healed_code="def run_test(driver):\n    driver.find_element()",
+            prompt="fix android test",
+            retry_count=1,
+        )
+
+        ctx = json.loads(record.error_context)
+        assert ctx["action"] == "click"
+        assert ctx["error_type"] == "TimeoutError"
+        assert ctx["error_message"] == "Timeout 30000ms exceeded"
+        assert ctx["exception_type"] == "TimeoutException"
+        assert ctx["selector_type"] == "xpath"
+        assert "page_source" in ctx
+        assert "screenshot_before" in ctx
+        assert "screenshot_after" in ctx
+        assert "visible_elements" in ctx
+        assert len(ctx) >= 9
+
+    def test_android_heal_prompt_build(self, heal_svc):
+        """Android 自愈 Prompt 构建正确"""
+        from unittest.mock import MagicMock
+
+        step = MagicMock()
+        step.step_index = 1
+        step.action = "click"
+        step.target_selector = "#btn"
+
+        error_ctx = {
+            "action": "click",
+            "target": "#btn",
+            "value": "",
+            "error_type": "TimeoutError",
+            "error_message": "Timeout 30000ms exceeded",
+            "exception_type": "TimeoutException",
+            "selector_type": "xpath",
+            "page_source": "<hierarchy><node class=\"Button\"/></hierarchy>",
+            "screenshot_before": "/path/to/before.png",
+            "screenshot_after": "/path/to/after.png",
+            "visible_elements": "[Button] text=Submit",
+        }
+        original_code = "def run_test(driver): pass"
+
+        prompt = heal_svc._build_heal_prompt(error_ctx, original_code, step, platform="android")
+
+        assert original_code in prompt
+        assert "1" in prompt
+        assert "click" in prompt
+        assert "#btn" in prompt
+        assert "Timeout 30000ms exceeded" in prompt
+        assert "TimeoutException" in prompt
+        assert "xpath" in prompt
+        assert "<hierarchy>" in prompt
+        assert "[Button]" in prompt
+        # 确认没有残留占位符
+        assert "{original_code}" not in prompt
+        assert "{error_message}" not in prompt
+        assert "{exception_type}" not in prompt
+        assert "{page_source}" not in prompt
+        assert "{visible_elements}" not in prompt
+        # 不应包含 Web 占位符
+        assert "{dom_snapshot}" not in prompt
+        assert "{elements_list}" not in prompt
+
+
+# ═══════════════════════════════════════════════
+# 自愈记录持久化
+# ═══════════════════════════════════════════════
+
+class TestHealHistoryPersistence:
+    """自愈记录持久化查询"""
+
+    def test_heal_record_persists(self, db_session, sample_project, sample_test_case, sample_execution):
+        """自愈记录保存后可查询回"""
+        step = ExecutionStep(
+            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            action="click", status="failed",
+        )
+        db_session.add(step)
+        db_session.commit()
+
+        svc = HealService(db_session)
+        record = svc._save_heal_record(
+            step_id=step.id,
+            original_code="await page.click('#btn')",
+            error_ctx={"error": "timeout"},
+            healed_code="await page.click('#new-btn')",
+            prompt="fix this",
+            retry_count=1,
+        )
+
+        # 按 ID 查询
+        queried = db_session.query(HealRecord).filter(HealRecord.id == record.id).first()
+        assert queried is not None
+        assert queried.id == record.id
+        assert queried.original_code == "await page.click('#btn')"
+        assert queried.healed_code == "await page.click('#new-btn')"
+        assert queried.retry_status == "retrying"
+        assert queried.retry_count == 1
+
+    def test_heal_records_by_execution(self, db_session, sample_project, sample_test_case, sample_execution):
+        """可按 execution_step_id 查询自愈记录"""
+        step = ExecutionStep(
+            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            action="click", status="failed",
+        )
+        db_session.add(step)
+        db_session.commit()
+
+        svc = HealService(db_session)
+        svc._save_heal_record(
+            step_id=step.id, original_code="code1", error_ctx={},
+            healed_code="fixed1", prompt="p1", retry_count=1,
+        )
+        svc._save_heal_record(
+            step_id=step.id, original_code="code2", error_ctx={},
+            healed_code="fixed2", prompt="p2", retry_count=2,
+        )
+
+        records = (
+            db_session.query(HealRecord)
+            .filter(HealRecord.execution_step_id == step.id)
+            .order_by(HealRecord.retry_count)
+            .all()
+        )
+        assert len(records) == 2
+        assert records[0].retry_count == 1
+        assert records[1].retry_count == 2
+
+
+# ═══════════════════════════════════════════════
+# 原始代码 — 自愈复用
+# ═══════════════════════════════════════════════
+
+class TestHealOriginalCode:
+    """自愈过程中原始代码的获取与不变性"""
+
+    def test_uses_original_code_from_db(self, heal_svc_db, sample_generated_code):
+        """自愈优先使用 GeneratedCode 表中的原始代码"""
+        code = heal_svc_db._get_original_code(sample_generated_code.case_id)
+        assert code == sample_generated_code.code_content
+        assert "async def run_test" in code
+
+    def test_original_code_unchanged_across_attempts(self, db_session, sample_project, sample_test_case, sample_execution, sample_generated_code):
+        """多次自愈不会修改原始代码"""
+        step = ExecutionStep(
+            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            action="click", status="failed",
+        )
+        db_session.add(step)
+        db_session.commit()
+
+        svc = HealService(db_session)
+
+        # 第一次自愈
+        original = svc._get_original_code(sample_generated_code.case_id)
+        assert original == sample_generated_code.code_content
+
+        # 模拟两次自愈保存
+        svc._save_heal_record(
+            step_id=step.id, original_code=original, error_ctx={},
+            healed_code="fixed1", prompt="p1", retry_count=1,
+        )
+
+        # 原始代码不变
+        original_again = svc._get_original_code(sample_generated_code.case_id)
+        assert original_again == original
+        assert original_again == sample_generated_code.code_content
+
+        # 第二次自愈后原始代码仍不变
+        svc._save_heal_record(
+            step_id=step.id, original_code=original, error_ctx={},
+            healed_code="fixed2", prompt="p2", retry_count=2,
+        )
+
+        final_original = svc._get_original_code(sample_generated_code.case_id)
+        assert final_original == sample_generated_code.code_content
+        assert "fixed" not in final_original

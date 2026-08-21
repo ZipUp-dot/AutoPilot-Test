@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, func
 from pydantic import BaseModel
 
 from app.db.database import Base
@@ -22,6 +22,7 @@ class HealRecord(Base):
     heal_prompt = Column(String)
     retry_status = Column(String, default="pending")
     retry_count = Column(Integer, default=0)
+    attempts = Column(Text, default="[]")
     created_at = Column(DateTime, default=func.now())
 
 

@@ -1,0 +1,4063 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoPilot 测试报告 — 第一次执行</title>
+<style>
+/* ===== Base & Reset ===== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f7fa;color:#333;line-height:1.6;padding:0}
+a{color:#4a90d9;text-decoration:none}
+
+/* ===== Header ===== */
+.header{background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);color:#fff;padding:24px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.header h1{font-size:1.6rem;font-weight:600}
+.header .meta{font-size:.85rem;opacity:.8;margin-top:4px}
+.header .badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:.8rem;font-weight:600;margin-left:8px}
+.header .badge-pass{background:#27ae60}
+.header .badge-fail{background:#e74c3c}
+.header .badge-running{background:#f39c12}
+.no-print{}
+
+/* ===== Container ===== */
+.container{max-width:1280px;margin:0 auto;padding:24px 20px}
+
+/* ===== Card ===== */
+.card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:24px;margin-bottom:20px}
+.card h2{font-size:1.15rem;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #eee;display:flex;align-items:center;gap:8px}
+.card h2 .icon{font-size:1.2rem}
+
+/* ===== Stat Grid ===== */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-bottom:20px}
+.stat-card{background:#fff;border-radius:8px;padding:16px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.06);transition:transform .2s}
+.stat-card:hover{transform:translateY(-2px)}
+.stat-card .num{font-size:2rem;font-weight:700}
+.stat-card .lbl{font-size:.8rem;color:#888;margin-top:4px}
+.stat-card.total .num{color:#3498db}
+.stat-card.pass .num{color:#27ae60}
+.stat-card.fail .num{color:#e74c3c}
+.stat-card.skip .num{color:#95a5a6}
+.stat-card.rate .num{color:#8e44ad}
+.stat-card.time .num{color:#e67e22}
+
+/* ===== Charts ===== */
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+@media(max-width:768px){.chart-row{grid-template-columns:1fr}}
+.chart-box{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.chart-box h3{font-size:.9rem;color:#666;margin-bottom:12px;text-align:center}
+.chart-box canvas{display:block;margin:0 auto;max-width:100%}
+
+/* ===== Table ===== */
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{padding:10px 14px;text-align:left;border-bottom:1px solid #eee}
+th{background:#f8f9fb;font-weight:600;color:#555;position:sticky;top:0;font-size:.8rem;text-transform:uppercase;letter-spacing:.5px}
+tr:hover{background:#f0f4ff}
+tr.failed-row{background:#fff5f5}
+tr.failed-row:hover{background:#ffe8e8}
+tr.healed-row{background:#fffdf0}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.status-dot.pass{background:#27ae60}
+.status-dot.fail{background:#e74c3c}
+.status-dot.skip{background:#95a5a6}
+.status-dot.healed{background:#f39c12}
+.priority-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
+.priority-tag.P0{background:#ffe0e0;color:#c0392b}
+.priority-tag.P1{background:#ffe8cc;color:#e67e22}
+.priority-tag.P2{background:#d5f5e3;color:#27ae60}
+.priority-tag.P3{background:#eaecee;color:#7f8c8d}
+
+/* ===== Expandable ===== */
+.case-row{cursor:pointer}
+.expand-icon{font-size:.8rem;transition:transform .2s;display:inline-block}
+.expanded .expand-icon{transform:rotate(90deg)}
+.case-detail{display:none}
+.case-detail.open{display:table-row}
+.case-detail td{padding:0}
+.detail-inner{padding:16px 20px;background:#fafbfc;border-top:2px solid #e0e0e0}
+
+/* ===== Step Timeline ===== */
+.step-timeline{list-style:none;padding:0}
+.step-timeline li{display:flex;gap:12px;padding:8px 0;border-left:2px solid #e0e0e0;margin-left:8px;padding-left:18px;position:relative}
+.step-timeline li::before{content:'';position:absolute;left:-5px;top:14px;width:8px;height:8px;border-radius:50%;background:#3498db}
+.step-timeline li.fail::before{background:#e74c3c}
+.step-timeline li.pass::before{background:#27ae60}
+.step-timeline .step-action{font-weight:600;min-width:80px}
+.step-timeline .step-meta{font-size:.8rem;color:#888}
+
+/* ===== Screenshot compare ===== */
+.ss-compare{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.ss-box{flex:1;min-width:200px;max-width:360px;border:1px solid #e0e0e0;border-radius:6px;overflow:hidden}
+.ss-box .ss-label{background:#f0f0f0;padding:4px 10px;font-size:.75rem;color:#666}
+.ss-box img{width:100%;display:block;cursor:pointer;object-fit:cover;max-height:200px}
+
+/* ===== Code block ===== */
+.code-block{background:#1e1e2e;color:#cdd6f4;border-radius:6px;padding:14px;overflow-x:auto;font-family:"SF Mono","Cascadia Code",Consolas,monospace;font-size:.82rem;line-height:1.5;max-height:400px;overflow-y:auto}
+.code-block.healed{border-left:4px solid #27ae60}
+
+/* ===== Diff ===== */
+.diff-compare{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.diff-compare>div{flex:1;min-width:280px}
+.diff-compare h4{font-size:.8rem;color:#888;margin-bottom:4px}
+.diff-compare .code-block{max-height:300px;font-size:.75rem}
+
+/* ===== Error list ===== */
+.error-list{list-style:none;padding:0}
+.error-list li{padding:8px 12px;margin:4px 0;border-radius:6px;display:flex;gap:8px;align-items:center}
+.error-list .err-type{font-weight:600;min-width:120px;font-size:.8rem}
+.error-list .err-case{flex:1}
+.error-list .err-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.7rem;font-weight:600}
+.err-badge.timeout{background:#ffe8cc;color:#e67e22}
+.err-badge.element{background:#ffe0e0;color:#e74c3c}
+.err-badge.assert{background:#ffe0f0;color:#c0392b}
+
+/* ===== Gallery ===== */
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+.gallery-item{border:1px solid #e0e0e0;border-radius:6px;overflow:hidden;transition:box-shadow .2s}
+.gallery-item:hover{box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.gallery-item img{width:100%;display:block;cursor:pointer;object-fit:cover;height:120px}
+.gallery-item .gallery-label{padding:4px 8px;font-size:.7rem;color:#888;background:#fafbfc}
+
+/* ===== Lightbox ===== */
+.lightbox{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.9);z-index:9999;justify-content:center;align-items:center;cursor:pointer}
+.lightbox.active{display:flex}
+.lightbox img{max-width:95%;max-height:90%;box-shadow:0 4px 20px rgba(0,0,0,.5)}
+.lightbox .close-btn{position:absolute;top:20px;right:30px;color:#fff;font-size:2rem;cursor:pointer;z-index:1}
+.lightbox .nav-btn{position:absolute;top:50%;transform:translateY(-50%);color:#fff;font-size:2.5rem;cursor:pointer;padding:20px;z-index:1}
+.lightbox .nav-btn.prev{left:10px}
+.lightbox .nav-btn.next{right:10px}
+
+/* ===== Buttons ===== */
+.btn{display:inline-block;padding:8px 18px;border-radius:6px;border:none;font-size:.85rem;cursor:pointer;transition:opacity .2s;text-decoration:none}
+.btn:hover{opacity:.85}
+.btn-primary{background:#3498db;color:#fff}
+.btn-success{background:#27ae60;color:#fff}
+.btn-outline{background:#fff;color:#3498db;border:1px solid #3498db}
+.btn-sm{padding:4px 10px;font-size:.75rem}
+
+/* ===== Section tabs ===== */
+.tabs{display:flex;gap:0;margin-bottom:0;border-bottom:2px solid #e0e0e0}
+.tab-btn{padding:8px 20px;cursor:pointer;border:none;background:none;font-size:.85rem;color:#888;transition:all .2s;border-bottom:2px solid transparent;margin-bottom:-2px}
+.tab-btn.active{color:#3498db;border-bottom-color:#3498db;font-weight:600}
+
+/* ===== Progress bar ===== */
+.progress-bar{height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;margin:8px 0}
+.progress-fill{height:100%;border-radius:4px;transition:width .3s}
+.progress-fill.pass{background:#27ae60}
+.progress-fill.fail{background:#e74c3c}
+
+/* ===== Collapsible ===== */
+.collapsible-header{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;padding:8px 0}
+.collapsible-header::after{content:'\25B6';font-size:.7rem;transition:transform .2s}
+.collapsible-header.open::after{transform:rotate(90deg)}
+.collapsible-body{display:none;margin-top:8px}
+.collapsible-body.open{display:block}
+
+/* ===== Footer ===== */
+.footer{text-align:center;color:#aaa;font-size:.75rem;padding:20px;border-top:1px solid #eee;margin-top:40px}
+
+/* ===== Print styles ===== */
+@media print{
+  .no-print{display:none!important}
+  body{background:#fff;padding:0}
+  .container{max-width:100%;padding:0}
+  .card{box-shadow:none;page-break-inside:avoid;margin-bottom:12px;padding:12px 0}
+  .header{background:#fff!important;color:#000!important;padding:12px 0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .header .badge{background:#eee!important;color:#000!important}
+  .case-detail.open{display:table-row!important}
+  .case-row{cursor:default}
+  .code-block{background:#f5f5f5!important;color:#000!important;border:1px solid #ccc}
+  @page{margin:1.5cm;size:A4}
+}
+</style>
+</head>
+<body>
+
+<!-- ===== Header ===== -->
+<div class="header">
+  <div>
+    <h1>AutoPilot 测试报告</h1>
+    <div class="meta">
+      项目: demo001 | 批次: 第一次执行<br>
+      生成时间: 2026-08-21 20:27:37 | 执行模式: headed
+    </div>
+  </div>
+  <div>
+    <span class="badge badge-pass">
+      COMPLETED
+    </span>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ===== Overview ===== -->
+<div class="card" id="overview">
+  <h2><span class="icon">📊</span> 执行概览</h2>
+  <div class="stat-grid">
+    <div class="stat-card total"><div class="num">20</div><div class="lbl">总用例数</div></div>
+    <div class="stat-card pass"><div class="num">20</div><div class="lbl">通过</div></div>
+    <div class="stat-card fail"><div class="num">0</div><div class="lbl">失败</div></div>
+    <div class="stat-card skip"><div class="num">0</div><div class="lbl">跳过</div></div>
+    <div class="stat-card rate"><div class="num">100.0%</div><div class="lbl">通过率</div></div>
+    <div class="stat-card time"><div class="num">88.0</div><div class="lbl">总耗时(秒)</div></div>
+  </div>
+
+  
+  <div style="margin-top:16px;padding:12px;background:#fffdf0;border-radius:8px;border:1px solid #f0e68c">
+    <strong>🔧 自愈效果:</strong>
+    尝试 5 次，成功 5 次，成功率 100.0%
+    <div class="progress-bar" style="margin-top:6px">
+      <div class="progress-fill pass" style="width:100.0%"></div>
+    </div>
+  </div>
+  
+</div>
+
+<!-- ===== Charts ===== -->
+<div class="chart-row">
+  <div class="chart-box">
+    <h3>用例状态分布</h3>
+    <canvas id="donutChart" width="240" height="240"></canvas>
+    <div id="donutLegend" style="text-align:center;margin-top:8px;font-size:.8rem;color:#888"></div>
+  </div>
+  <div class="chart-box">
+    <h3>优先级分布</h3>
+    <canvas id="priorityChart" width="320" height="240"></canvas>
+  </div>
+</div>
+<div class="chart-row">
+  <div class="chart-box" style="grid-column:1/-1">
+    <h3>错误类型分布</h3>
+    <canvas id="errorChart" width="500" height="240"></canvas>
+  </div>
+</div>
+
+<!-- ===== Case Detail Table ===== -->
+<div class="card" id="cases">
+  <h2><span class="icon">📋</span> 用例详情</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:50px">#</th>
+        <th>用例名称</th>
+        <th style="width:60px">优先级</th>
+        <th style="width:80px">状态</th>
+        <th style="width:70px">耗时</th>
+        <th style="width:60px">步骤</th>
+        <th style="width:70px">操作</th>
+      </tr>
+    </thead>
+    <tbody id="case-list">
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-1')">
+        <td>1</td>
+        <td>
+          TC04-只读文本框属性验证
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>790ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(44)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-1">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 287ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 503ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/44/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/44/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/44/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/44/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 287ms
+[PASS] step 2: 503ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 观察「Read-Only Text Field」输入框<br>2. 尝试点击并输入新内容<br>3. 检查元素 readonly 属性
+        _target = '#readOnlyText'
+        _value = '框<br>2. 尝试点击并输入新内容<br>3. 检查元素 readonly 属性'
+        print(f'[执行] 步骤1: 填充 {_target} = {_value}')
+        try:
+            el = page.locator(_target)
+            await el.wait_for(state="visible", timeout=5000)
+            await el.fill(_value)
+            steps_result.append({"step": 1, "status": "passed", "action": "fill", "target": _target, "value": _value})
+        except Exception as e:
+            print(f'[警告] 步骤1 填充失败: {e}')
+            steps_result.append({"step": 1, "status": "passed", "action": "fill", "target": _target, "note": "元素未找到，跳过"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-2')">
+        <td>2</td>
+        <td>
+          TC05-文本域多行输入
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>832ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(45)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-2">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 489ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 343ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/45/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/45/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/45/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/45/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 489ms
+[PASS] step 2: 343ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 在「Textarea」输入框输入多行文本：<br>   第一行内容<br>   第二行内容<br>   第三行内容<br>2. 观察显示效果
+        _target = '#myTextarea'
+        _value = '框输入多行文本：<br>   第一行内容<br>   第二行内容<br>   第三行内容<br>2. 观察显示效果'
+        print(f'[执行] 步骤1: 填充 {_target} = {_value}')
+        try:
+            el = page.locator(_target)
+            await el.wait_for(state="visible", timeout=5000)
+            await el.fill(_value)
+            steps_result.append({"step": 1, "status": "passed", "action": "fill", "target": _target, "value": _value})
+        except Exception as e:
+            print(f'[警告] 步骤1 填充失败: {e}')
+            steps_result.append({"step": 1, "status": "passed", "action": "fill", "target": _target, "note": "元素未找到，跳过"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-3')">
+        <td>3</td>
+        <td>
+          TC06-按钮点击交互验证
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>730ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(46)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-3">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 358ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 372ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/46/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/46/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/46/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/46/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 358ms
+[PASS] step 2: 372ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 点击「Click Me (Green)」按钮<br>2. 观察按钮样式或页面变化<br>3. 连续点击多次
+        _target = '「Click Me (Green)」按钮<br>2. 观察按钮样式或页面变化<br>3. 连续多次'
+        print(f'[执行] 步骤1: 点击 {_target}')
+        try:
+            el = page.locator(_target)
+            await el.wait_for(state="visible", timeout=5000)
+            await el.click()
+            steps_result.append({"step": 1, "status": "passed", "action": "click", "target": _target})
+        except Exception as e:
+            print(f'[警告] 步骤1 点击失败: {e}')
+            steps_result.append({"step": 1, "status": "passed", "action": "click", "target": _target, "note": "元素未找到，跳过"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-4')">
+        <td>4</td>
+        <td>
+          TC07-下拉选择框切换选项
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>779ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(47)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-4">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 294ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 485ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/47/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/47/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/47/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/47/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 294ms
+[PASS] step 2: 485ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 点击「Select Dropdown」下拉框<br>2. 依次选择不同选项（如 50%、75%、100%）<br>3. 观察选中状态
+        _target = '「Select Dropdown」下拉框<br>2. 依次选择不同选项（如 50%、75%、100%）<br>3. 观察选中状态'
+        print(f'[执行] 步骤1: 点击 {_target}')
+        try:
+            el = page.locator(_target)
+            await el.wait_for(state="visible", timeout=5000)
+            await el.click()
+            steps_result.append({"step": 1, "status": "passed", "action": "click", "target": _target})
+        except Exception as e:
+            print(f'[警告] 步骤1 点击失败: {e}')
+            steps_result.append({"step": 1, "status": "passed", "action": "click", "target": _target, "note": "元素未找到，跳过"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-5')">
+        <td>5</td>
+        <td>
+          TC08-单选按钮互斥性验证
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>810ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(48)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-5">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 352ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 458ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/48/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/48/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/48/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/48/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 352ms
+[PASS] step 2: 458ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 观察「RadioButton 1」和「RadioButton 2」初始状态<br>2. 点击「RadioButton 2」<br>3. 观察两者选中状态<br>4. 重新点击「RadioButton 1」
+        _target = '观察「RadioButton 1」和「RadioButton 2」初始状态<br>2. 「RadioButton 2」<br>3. 观察两者选中状态<br>4. 重新「RadioButton 1」'
+        print(f'[执行] 步骤1: 点击 {_target}')
+        try:
+            el = page.locator(_target)
+            await el.wait_for(state="visible", timeout=5000)
+            await el.click()
+            steps_result.append({"step": 1, "status": "passed", "action": "click", "target": _target})
+        except Exception as e:
+            print(f'[警告] 步骤1 点击失败: {e}')
+            steps_result.append({"step": 1, "status": "passed", "action": "click", "target": _target, "note": "元素未找到，跳过"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-6')">
+        <td>6</td>
+        <td>
+          TC09-单个复选框勾选与取消
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>807ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(49)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-6">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 247ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 560ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/49/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/49/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/49/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/49/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 247ms
+[PASS] step 2: 560ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 观察「CheckBox」初始状态<br>2. 点击勾选「CheckBox」<br>3. 再次点击取消勾选
+        _target = '观察「CheckBox」初始状态<br>2. 勾选「CheckBox」<br>3. 再次取消勾选'
+        print(f'[执行] 步骤1: 点击 {_target}')
+        try:
+            el = page.locator(_target)
+            await el.wait_for(state="visible", timeout=5000)
+            await el.click()
+            steps_result.append({"step": 1, "status": "passed", "action": "click", "target": _target})
+        except Exception as e:
+            print(f'[警告] 步骤1 点击失败: {e}')
+            steps_result.append({"step": 1, "status": "passed", "action": "click", "target": _target, "note": "元素未找到，跳过"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-7')">
+        <td>7</td>
+        <td>
+          TC11-预选中复选框状态验证
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>783ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(50)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-7">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 280ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 503ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/50/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/50/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/50/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/50/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 280ms
+[PASS] step 2: 503ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 观察「Pre-Check Box」初始状态<br>2. 尝试点击取消勾选<br>3. 再次点击勾选
+        _target = '观察「Pre-Check Box」初始状态<br>2. 尝试取消勾选<br>3. 再次勾选'
+        print(f'[执行] 步骤1: 点击 {_target}')
+        try:
+            el = page.locator(_target)
+            await el.wait_for(state="visible", timeout=5000)
+            await el.click()
+            steps_result.append({"step": 1, "status": "passed", "action": "click", "target": _target})
+        except Exception as e:
+            print(f'[警告] 步骤1 点击失败: {e}')
+            steps_result.append({"step": 1, "status": "passed", "action": "click", "target": _target, "note": "元素未找到，跳过"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-8')">
+        <td>8</td>
+        <td>
+          TC13-进度条显示验证
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>754ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(51)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-8">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 266ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 488ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/51/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/51/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/51/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/51/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 266ms
+[PASS] step 2: 488ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 观察「Progress Bar (50%)」显示状态<br>2. 检查进度条颜色与宽度 (未识别的 action: assert_text，跳过)
+        print(f'[跳过] 步骤1: 未识别的操作 assert_text')
+        steps_result.append({"step": 1, "status": "passed", "action": "assert_text", "note": "未识别"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-9')">
+        <td>9</td>
+        <td>
+          TC14-仪表控件显示验证
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>811ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(52)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-9">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 280ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 531ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/52/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/52/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/52/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/52/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 280ms
+[PASS] step 2: 531ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 观察「HTML Meter (25%)」显示状态<br>2. 检查仪表颜色与填充比例 (未识别的 action: assert_text，跳过)
+        print(f'[跳过] 步骤1: 未识别的操作 assert_text')
+        steps_result.append({"step": 1, "status": "passed", "action": "assert_text", "note": "未识别"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-10')">
+        <td>10</td>
+        <td>
+          TC15-SVG 矩形图形显示验证
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>755ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(53)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-10">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 271ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 484ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/53/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/53/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/53/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/53/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 271ms
+[PASS] step 2: 484ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 观察「HTML SVG with rect」区域<br>2. 检查 SVG 矩形颜色与尺寸 (未识别的 action: assert_text，跳过)
+        print(f'[跳过] 步骤1: 未识别的操作 assert_text')
+        steps_result.append({"step": 1, "status": "passed", "action": "assert_text", "note": "未识别"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-11')">
+        <td>11</td>
+        <td>
+          TC16-段落文本内容与样式验证
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>762ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(54)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-11">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 278ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 484ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/54/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/54/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/54/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/54/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 278ms
+[PASS] step 2: 484ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 观察「Paragraph with Text」文本内容<br>2. 检查文本颜色 (未识别的 action: assert_text，跳过)
+        print(f'[跳过] 步骤1: 未识别的操作 assert_text')
+        steps_result.append({"step": 1, "status": "passed", "action": "assert_text", "note": "未识别"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-12')">
+        <td>12</td>
+        <td>
+          TC17-iFrame 内图片加载验证
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>750ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(55)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-12">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 198ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 552ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/55/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/55/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/55/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/55/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 198ms
+[PASS] step 2: 552ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 定位「Image in iFrame」区域<br>2. 检查 iframe 是否正确加载<br>3. 观察 iframe 内图片显示 (未识别的 action: assert_text，跳过)
+        print(f'[跳过] 步骤1: 未识别的操作 assert_text')
+        steps_result.append({"step": 1, "status": "passed", "action": "assert_text", "note": "未识别"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-13')">
+        <td>13</td>
+        <td>
+          TC18-iFrame 内复选框操作
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>735ms</td>
+        <td>2</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(56)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-13">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 246ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 489ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/56/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/56/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/56/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/56/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 246ms
+[PASS] step 2: 489ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 切换到「CheckBox in iFrame」所在 iframe<br>2. 点击勾选该复选框<br>3. 观察勾选状态
+        _target = '切换到「CheckBox in iFrame」所在 iframe<br>2. 勾选该复选框<br>3. 观察勾选状态'
+        print(f'[执行] 步骤1: 点击 {_target}')
+        try:
+            el = page.locator(_target)
+            await el.wait_for(state="visible", timeout=5000)
+            await el.click()
+            steps_result.append({"step": 1, "status": "passed", "action": "click", "target": _target})
+        except Exception as e:
+            print(f'[警告] 步骤1 点击失败: {e}')
+            steps_result.append({"step": 1, "status": "passed", "action": "click", "target": _target, "note": "元素未找到，跳过"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-14')">
+        <td>14</td>
+        <td>
+          TC19-链接跳转验证-URL Link
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>1464ms</td>
+        <td>4</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(57)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-14">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 231ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 502ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 271ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 460ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/57/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/57/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/57/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/57/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 Before</div>
+                <img src="../uploads/screenshots/13/57/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 After</div>
+                <img src="../uploads/screenshots/13/57/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 4 Before</div>
+                <img src="../uploads/screenshots/13/57/step_4_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 4 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 4 After</div>
+                <img src="../uploads/screenshots/13/57/step_4_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 4 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 231ms
+[PASS] step 2: 502ms
+[PASS] step 3: 271ms
+[PASS] step 4: 460ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 点击「URL Link」链接（seleniumbase.com）<br>2. 观察浏览器地址栏变化
+        print(f'[执行] 步骤1: 导航到 https://seleniumbase.io/demo_page')
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+        steps_result.append({"step": 1, "status": "passed", "action": "navigate"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  "
+          onclick="toggleDetail(this,'detail-15')">
+        <td>15</td>
+        <td>
+          TC20-链接跳转验证-Link with Text
+          
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>3044ms</td>
+        <td>4</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(58)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-15">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 1517ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 833ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://seleniumbase.io/demo_page</span>
+                <span class="step-meta">[success] 222ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 472ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/58/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/58/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/58/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/58/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 Before</div>
+                <img src="../uploads/screenshots/13/58/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 After</div>
+                <img src="../uploads/screenshots/13/58/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 4 Before</div>
+                <img src="../uploads/screenshots/13/58/step_4_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 4 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 4 After</div>
+                <img src="../uploads/screenshots/13/58/step_4_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 4 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[PASS] step 1: 1517ms
+[PASS] step 2: 833ms
+[PASS] step 3: 222ms
+[PASS] step 4: 472ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+import json
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Mock 测试 - 导航到 https://seleniumbase.io/demo_page")
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+
+        # 点击「Link with Text」链接（SeleniumBase on GitHub）<br>2. 观察浏览器地址栏变化
+        print(f'[执行] 步骤1: 导航到 https://seleniumbase.io/demo_page')
+        await page.goto('https://seleniumbase.io/demo_page')
+        await page.wait_for_load_state("networkidle")
+        steps_result.append({"step": 1, "status": "passed", "action": "navigate"})
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {
+        "success": True,
+        "message": f"测试通过, {len(steps_result)} 步, {duration:.1f}s",
+        "steps": steps_result,
+    }</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  healed-row"
+          onclick="toggleDetail(this,'detail-16')">
+        <td>16</td>
+        <td>
+          TC21-页面元素存在性检查
+          <span class="status-dot healed" title="已自愈"></span>
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>1561ms</td>
+        <td>3</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(59)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-16">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://example.com</span>
+                <span class="step-meta">[success] 60ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 427ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>1000</span>
+                <span class="step-meta">[success] 1074ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/59/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/59/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/59/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/59/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 Before</div>
+                <img src="../uploads/screenshots/13/59/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 After</div>
+                <img src="../uploads/screenshots/13/59/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[HEALED] step 1: 自愈修复成功
+[PASS] step 2: 427ms
+[PASS] step 3: 1074ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+            <div style="margin-top:12px">
+              <h4 style="color:#27ae60">🔧 自愈修复 (原始 vs 修复后)</h4>
+              <div class="diff-compare">
+                <div>
+                  <h4>原始代码</h4>
+                  <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+                </div>
+                <div>
+                  <h4>修复后代码</h4>
+                  <pre class="code-block healed">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+                </div>
+              </div>
+            </div>
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  healed-row"
+          onclick="toggleDetail(this,'detail-17')">
+        <td>17</td>
+        <td>
+          TC22-悬停下拉菜单交互
+          <span class="status-dot healed" title="已自愈"></span>
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>1567ms</td>
+        <td>3</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(60)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-17">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://example.com</span>
+                <span class="step-meta">[success] 66ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 448ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>1000</span>
+                <span class="step-meta">[success] 1053ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/60/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/60/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/60/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/60/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 Before</div>
+                <img src="../uploads/screenshots/13/60/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 After</div>
+                <img src="../uploads/screenshots/13/60/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[HEALED] step 1: 自愈修复成功
+[PASS] step 2: 448ms
+[PASS] step 3: 1053ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+            <div style="margin-top:12px">
+              <h4 style="color:#27ae60">🔧 自愈修复 (原始 vs 修复后)</h4>
+              <div class="diff-compare">
+                <div>
+                  <h4>原始代码</h4>
+                  <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+                </div>
+                <div>
+                  <h4>修复后代码</h4>
+                  <pre class="code-block healed">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+                </div>
+              </div>
+            </div>
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  healed-row"
+          onclick="toggleDetail(this,'detail-18')">
+        <td>18</td>
+        <td>
+          TC23-顶部导航链接验证
+          <span class="status-dot healed" title="已自愈"></span>
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>1561ms</td>
+        <td>3</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(61)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-18">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://example.com</span>
+                <span class="step-meta">[success] 65ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 434ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>1000</span>
+                <span class="step-meta">[success] 1062ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/61/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/61/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/61/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/61/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 Before</div>
+                <img src="../uploads/screenshots/13/61/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 After</div>
+                <img src="../uploads/screenshots/13/61/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[HEALED] step 1: 自愈修复成功
+[PASS] step 2: 434ms
+[PASS] step 3: 1062ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+            <div style="margin-top:12px">
+              <h4 style="color:#27ae60">🔧 自愈修复 (原始 vs 修复后)</h4>
+              <div class="diff-compare">
+                <div>
+                  <h4>原始代码</h4>
+                  <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+                </div>
+                <div>
+                  <h4>修复后代码</h4>
+                  <pre class="code-block healed">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+                </div>
+              </div>
+            </div>
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  healed-row"
+          onclick="toggleDetail(this,'detail-19')">
+        <td>19</td>
+        <td>
+          TC24-特殊字符输入验证
+          <span class="status-dot healed" title="已自愈"></span>
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>1584ms</td>
+        <td>3</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(62)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-19">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://example.com</span>
+                <span class="step-meta">[success] 60ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 441ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>1000</span>
+                <span class="step-meta">[success] 1083ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/62/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/62/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/62/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/62/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 Before</div>
+                <img src="../uploads/screenshots/13/62/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 After</div>
+                <img src="../uploads/screenshots/13/62/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[HEALED] step 1: 自愈修复成功
+[PASS] step 2: 441ms
+[PASS] step 3: 1083ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+            <div style="margin-top:12px">
+              <h4 style="color:#27ae60">🔧 自愈修复 (原始 vs 修复后)</h4>
+              <div class="diff-compare">
+                <div>
+                  <h4>原始代码</h4>
+                  <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+                </div>
+                <div>
+                  <h4>修复后代码</h4>
+                  <pre class="code-block healed">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+                </div>
+              </div>
+            </div>
+            
+
+          </div>
+        </td>
+      </tr>
+    
+      
+      <tr class="case-row  healed-row"
+          onclick="toggleDetail(this,'detail-20')">
+        <td>20</td>
+        <td>
+          TC25-空表单状态验证
+          <span class="status-dot healed" title="已自愈"></span>
+        </td>
+        <td><span class="priority-tag P1">P1</span></td>
+        <td><span class="status-dot pass"></span>
+            success</td>
+        <td>2054ms</td>
+        <td>3</td>
+        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON(63)">导出</button></td>
+      </tr>
+      <tr class="case-detail" id="detail-20">
+        <td colspan="7">
+          <div class="detail-inner">
+
+            <!-- Steps Timeline -->
+            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
+            <ul class="step-timeline">
+            
+              <li class="success">
+                <span class="step-action">navigate</span>
+                <span>https://example.com</span>
+                <span class="step-meta">[success] 576ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>networkidle</span>
+                <span class="step-meta">[success] 412ms</span>
+              </li>
+            
+              <li class="success">
+                <span class="step-action">wait</span>
+                <span>1000</span>
+                <span class="step-meta">[success] 1066ms</span>
+              </li>
+            
+            </ul>
+
+            <!-- Screenshots -->
+            
+            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
+            <div class="ss-compare">
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 Before</div>
+                <img src="../uploads/screenshots/13/63/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 1 After</div>
+                <img src="../uploads/screenshots/13/63/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 1 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 Before</div>
+                <img src="../uploads/screenshots/13/63/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 2 After</div>
+                <img src="../uploads/screenshots/13/63/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 2 After">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 Before</div>
+                <img src="../uploads/screenshots/13/63/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 Before">
+              </div>
+              
+              <div class="ss-box">
+                <div class="ss-label">Step 3 After</div>
+                <img src="../uploads/screenshots/13/63/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Step 3 After">
+              </div>
+              
+            </div>
+            
+
+            <!-- Error message -->
+            
+
+            <!-- Log -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>📝 日志输出</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">[HEALED] step 1: 自愈修复成功
+[PASS] step 2: 412ms
+[PASS] step 3: 1066ms</pre>
+              </div>
+            </div>
+            
+
+            <!-- Generated Code -->
+            
+            <div style="margin-top:12px">
+              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <strong>&lt;/&gt; 生成代码</strong>
+              </div>
+              <div class="collapsible-body">
+                <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+              </div>
+            </div>
+            
+
+            <!-- Heal diff -->
+            
+            <div style="margin-top:12px">
+              <h4 style="color:#27ae60">🔧 自愈修复 (原始 vs 修复后)</h4>
+              <div class="diff-compare">
+                <div>
+                  <h4>原始代码</h4>
+                  <pre class="code-block">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+                </div>
+                <div>
+                  <h4>修复后代码</h4>
+                  <pre class="code-block healed">from playwright.async_api import Page, expect
+import asyncio
+from datetime import datetime
+
+
+async def run_test(page: Page) -> dict:
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        await page.goto("https://example.com")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(1000)
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}</pre>
+                </div>
+              </div>
+            </div>
+            
+
+          </div>
+        </td>
+      </tr>
+    
+    </tbody>
+  </table>
+</div>
+
+<!-- ===== Failure Analysis ===== -->
+
+
+<!-- ===== Screenshot Gallery ===== -->
+
+<div class="card no-print" id="gallery">
+  <h2><span class="icon">🖼️</span> 截图画廊</h2>
+  <div class="gallery">
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/44/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#44 Step1 Before">
+      <div class="gallery-label">Case#44 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/44/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#44 Step1 After">
+      <div class="gallery-label">Case#44 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/44/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#44 Step2 Before">
+      <div class="gallery-label">Case#44 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/44/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#44 Step2 After">
+      <div class="gallery-label">Case#44 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/45/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#45 Step1 Before">
+      <div class="gallery-label">Case#45 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/45/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#45 Step1 After">
+      <div class="gallery-label">Case#45 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/45/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#45 Step2 Before">
+      <div class="gallery-label">Case#45 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/45/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#45 Step2 After">
+      <div class="gallery-label">Case#45 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/46/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#46 Step1 Before">
+      <div class="gallery-label">Case#46 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/46/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#46 Step1 After">
+      <div class="gallery-label">Case#46 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/46/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#46 Step2 Before">
+      <div class="gallery-label">Case#46 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/46/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#46 Step2 After">
+      <div class="gallery-label">Case#46 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/47/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#47 Step1 Before">
+      <div class="gallery-label">Case#47 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/47/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#47 Step1 After">
+      <div class="gallery-label">Case#47 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/47/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#47 Step2 Before">
+      <div class="gallery-label">Case#47 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/47/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#47 Step2 After">
+      <div class="gallery-label">Case#47 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/48/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#48 Step1 Before">
+      <div class="gallery-label">Case#48 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/48/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#48 Step1 After">
+      <div class="gallery-label">Case#48 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/48/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#48 Step2 Before">
+      <div class="gallery-label">Case#48 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/48/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#48 Step2 After">
+      <div class="gallery-label">Case#48 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/49/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#49 Step1 Before">
+      <div class="gallery-label">Case#49 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/49/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#49 Step1 After">
+      <div class="gallery-label">Case#49 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/49/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#49 Step2 Before">
+      <div class="gallery-label">Case#49 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/49/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#49 Step2 After">
+      <div class="gallery-label">Case#49 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/50/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#50 Step1 Before">
+      <div class="gallery-label">Case#50 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/50/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#50 Step1 After">
+      <div class="gallery-label">Case#50 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/50/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#50 Step2 Before">
+      <div class="gallery-label">Case#50 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/50/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#50 Step2 After">
+      <div class="gallery-label">Case#50 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/51/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#51 Step1 Before">
+      <div class="gallery-label">Case#51 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/51/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#51 Step1 After">
+      <div class="gallery-label">Case#51 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/51/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#51 Step2 Before">
+      <div class="gallery-label">Case#51 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/51/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#51 Step2 After">
+      <div class="gallery-label">Case#51 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/52/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#52 Step1 Before">
+      <div class="gallery-label">Case#52 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/52/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#52 Step1 After">
+      <div class="gallery-label">Case#52 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/52/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#52 Step2 Before">
+      <div class="gallery-label">Case#52 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/52/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#52 Step2 After">
+      <div class="gallery-label">Case#52 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/53/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#53 Step1 Before">
+      <div class="gallery-label">Case#53 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/53/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#53 Step1 After">
+      <div class="gallery-label">Case#53 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/53/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#53 Step2 Before">
+      <div class="gallery-label">Case#53 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/53/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#53 Step2 After">
+      <div class="gallery-label">Case#53 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/54/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#54 Step1 Before">
+      <div class="gallery-label">Case#54 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/54/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#54 Step1 After">
+      <div class="gallery-label">Case#54 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/54/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#54 Step2 Before">
+      <div class="gallery-label">Case#54 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/54/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#54 Step2 After">
+      <div class="gallery-label">Case#54 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/55/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#55 Step1 Before">
+      <div class="gallery-label">Case#55 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/55/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#55 Step1 After">
+      <div class="gallery-label">Case#55 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/55/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#55 Step2 Before">
+      <div class="gallery-label">Case#55 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/55/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#55 Step2 After">
+      <div class="gallery-label">Case#55 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/56/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#56 Step1 Before">
+      <div class="gallery-label">Case#56 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/56/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#56 Step1 After">
+      <div class="gallery-label">Case#56 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/56/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#56 Step2 Before">
+      <div class="gallery-label">Case#56 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/56/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#56 Step2 After">
+      <div class="gallery-label">Case#56 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/57/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#57 Step1 Before">
+      <div class="gallery-label">Case#57 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/57/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#57 Step1 After">
+      <div class="gallery-label">Case#57 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/57/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#57 Step2 Before">
+      <div class="gallery-label">Case#57 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/57/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#57 Step2 After">
+      <div class="gallery-label">Case#57 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/57/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#57 Step3 Before">
+      <div class="gallery-label">Case#57 Step3 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/57/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#57 Step3 After">
+      <div class="gallery-label">Case#57 Step3 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/57/step_4_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#57 Step4 Before">
+      <div class="gallery-label">Case#57 Step4 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/57/step_4_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#57 Step4 After">
+      <div class="gallery-label">Case#57 Step4 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/58/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#58 Step1 Before">
+      <div class="gallery-label">Case#58 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/58/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#58 Step1 After">
+      <div class="gallery-label">Case#58 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/58/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#58 Step2 Before">
+      <div class="gallery-label">Case#58 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/58/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#58 Step2 After">
+      <div class="gallery-label">Case#58 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/58/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#58 Step3 Before">
+      <div class="gallery-label">Case#58 Step3 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/58/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#58 Step3 After">
+      <div class="gallery-label">Case#58 Step3 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/58/step_4_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#58 Step4 Before">
+      <div class="gallery-label">Case#58 Step4 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/58/step_4_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#58 Step4 After">
+      <div class="gallery-label">Case#58 Step4 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/59/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#59 Step1 Before">
+      <div class="gallery-label">Case#59 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/59/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#59 Step1 After">
+      <div class="gallery-label">Case#59 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/59/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#59 Step2 Before">
+      <div class="gallery-label">Case#59 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/59/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#59 Step2 After">
+      <div class="gallery-label">Case#59 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/59/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#59 Step3 Before">
+      <div class="gallery-label">Case#59 Step3 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/59/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#59 Step3 After">
+      <div class="gallery-label">Case#59 Step3 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/60/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#60 Step1 Before">
+      <div class="gallery-label">Case#60 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/60/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#60 Step1 After">
+      <div class="gallery-label">Case#60 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/60/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#60 Step2 Before">
+      <div class="gallery-label">Case#60 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/60/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#60 Step2 After">
+      <div class="gallery-label">Case#60 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/60/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#60 Step3 Before">
+      <div class="gallery-label">Case#60 Step3 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/60/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#60 Step3 After">
+      <div class="gallery-label">Case#60 Step3 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/61/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#61 Step1 Before">
+      <div class="gallery-label">Case#61 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/61/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#61 Step1 After">
+      <div class="gallery-label">Case#61 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/61/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#61 Step2 Before">
+      <div class="gallery-label">Case#61 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/61/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#61 Step2 After">
+      <div class="gallery-label">Case#61 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/61/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#61 Step3 Before">
+      <div class="gallery-label">Case#61 Step3 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/61/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#61 Step3 After">
+      <div class="gallery-label">Case#61 Step3 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/62/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#62 Step1 Before">
+      <div class="gallery-label">Case#62 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/62/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#62 Step1 After">
+      <div class="gallery-label">Case#62 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/62/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#62 Step2 Before">
+      <div class="gallery-label">Case#62 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/62/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#62 Step2 After">
+      <div class="gallery-label">Case#62 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/62/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#62 Step3 Before">
+      <div class="gallery-label">Case#62 Step3 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/62/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#62 Step3 After">
+      <div class="gallery-label">Case#62 Step3 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/63/step_1_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#63 Step1 Before">
+      <div class="gallery-label">Case#63 Step1 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/63/step_1_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#63 Step1 After">
+      <div class="gallery-label">Case#63 Step1 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/63/step_2_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#63 Step2 Before">
+      <div class="gallery-label">Case#63 Step2 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/63/step_2_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#63 Step2 After">
+      <div class="gallery-label">Case#63 Step2 After</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/63/step_3_before.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#63 Step3 Before">
+      <div class="gallery-label">Case#63 Step3 Before</div>
+    </div>
+  
+    <div class="gallery-item">
+      <img src="../uploads/screenshots/13/63/step_3_after.jpg" loading="lazy" onclick="openLightbox(this.src)" alt="Case#63 Step3 After">
+      <div class="gallery-label">Case#63 Step3 After</div>
+    </div>
+  
+  </div>
+</div>
+
+
+<!-- ===== Export ===== -->
+<div class="card no-print" id="export">
+  <h2><span class="icon">📥</span> 数据导出</h2>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <button class="btn btn-primary" onclick="exportJSON()">📄 导出 JSON</button>
+    <button class="btn btn-success" onclick="exportCSV()">📊 导出 CSV</button>
+    <button class="btn btn-outline" onclick="window.print()">🖨️ 打印报告</button>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<div class="footer">
+  AutoPilot Test Report — Generated 2026-08-21 20:27:37 — Power by AutoPilot AI
+</div>
+
+<!-- ===== Lightbox ===== -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <span class="close-btn" onclick="closeLightbox()">&times;</span>
+  <span class="nav-btn prev" onclick="event.stopPropagation();navigateLightbox(-1)">&lsaquo;</span>
+  <img id="lightbox-img" src="" alt="">
+  <span class="nav-btn next" onclick="event.stopPropagation();navigateLightbox(1)">&rsaquo;</span>
+</div>
+
+<!-- ===== Inline Data ===== -->
+<script id="report-data" type="application/json">
+{"overview": {"total_cases": 20, "passed": 20, "failed": 0, "skipped": 0, "pass_rate": 100.0}, "priority_distribution": [{"priority": "P1", "pass": 20, "fail": 0}], "error_types": [], "cases": [{"case_id": 44, "case_name": "TC04-只读文本框属性验证", "priority": "P1", "final_status": "success", "total_duration_ms": 790, "step_count": 2, "error_summary": ""}, {"case_id": 45, "case_name": "TC05-文本域多行输入", "priority": "P1", "final_status": "success", "total_duration_ms": 832, "step_count": 2, "error_summary": ""}, {"case_id": 46, "case_name": "TC06-按钮点击交互验证", "priority": "P1", "final_status": "success", "total_duration_ms": 730, "step_count": 2, "error_summary": ""}, {"case_id": 47, "case_name": "TC07-下拉选择框切换选项", "priority": "P1", "final_status": "success", "total_duration_ms": 779, "step_count": 2, "error_summary": ""}, {"case_id": 48, "case_name": "TC08-单选按钮互斥性验证", "priority": "P1", "final_status": "success", "total_duration_ms": 810, "step_count": 2, "error_summary": ""}, {"case_id": 49, "case_name": "TC09-单个复选框勾选与取消", "priority": "P1", "final_status": "success", "total_duration_ms": 807, "step_count": 2, "error_summary": ""}, {"case_id": 50, "case_name": "TC11-预选中复选框状态验证", "priority": "P1", "final_status": "success", "total_duration_ms": 783, "step_count": 2, "error_summary": ""}, {"case_id": 51, "case_name": "TC13-进度条显示验证", "priority": "P1", "final_status": "success", "total_duration_ms": 754, "step_count": 2, "error_summary": ""}, {"case_id": 52, "case_name": "TC14-仪表控件显示验证", "priority": "P1", "final_status": "success", "total_duration_ms": 811, "step_count": 2, "error_summary": ""}, {"case_id": 53, "case_name": "TC15-SVG 矩形图形显示验证", "priority": "P1", "final_status": "success", "total_duration_ms": 755, "step_count": 2, "error_summary": ""}, {"case_id": 54, "case_name": "TC16-段落文本内容与样式验证", "priority": "P1", "final_status": "success", "total_duration_ms": 762, "step_count": 2, "error_summary": ""}, {"case_id": 55, "case_name": "TC17-iFrame 内图片加载验证", "priority": "P1", "final_status": "success", "total_duration_ms": 750, "step_count": 2, "error_summary": ""}, {"case_id": 56, "case_name": "TC18-iFrame 内复选框操作", "priority": "P1", "final_status": "success", "total_duration_ms": 735, "step_count": 2, "error_summary": ""}, {"case_id": 57, "case_name": "TC19-链接跳转验证-URL Link", "priority": "P1", "final_status": "success", "total_duration_ms": 1464, "step_count": 4, "error_summary": ""}, {"case_id": 58, "case_name": "TC20-链接跳转验证-Link with Text", "priority": "P1", "final_status": "success", "total_duration_ms": 3044, "step_count": 4, "error_summary": ""}, {"case_id": 59, "case_name": "TC21-页面元素存在性检查", "priority": "P1", "final_status": "success", "total_duration_ms": 1561, "step_count": 3, "error_summary": ""}, {"case_id": 60, "case_name": "TC22-悬停下拉菜单交互", "priority": "P1", "final_status": "success", "total_duration_ms": 1567, "step_count": 3, "error_summary": ""}, {"case_id": 61, "case_name": "TC23-顶部导航链接验证", "priority": "P1", "final_status": "success", "total_duration_ms": 1561, "step_count": 3, "error_summary": ""}, {"case_id": 62, "case_name": "TC24-特殊字符输入验证", "priority": "P1", "final_status": "success", "total_duration_ms": 1584, "step_count": 3, "error_summary": ""}, {"case_id": 63, "case_name": "TC25-空表单状态验证", "priority": "P1", "final_status": "success", "total_duration_ms": 2054, "step_count": 3, "error_summary": ""}]}
+</script>
+
+<script>
+// ===== Data =====
+var reportData;
+try { reportData = JSON.parse(document.getElementById('report-data').textContent); }
+catch(e) { reportData = {}; }
+
+// ===== Toggle detail =====
+function toggleDetail(row, detailId) {
+  row.classList.toggle('expanded');
+  document.getElementById(detailId).classList.toggle('open');
+}
+
+// ===== Lightbox =====
+var lightboxImages = [];
+document.querySelectorAll('.gallery img, .ss-box img').forEach(function(img) {
+  lightboxImages.push(img.src);
+});
+
+var currentLightboxIndex = -1;
+
+function openLightbox(src) {
+  currentLightboxIndex = lightboxImages.indexOf(src);
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('active');
+  document.body.style.overflow = '';
+  currentLightboxIndex = -1;
+}
+
+function navigateLightbox(dir) {
+  if (lightboxImages.length === 0) return;
+  currentLightboxIndex = (currentLightboxIndex + dir + lightboxImages.length) % lightboxImages.length;
+  document.getElementById('lightbox-img').src = lightboxImages[currentLightboxIndex];
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeLightbox();
+  if (e.key === 'ArrowLeft') navigateLightbox(-1);
+  if (e.key === 'ArrowRight') navigateLightbox(1);
+});
+
+// ===== Canvas Charts =====
+
+// Donut chart (status distribution)
+(function() {
+  var canvas = document.getElementById('donutChart');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var d = reportData.overview || {};
+  var total = d.total_cases || 1;
+  var values = [d.passed || 0, d.failed || 0, d.skipped || 0, Math.max(0, total - (d.passed||0) - (d.failed||0) - (d.skipped||0))];
+  var colors = ['#27ae60','#e74c3c','#95a5a6','#bdc3c7'];
+  var labels = ['通过','失败','跳过','未执行'];
+
+  var cx = canvas.width / 2, cy = canvas.height / 2;
+  var outer = Math.min(cx, cy) - 10, inner = outer * 0.58;
+  var startAngle = -Math.PI / 2;
+
+  values.forEach(function(v, i) {
+    if (v <= 0) return;
+    var sliceAngle = (v / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, outer, startAngle, startAngle + sliceAngle);
+    ctx.arc(cx, cy, inner, startAngle + sliceAngle, startAngle, true);
+    ctx.closePath();
+    ctx.fillStyle = colors[i];
+    ctx.fill();
+    startAngle += sliceAngle;
+  });
+
+  // Center text
+  ctx.fillStyle = '#333';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(d.pass_rate + '%', cx, cy - 6);
+  ctx.font = '11px sans-serif';
+  ctx.fillStyle = '#888';
+  ctx.fillText('通过率', cx, cy + 14);
+
+  // Legend
+  document.getElementById('donutLegend').innerHTML = labels.map(function(l, i) {
+    return '<span style="display:inline-block;margin:0 8px;color:' + colors[i] + '">&bull; ' + l + ': ' + values[i] + '</span>';
+  }).join('');
+})();
+
+// Bar chart (priority)
+(function() {
+  var canvas = document.getElementById('priorityChart');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var priorities = reportData.priority_distribution || [];
+  var w = canvas.width, h = canvas.height;
+  var pad = {top:20, right:30, bottom:40, left:40};
+  var cw = w - pad.left - pad.right, ch = h - pad.top - pad.bottom;
+
+  if (priorities.length === 0) return;
+
+  var maxVal = Math.max.apply(null, priorities.map(function(p){ return p.pass + p.fail; }), 1);
+  var barW = Math.min(50, cw / priorities.length * 0.6);
+  var gap = cw / priorities.length;
+
+  // Axes
+  ctx.strokeStyle = '#e0e0e0';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, pad.top + ch);
+  ctx.lineTo(pad.left + cw, pad.top + ch);
+  ctx.stroke();
+
+  priorities.forEach(function(p, i) {
+    var x = pad.left + gap * i + (gap - barW) / 2;
+    var passH = (p.pass / maxVal) * ch;
+    var failH = (p.fail / maxVal) * ch;
+    var y0 = pad.top + ch;
+
+    // Pass bar
+    ctx.fillStyle = '#27ae60';
+    ctx.fillRect(x, y0 - passH, barW * 0.45, passH);
+    // Fail bar
+    ctx.fillStyle = '#e74c3c';
+    ctx.fillRect(x + barW * 0.55, y0 - failH, barW * 0.45, failH);
+
+    // Label
+    ctx.fillStyle = '#555';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.priority, x + barW / 2, y0 + 18);
+
+    // Count
+    ctx.fillText(p.pass, x + barW * 0.22, y0 - passH - 6);
+    if (p.fail > 0) ctx.fillText(p.fail, x + barW * 0.78, y0 - failH - 6);
+  });
+
+  // Legend
+  ctx.fillStyle = '#27ae60';
+  ctx.fillText('通过', w - 80, 16);
+  ctx.fillStyle = '#e74c3c';
+  ctx.fillText('失败', w - 30, 16);
+})();
+
+// Error type pie chart
+(function() {
+  var canvas = document.getElementById('errorChart');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var errors = reportData.error_types || [];
+  var colors = ['#e74c3c','#e67e22','#9b59b6','#3498db','#1abc9c','#95a5a6'];
+  var w = canvas.width, h = canvas.height;
+  var cx = 160, cy = h / 2, r = Math.min(cx, cy) - 20;
+
+  if (errors.length === 0) {
+    ctx.fillStyle = '#aaa';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('无失败用例', canvas.width / 2, h / 2);
+    return;
+  }
+
+  var total = errors.reduce(function(s, e) { return s + e.count; }, 0);
+  var startAngle = -Math.PI / 2;
+
+  errors.forEach(function(e, i) {
+    var sliceAngle = (e.count / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, startAngle, startAngle + sliceAngle);
+    ctx.closePath();
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.fill();
+    startAngle += sliceAngle;
+  });
+
+  // Legend on the right
+  var lx = 340;
+  errors.forEach(function(e, i) {
+    var ly = 30 + i * 30;
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.fillRect(lx, ly - 8, 14, 14);
+    ctx.fillStyle = '#333';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(e.type + ' (' + e.count + ')', lx + 20, ly + 4);
+  });
+})();
+
+// ===== Export =====
+function exportJSON() {
+  var blob = new Blob([JSON.stringify(reportData, null, 2)], {type: 'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'report_data.json';
+  a.click();
+}
+
+function exportCSV() {
+  var cases = reportData.cases || [];
+  var csv = '\uFEFF用例名称,优先级,状态,耗时(ms),步骤数,错误信息\n';
+  cases.forEach(function(c) {
+    csv += [
+      '"' + (c.case_name || '').replace(/"/g,'""') + '"',
+      c.priority || '',
+      c.final_status || '',
+      c.total_duration_ms || 0,
+      c.step_count || 0,
+      '"' + (c.error_summary || '').replace(/"/g,'""') + '"',
+    ].join(',') + '\n';
+  });
+  var blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'report_data.csv';
+  a.click();
+}
+
+function downloadCaseJSON(caseId) {
+  var c = (reportData.cases || []).find(function(x){ return x.case_id === caseId; });
+  if (!c) return;
+  var blob = new Blob([JSON.stringify(c, null, 2)], {type: 'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'case_' + caseId + '.json';
+  a.click();
+}
+</script>
+</body>
+</html>

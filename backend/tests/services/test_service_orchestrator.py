@@ -207,7 +207,7 @@ class TestClearStopFlag:
 
         orch = TestOrchestrator(ai_service=mock_ai, playwright_service=mock_pw)
 
-        with patch("app.services.playwright_service.clear_stop_flag") as mock_clear:
+        with patch("app.services.orchestrator.clear_stop_flag") as mock_clear:
             asyncio.run(orch.run_execute_only(1, [1, 2]))
 
             mock_clear.assert_called_once_with(42)
@@ -241,7 +241,7 @@ class TestRunFullPipelineEdgeCases:
         """后台线程 execute 异常 → lines 99-111 兜底将 execution 状态设为 failed"""
         _patch_check_cases(orch, [])
 
-        mock_clear_stop = mocker.patch("app.services.playwright_service.clear_stop_flag")
+        mock_clear_stop = mocker.patch("app.services.orchestrator.clear_stop_flag")
 
         asyncio.run(orch.run_full_pipeline(1, [1], "headless", "BgFail"))
 
@@ -278,7 +278,7 @@ class TestRunFullPipelineEdgeCases:
         """后台线程兜底 DB 查询也异常 → lines 110-111 pass 被覆盖"""
         _patch_check_cases(orch, [])
 
-        mock_clear_stop = mocker.patch("app.services.playwright_service.clear_stop_flag")
+        mock_clear_stop = mocker.patch("app.services.orchestrator.clear_stop_flag")
 
         asyncio.run(orch.run_full_pipeline(1, [1], "headless", "BgFail"))
 
@@ -308,7 +308,7 @@ class TestRunExecuteOnlyEdgeCases:
         self, orch, mock_ai, mock_threading_in_orchestrator, mocker
     ):
         """后台线程 execute 异常 → lines 175-187 兜底更新 execution 状态"""
-        mock_clear_stop = mocker.patch("app.services.playwright_service.clear_stop_flag")
+        mock_clear_stop = mocker.patch("app.services.orchestrator.clear_stop_flag")
 
         asyncio.run(orch.run_execute_only(1, [1], "headless", "BgFail"))
 
@@ -339,7 +339,7 @@ class TestRunExecuteOnlyEdgeCases:
         self, orch, mock_ai, mock_threading_in_orchestrator, mocker
     ):
         """后台线程兜底 DB 查询也异常 → lines 186-187 pass 被覆盖"""
-        mock_clear_stop = mocker.patch("app.services.playwright_service.clear_stop_flag")
+        mock_clear_stop = mocker.patch("app.services.orchestrator.clear_stop_flag")
 
         asyncio.run(orch.run_execute_only(1, [1], "headless", "BgFail"))
 
@@ -656,3 +656,89 @@ class TestGetExecutionStatus:
         with patch("app.db.database.SessionLocal", side_effect=Exception("DB down")):
             result = orch._get_execution_status(1)
             assert result is None
+
+
+# ── Platform Distribution Tests ──
+
+@pytest.fixture
+def mock_appium():
+    """Mock Appium service"""
+    appium = MagicMock()
+    appium.create_execution.return_value = 99
+    return appium
+
+
+@pytest.fixture
+def orch_with_appium(mock_ai, mock_pw, mock_appium, mock_report):
+    """编排器，注入 appium_service"""
+    return TestOrchestrator(
+        ai_service=mock_ai,
+        playwright_service=mock_pw,
+        appium_service=mock_appium,
+        report_service=mock_report,
+    )
+
+
+class TestGetExecutor:
+    """_get_executor() 平台分发"""
+
+    def test_get_executor_web(self, orch):
+        """platform="web" → 返回 playwright_service 和 "web" """
+        executor, platform_type = orch._get_executor("web")
+        assert executor is orch.playwright_service
+        assert platform_type == "web"
+
+    def test_get_executor_android(self, orch_with_appium):
+        """platform="android" → 返回 appium_service 和 "android" """
+        executor, platform_type = orch_with_appium._get_executor("android")
+        assert executor is orch_with_appium.appium_service
+        assert platform_type == "android"
+
+    def test_get_executor_default(self, orch):
+        """无 platform → 默认返回 playwright_service 和 "web" """
+        executor, platform_type = orch._get_executor()
+        assert executor is orch.playwright_service
+        assert platform_type == "web"
+
+    def test_get_executor_with_appium_service(self, orch_with_appium):
+        """注入 appium_service，platform="android" → 返回 appium_service"""
+        executor, platform_type = orch_with_appium._get_executor("android")
+        assert executor is orch_with_appium.appium_service
+
+
+@pytest.mark.usefixtures("mock_monitor_task")
+class TestRunExecuteOnlyPlatform:
+    """run_execute_only() 平台分发"""
+
+    def test_run_execute_only_web(self, orch, mock_pw):
+        """platform="web" → 使用 playwright_service"""
+        asyncio.run(orch.run_execute_only(1, [1, 2], platform="web"))
+        mock_pw.create_execution.assert_called_once()
+
+    def test_run_execute_only_android(self, orch_with_appium, mock_appium):
+        """platform="android" → 使用 appium_service"""
+        asyncio.run(orch_with_appium.run_execute_only(1, [1, 2], platform="android"))
+        mock_appium.create_execution.assert_called_once()
+
+
+@pytest.mark.usefixtures("mock_monitor_task")
+class TestRunFullPipelinePlatform:
+    """run_full_pipeline() 平台分发"""
+
+    def test_full_pipeline_web(self, orch, mock_pw, mock_ai):
+        """platform="web" → 使用 playwright_service"""
+        async def _noop(*args, **kwargs):
+            return []
+        orch._check_cases_need_generation = _noop
+
+        asyncio.run(orch.run_full_pipeline(1, [1, 2], platform="web"))
+        mock_pw.create_execution.assert_called_once()
+
+    def test_full_pipeline_android(self, orch_with_appium, mock_appium, mock_ai):
+        """platform="android" → 使用 appium_service"""
+        async def _noop(*args, **kwargs):
+            return []
+        orch_with_appium._check_cases_need_generation = _noop
+
+        asyncio.run(orch_with_appium.run_full_pipeline(1, [1, 2], platform="android"))
+        mock_appium.create_execution.assert_called_once()
