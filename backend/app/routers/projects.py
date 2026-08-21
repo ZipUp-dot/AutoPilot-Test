@@ -48,6 +48,8 @@ def create_project(body: ProjectCreate, db: Session = Depends(get_db)):
         test_path=body.test_path,
         browser_type=body.browser_type,
         headless=bool(body.headless),
+        platform=body.platform,
+        config_json=body.config_json,
     )
     return ApiResponse(data=ProjectResponse.model_validate(project))
 

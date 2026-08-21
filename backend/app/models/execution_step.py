@@ -26,6 +26,7 @@ class ExecutionStep(Base):
     screenshot_after = Column(String)
     log_output = Column(String)
     error_message = Column(String)
+    exception_type = Column(String)
     duration_ms = Column(Integer)
     created_at = Column(DateTime, default=func.now())
 
@@ -53,6 +54,7 @@ class ExecutionStepResponse(BaseModel):
     screenshot_after: Optional[str]
     log_output: Optional[str]
     error_message: Optional[str]
+    exception_type: Optional[str] = None
     duration_ms: Optional[int]
     created_at: datetime
 

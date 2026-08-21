@@ -84,7 +84,10 @@
           <el-card class="report-card" shadow="hover">
             <div class="card-header">
               <span class="batch-name" :title="item.batchName">{{ item.batchName }}</span>
-              <el-tag size="small" type="info">{{ item.projectName }}</el-tag>
+              <div>
+                <el-tag v-if="item.platform === 'android'" type="success" size="small">Android</el-tag>
+                <el-tag v-else size="small" type="info">{{ item.projectName }}</el-tag>
+              </div>
             </div>
 
             <div class="card-body">
@@ -301,6 +304,7 @@ async function fetchAllData() {
             executionId: exec.id,
             projectId: project.id,
             projectName: project.name,
+            platform: project.platform || 'web',
             batchName: exec.batch_name || exec.name || `执行 #${exec.id}`,
             createdAt: exec.created_at || exec.start_time,
             totalCases: exec.total_cases ?? 0,

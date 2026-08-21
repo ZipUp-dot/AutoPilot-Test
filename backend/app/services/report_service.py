@@ -412,7 +412,18 @@ class ReportService:
 
     @staticmethod
     def _classify_error_type(msg: str) -> str:
+        """分类错误类型（支持 Web 和 Android 异常）"""
         m = msg.lower()
+        # Appium 异常（优先匹配）
+        if "staleelementreferenceexception" in m or "stale element" in m:
+            return "StaleElementError"
+        if "nosuchelementexception" in m:
+            return "ElementNotFoundError"
+        if "timeoutexception" in m:
+            return "TimeoutError"
+        if "webdriverexception" in m:
+            return "DriverError"
+        # Web 异常
         if "timeout" in m:
             return "TimeoutError"
         if "resolve" in m or "locator" in m or "element" in m:

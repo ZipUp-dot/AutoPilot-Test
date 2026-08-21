@@ -81,6 +81,12 @@ class ElementService:
         if not project:
             raise NotFoundException(f"项目 {project_id} 不存在")
 
+        # 平台一致性校验：Web 抓取只允许 web 项目
+        if getattr(project, "platform", "web") != "web":
+            raise ValidationException(
+                f"项目 platform={project.platform}，Web 元素抓取仅支持 platform=web 的项目"
+            )
+
         url = (project.target_url.rstrip("/") + "/" + project.test_path.lstrip("/")).rstrip("/")
         browser_type = project.browser_type or "chromium"
 
@@ -115,6 +121,8 @@ class ElementService:
                 is_visible=el.is_visible,
                 bounding_box=json.dumps(el.bounding_box, ensure_ascii=False) if el.bounding_box else None,
                 attributes=json.dumps(el.attributes, ensure_ascii=False) if el.attributes else None,
+                platform="web",
+                selector_type="css",
             ))
         self._db.commit()
 
@@ -129,11 +137,14 @@ class ElementService:
     # 查询
     # ═══════════════════════════════════════════════
 
-    def list_paginated(self, project_id: int, element_type: str = None,
+    def list_paginated(self, project_id: int, platform: str = None,
+                       element_type: str = None,
                        keyword: str = None, page: int = 1, size: int = 50) -> PaginatedResult:
         import math
 
         query = self._db.query(PageElement).filter(PageElement.project_id == project_id)
+        if platform:
+            query = query.filter(PageElement.platform == platform)
         if element_type:
             query = query.filter(PageElement.element_type == element_type)
         if keyword:
@@ -154,10 +165,13 @@ class ElementService:
             pages=math.ceil(total / size) if total > 0 else 0,
         )
 
-    def clear_all(self, project_id: int) -> int:
-        deleted = self._db.query(PageElement).filter(
+    def clear_all(self, project_id: int, platform: str = None) -> int:
+        query = self._db.query(PageElement).filter(
             PageElement.project_id == project_id
-        ).delete(synchronize_session=False)
+        )
+        if platform:
+            query = query.filter(PageElement.platform == platform)
+        deleted = query.delete(synchronize_session=False)
         self._db.commit()
         return deleted
 

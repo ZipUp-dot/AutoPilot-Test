@@ -29,8 +29,38 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
+def _run_migrations() -> None:
+    """幂等迁移：检查字段是否存在，不重复 ALTER
+
+    支持 MySQL 和 SQLite 两种方言。用于在不使用 Alembic 的情况下，
+    对已有数据库安全地新增字段。
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+
+    # 迁移定义：(表名, 字段名, 完整列定义 SQL)
+    migrations = [
+        ("projects", "platform", "VARCHAR(10) DEFAULT 'web'"),
+        ("page_elements", "platform", "VARCHAR(10) DEFAULT 'web'"),
+        ("page_elements", "selector_type", "VARCHAR(20)"),
+        ("page_elements", "metadata", "TEXT"),
+    ]
+
+    for table, column, col_def in migrations:
+        if table in inspector.get_table_names():
+            existing = {c["name"] for c in inspector.get_columns(table)}
+            if column not in existing:
+                with engine.connect() as conn:
+                    stmt = f"ALTER TABLE {table} ADD COLUMN {column} {col_def}"
+                    conn.execute(text(stmt))
+                    conn.commit()
+
+
 def init() -> None:
     """启动时初始化数据库：优先使用 schema.sql，否则 Base.metadata.create_all()
+
+    初始化完成后，执行 _run_migrations() 处理已有数据库的增量升级。
 
     对于 MySQL，建议先手动创建数据库：
         CREATE DATABASE autopilot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -67,6 +97,9 @@ def init() -> None:
             conn.commit()
     else:
         Base.metadata.create_all(bind=engine)
+
+    # 幂等迁移：处理已有数据库的增量升级
+    _run_migrations()
 
 
 # ── FastAPI 依赖注入 ──

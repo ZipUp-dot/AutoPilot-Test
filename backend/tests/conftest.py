@@ -147,12 +147,12 @@ def client(db_session, request, suppress_lifespan_side_effects):
 def clear_global_state():
     """自动清理模块级全局状态字典，防止测试间污染"""
     from app.routers import generate as gen_module
-    from app.services import playwright_service as pw_module
+    from app.services import execution_state as es_module
     gen_module._batch_jobs.clear()
-    pw_module._stop_flags.clear()
+    es_module._stop_flags.clear()
     yield
     gen_module._batch_jobs.clear()
-    pw_module._stop_flags.clear()
+    es_module._stop_flags.clear()
 
 
 @pytest.fixture(autouse=False)

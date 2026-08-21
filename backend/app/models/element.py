@@ -27,6 +27,9 @@ class PageElement(Base):
     is_visible = Column(Integer, default=1)
     bounding_box = Column(String)
     attributes = Column(String)
+    platform = Column(String, default="web", nullable=False)
+    selector_type = Column(String, nullable=True)
+    element_metadata = Column("metadata", String, nullable=True)
     created_at = Column(DateTime, default=func.now())
 
 
@@ -44,6 +47,11 @@ class PageElementCreate(BaseModel):
     is_visible: int = Field(default=1, ge=0, le=1)
     bounding_box: Optional[dict] = None
     attributes: Optional[dict] = None
+    platform: str = Field(default="web", pattern="^(web|android)$")
+    selector_type: Optional[str] = None
+    element_metadata: Optional[dict] = Field(default=None, alias="metadata")
+
+    model_config = {"populate_by_name": True}
 
 
 class PageElementUpdate(BaseModel):
@@ -58,6 +66,10 @@ class PageElementUpdate(BaseModel):
     is_visible: Optional[int] = Field(default=None, ge=0, le=1)
     bounding_box: Optional[dict] = None
     attributes: Optional[dict] = None
+    selector_type: Optional[str] = None
+    element_metadata: Optional[dict] = Field(default=None, alias="metadata")
+
+    model_config = {"populate_by_name": True}
 
 
 class PageElementResponse(BaseModel):
@@ -74,6 +86,9 @@ class PageElementResponse(BaseModel):
     is_visible: int
     bounding_box: Optional[dict]
     attributes: Optional[dict]
+    platform: str = "web"
+    selector_type: Optional[str] = None
+    element_metadata: Optional[dict] = Field(default=None, alias="metadata")
     created_at: Optional[datetime]
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}

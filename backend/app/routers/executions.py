@@ -16,7 +16,8 @@ from app.dependencies import get_db, get_orchestrator
 from app.models.execution import Execution
 from app.models.execution_step import ExecutionStep
 from app.models.test_case import TestCase
-from app.services.playwright_service import set_stop_flag
+from app.models.project import Project
+from app.services.execution_state import set_stop_flag
 from app.services.orchestrator import TestOrchestrator
 from app.exceptions import NotFoundException, ValidationException
 from app.schemas import ApiResponse
@@ -70,7 +71,10 @@ async def create_execution(
                 .first()
             )
             if not gen:
-                case = db.query(TestCase).filter(TestCase.id == cid).first()
+                case = db.query(TestCase).filter(
+                    TestCase.id == cid,
+                    TestCase.project_id == project_id,
+                ).first()
                 name = case.case_name if case else f"ID={cid}"
                 missing.append(name)
 
@@ -79,11 +83,18 @@ async def create_execution(
                 f"以下用例尚未生成有效代码: {', '.join(missing)}"
             )
 
+        # 获取项目平台类型
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise NotFoundException(f"项目 {project_id} 不存在")
+        platform = getattr(project, "platform", "web")
+
         result = await orchestrator.run_execute_only(
             project_id=project_id,
             case_ids=body.case_ids,
             mode=body.mode,
             batch_name=body.batch_name,
+            platform=platform,
         )
         return ApiResponse(data=result)
 
@@ -139,10 +150,13 @@ def list_project_executions(project_id: int, db: Session = Depends(get_db)):
     response_model=ApiResponse,
     summary="获取执行详情（含步骤列表）",
 )
-def get_execution_detail(execution_id: int, db: Session = Depends(get_db)):
+def get_execution_detail(execution_id: int, project_id: int = None, db: Session = Depends(get_db)):
     """获取执行批次的完整详情"""
     execution = db.query(Execution).filter(Execution.id == execution_id).first()
     if not execution:
+        raise NotFoundException(f"执行批次 {execution_id} 不存在")
+
+    if project_id is not None and execution.project_id != project_id:
         raise NotFoundException(f"执行批次 {execution_id} 不存在")
 
     steps = (
@@ -195,13 +209,16 @@ def get_execution_detail(execution_id: int, db: Session = Depends(get_db)):
     response_model=ApiResponse,
     summary="轮询执行进度",
 )
-def get_execution_status(execution_id: int, db: Session = Depends(get_db)):
+def get_execution_status(execution_id: int, project_id: int = None, db: Session = Depends(get_db)):
     """实时查询执行进度（前端轮询用）
 
     返回 running / healing / completed / stopped / failed 状态。
     """
     execution = db.query(Execution).filter(Execution.id == execution_id).first()
     if not execution:
+        raise NotFoundException(f"执行批次 {execution_id} 不存在")
+
+    if project_id is not None and execution.project_id != project_id:
         raise NotFoundException(f"执行批次 {execution_id} 不存在")
 
     steps = (
@@ -257,10 +274,13 @@ def get_execution_status(execution_id: int, db: Session = Depends(get_db)):
     response_model=ApiResponse,
     summary="停止正在进行的执行",
 )
-def stop_execution(execution_id: int, db: Session = Depends(get_db)):
+def stop_execution(execution_id: int, project_id: int = None, db: Session = Depends(get_db)):
     """停止正在运行/自愈中的执行批次"""
     execution = db.query(Execution).filter(Execution.id == execution_id).first()
     if not execution:
+        raise NotFoundException(f"执行批次 {execution_id} 不存在")
+
+    if project_id is not None and execution.project_id != project_id:
         raise NotFoundException(f"执行批次 {execution_id} 不存在")
 
     if execution.status not in ("running", "healing"):
@@ -268,7 +288,7 @@ def stop_execution(execution_id: int, db: Session = Depends(get_db)):
             "status": execution.status,
         })
 
-    # 设置停止标志
+    # 设置停止标志（共享 execution_state，同时覆盖 Playwright 和 Appium 执行）
     set_stop_flag(execution_id)
 
     # 更新 DB 状态

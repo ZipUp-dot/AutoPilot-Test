@@ -24,10 +24,11 @@ ACTION_COLUMNS = ["操作", "动作", "action", "操作类型"]
 TARGET_COLUMNS = ["对象", "目标", "target", "操作对象", "元素", "定位"]
 VALUE_COLUMNS  = ["数据", "值", "value", "输入值", "输入", "参数"]
 
-# ── 9 种标准 action 枚举 ──
+# ── 11 种标准 action 枚举（Web + Android 通用） ──
 VALID_ACTIONS = frozenset({
     "navigate", "fill", "click", "select", "hover",
     "assert_text", "assert_visible", "screenshot", "wait",
+    "swipe", "back",
 })
 
 # ── 纯文本步骤模式 ──
@@ -456,6 +457,8 @@ def _normalize_action(action: str) -> str:
         "assert_visible": "assert_visible", "可见": "assert_visible", "显示": "assert_visible",
         "screenshot": "screenshot", "截图": "screenshot",
         "wait": "wait", "等待": "wait", "延时": "wait", "暂停": "wait",
+        "swipe": "swipe", "滑动": "swipe", "滑": "swipe",
+        "back": "back", "返回": "back", "后退": "back",
     }
     return mapping.get(a, a)
 

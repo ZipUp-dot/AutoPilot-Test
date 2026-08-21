@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import time
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -122,18 +123,22 @@ class HealService:
         page,
         project_id: int,
         max_retries: int = 3,
+        platform: str = "web",
     ) -> bool:
         """尝试修复单个失败步骤（由执行引擎自动调用）
+
+        Args:
+            platform: "web" 或 "android"，决定 Prompt 模板、代码校验、重试执行分支
 
         Returns:
             True 表示修复成功并重试通过
         """
         case_id = step.case_id
         step_index = step.step_index
-        logger.info("开始自愈: execution_id=%s case=%s step=%s", execution_id, case_id, step_index)
+        logger.info("开始自愈: execution_id=%s case=%s step=%s platform=%s", execution_id, case_id, step_index, platform)
 
         # 1. 捕获失败上下文
-        error_ctx = await self._capture_failure_context(step, page)
+        error_ctx = await self._capture_failure_context(step, page, platform=platform)
 
         # 2. 获取原始代码
         original_code = self._get_original_code(case_id)
@@ -143,11 +148,11 @@ class HealService:
             logger.info("自愈第 %s/%s 次: step_id=%s", attempt, max_retries, step.id)
 
             # 4. 构建修复 Prompt
-            prompt = self._build_heal_prompt(error_ctx, original_code, step)
+            prompt = self._build_heal_prompt(error_ctx, original_code, step, platform=platform)
 
             # 5. 调用 AI
             try:
-                healed_code = self._call_heal_ai(prompt)
+                healed_code = self._call_heal_ai(prompt, platform=platform)
             except Exception as e:
                 logger.error("AI 修复调用失败(第%s次): %s", attempt, e)
                 continue
@@ -158,7 +163,7 @@ class HealService:
 
             # 6. 提取 + 校验代码
             healed_code = self._extract_code(healed_code)
-            validation_error = self._validate_healed(healed_code)
+            validation_error = self._validate_healed(healed_code, platform=platform)
             if validation_error:
                 logger.warning("修复代码校验失败(第%s次): %s", attempt, validation_error)
                 continue
@@ -170,7 +175,7 @@ class HealService:
 
             # 8. 重新执行修复后的代码
             success = await self._retry_execution(
-                page, healed_code, step, execution_id, case_id
+                page, healed_code, step, execution_id, case_id, platform=platform
             )
 
             if success:
@@ -200,6 +205,7 @@ class HealService:
         page,
         project_id: int,
         max_retries: int = 3,
+        platform: str = "web",
     ) -> HealResult:
         """手动触发自愈，返回完整 HealResult 供 API 响应
 
@@ -207,9 +213,9 @@ class HealService:
             HealResult(heal_id, healed_code, retry_status, retry_count)
         """
         case_id = step.case_id
-        logger.info("手动自愈: execution_id=%s case=%s step=%s", execution_id, case_id, step.step_index)
+        logger.info("手动自愈: execution_id=%s case=%s step=%s platform=%s", execution_id, case_id, step.step_index, platform)
 
-        error_ctx = await self._capture_failure_context(step, page)
+        error_ctx = await self._capture_failure_context(step, page, platform=platform)
         original_code = self._get_original_code(case_id)
         last_heal_record = None
         last_healed_code = ""
@@ -217,10 +223,10 @@ class HealService:
         for attempt in range(1, max_retries + 1):
             logger.info("手动自愈第 %s/%s 次: step_id=%s", attempt, max_retries, step.id)
 
-            prompt = self._build_heal_prompt(error_ctx, original_code, step)
+            prompt = self._build_heal_prompt(error_ctx, original_code, step, platform=platform)
 
             try:
-                healed_code = self._call_heal_ai(prompt)
+                healed_code = self._call_heal_ai(prompt, platform=platform)
             except Exception as e:
                 return HealResult(
                     heal_id=0, retry_status="failed", retry_count=attempt,
@@ -234,7 +240,7 @@ class HealService:
                 )
 
             healed_code = self._extract_code(healed_code)
-            validation_error = self._validate_healed(healed_code)
+            validation_error = self._validate_healed(healed_code, platform=platform)
             if validation_error:
                 last_healed_code = healed_code
                 continue
@@ -246,7 +252,7 @@ class HealService:
             last_healed_code = healed_code
 
             success = await self._retry_execution(
-                page, healed_code, step, execution_id, case_id
+                page, healed_code, step, execution_id, case_id, platform=platform
             )
 
             if success:
@@ -277,7 +283,7 @@ class HealService:
     # ═══════════════════════════════════════════════
 
     async def _capture_failure_context(
-        self, step: ExecutionStep, page
+        self, step: ExecutionStep, page, platform: str = "web"
     ) -> dict:
         """捕获失败步骤的完整上下文"""
         ctx = {
@@ -290,28 +296,57 @@ class HealService:
             "screenshot_after": step.screenshot_after or "",
         }
 
-        # DOM 快照（截断至 100KB）
-        try:
-            dom = await page.content()
-            ctx["dom_snapshot"] = dom[:100000]
-        except Exception as e:
-            logger.warning("DOM 快照获取失败: %s", e)
-            ctx["dom_snapshot"] = "(无法获取 DOM 快照)"
+        if platform == "android":
+            # Android: page_source XML + exception_type + selector_type
+            ctx["exception_type"] = step.exception_type or ""
+            ctx["selector_type"] = ""
+            try:
+                source = page.page_source  # page is Appium driver for Android
+                ctx["page_source"] = source[:100000]
+                # 提取可见元素
+                visible = _parse_android_elements(source)
+                ctx["visible_elements"] = _format_android_elements(visible)
+            except Exception as e:
+                logger.warning("Android 上下文捕获失败: %s", e)
+                ctx["page_source"] = "(无法获取 Page Source)"
+                ctx["visible_elements"] = "(无法获取页面元素)"
+        else:
+            # Web: DOM 快照（截断至 100KB）
+            try:
+                dom = await page.content()
+                ctx["dom_snapshot"] = dom[:100000]
+            except Exception as e:
+                logger.warning("DOM 快照获取失败: %s", e)
+                ctx["dom_snapshot"] = "(无法获取 DOM 快照)"
 
-        # 重新抓取页面元素
-        try:
-            elements = await self._recrawl_elements(page)
-            ctx["elements_list"] = self._format_elements_compact(elements)
-        except Exception as e:
-            logger.warning("元素重抓失败: %s", e)
-            ctx["elements_list"] = "(无法获取页面元素)"
+            # 重新抓取页面元素
+            try:
+                elements = await self._recrawl_elements(page)
+                ctx["elements_list"] = self._format_elements_compact(elements)
+            except Exception as e:
+                logger.warning("元素重抓失败: %s", e)
+                ctx["elements_list"] = "(无法获取页面元素)"
 
         return ctx
 
     @staticmethod
     def _classify_error(error_msg: str) -> str:
-        """分类错误类型"""
+        """分类错误类型
+
+        支持 Web (Playwright) 和 Android (Appium) 异常类型。
+        优先匹配更具体的异常类型，再回退到通用匹配。
+        """
         msg_lower = error_msg.lower()
+        # Appium 异常（优先匹配）
+        if "staleelementreferenceexception" in msg_lower or "stale element" in msg_lower:
+            return "StaleElementError"
+        if "nosuchelementexception" in msg_lower:
+            return "ElementNotFoundError"
+        if "timeoutexception" in msg_lower:
+            return "TimeoutError"
+        if "webdriverexception" in msg_lower:
+            return "DriverError"
+        # Web 异常
         if "timeout" in msg_lower:
             return "TimeoutError"
         if "resolve" in msg_lower or "locator" in msg_lower or "element" in msg_lower:
@@ -429,26 +464,43 @@ class HealService:
     # ═══════════════════════════════════════════════
 
     def _build_heal_prompt(
-        self, error_ctx: dict, original_code: str, step: ExecutionStep
+        self, error_ctx: dict, original_code: str, step: ExecutionStep, platform: str = "web"
     ) -> str:
         """从文件加载 Prompt 模板并填充上下文（每次读取，支持热更新）"""
+        if platform == "android":
+            prompt_name = "heal_prompt_android.txt"
+        else:
+            prompt_name = "heal_prompt.txt"
         prompt_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
-            "prompts", "heal_prompt.txt",
+            "prompts", prompt_name,
         )
         if os.path.exists(prompt_path):
             with open(prompt_path, "r", encoding="utf-8") as f:
                 template = f.read()
         else:
             template = (
-                "修复以下 Playwright 测试代码中的失败步骤。\n"
+                "修复以下测试代码中的失败步骤。\n"
                 "【原始代码】\n{original_code}\n"
                 "【失败步骤】\nStep {failed_step_index}: {failed_action}\nTarget: {failed_target}\n"
                 "【错误信息】\n{error_message}\n"
-                "【最新页面元素列表】\n{elements_list}\n"
                 "请修复代码。"
             )
 
+        if platform == "android":
+            return template.format(
+                original_code=original_code,
+                failed_step_index=step.step_index,
+                failed_action=step.action or "",
+                failed_target=step.target_selector or "",
+                selector_type=error_ctx.get("selector_type", ""),
+                error_message=error_ctx.get("error_message", ""),
+                exception_type=error_ctx.get("exception_type", ""),
+                page_source=error_ctx.get("page_source", ""),
+                screenshot_before=error_ctx.get("screenshot_before", ""),
+                screenshot_after=error_ctx.get("screenshot_after", ""),
+                visible_elements=error_ctx.get("visible_elements", ""),
+            )
         return template.format(
             original_code=original_code,
             failed_step_index=step.step_index,
@@ -461,10 +513,15 @@ class HealService:
             elements_list=error_ctx.get("elements_list", ""),
         )
 
-    def _call_heal_ai(self, prompt: str) -> str:
+    def _call_heal_ai(self, prompt: str, platform: str = "web") -> str:
         """调用 OpenAI API 生成修复代码（temperature=0.3, timeout=60s）"""
         if not settings.OPENAI_API_KEY:
-            return self._mock_heal_response()
+            return self._mock_heal_response(platform=platform)
+
+        if platform == "android":
+            system_msg = "你是 Appium Android 测试修复专家。只返回完整的 def run_test(driver) Python 代码，不含 markdown 标记和解释。"
+        else:
+            system_msg = "你是 Playwright 测试修复专家。只返回完整的 async def run_test(page) Python 代码，不含 markdown 标记和解释。"
 
         last_error = None
         for attempt in range(3):
@@ -479,14 +536,7 @@ class HealService:
                         json={
                             "model": settings.OPENAI_MODEL,
                             "messages": [
-                                {
-                                    "role": "system",
-                                    "content": (
-                                        "你是 Playwright 测试修复专家。"
-                                        "只返回完整的 async def run_test(page) Python 代码，"
-                                        "不含 markdown 标记和解释。"
-                                    ),
-                                },
+                                {"role": "system", "content": system_msg},
                                 {"role": "user", "content": prompt},
                             ],
                             "temperature": 0.3,
@@ -503,8 +553,23 @@ class HealService:
         raise Exception(f"AI 调用失败(已重试3次): {last_error}")
 
     @staticmethod
-    def _mock_heal_response() -> str:
+    def _mock_heal_response(platform: str = "web") -> str:
         """Mock 模式下的自愈响应"""
+        if platform == "android":
+            return '''def run_test(driver):
+    """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
+    steps_result = []
+    from datetime import datetime
+    start_time = datetime.now()
+    try:
+        print("[自愈] Mock — 请配置 OPENAI_API_KEY")
+        steps_result.append({"step": 1, "status": "passed", "action": "healed"})
+    except Exception as e:
+        return {"success": False, "message": str(e), "steps": steps_result}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}
+'''
         return '''from playwright.async_api import Page, expect
 import asyncio
 from datetime import datetime
@@ -547,14 +612,17 @@ async def run_test(page: Page) -> dict:
         return code
 
     @staticmethod
-    def _validate_healed(code: str) -> Optional[str]:
+    def _validate_healed(code: str, platform: str = "web") -> Optional[str]:
         """校验修复后的代码（使用 code_validator）
+
+        Args:
+            platform: "web" 或 "android"，决定校验规则
 
         Returns:
             错误消息，如果通过则返回 None
         """
         from app.utils.code_validator import CodeValidator
-        return CodeValidator.validate(code)
+        return CodeValidator.validate(code, platform=platform)
 
     # ═══════════════════════════════════════════════
     # 重试执行
@@ -567,8 +635,12 @@ async def run_test(page: Page) -> dict:
         step: ExecutionStep,
         execution_id: int,
         case_id: int,
+        platform: str = "web",
     ) -> bool:
         """在沙箱中执行修复后的代码"""
+        if platform == "android":
+            return self._retry_execution_sync(page, code, step, execution_id, case_id)
+
         from app.utils.code_injector import CodeInjector
         from app.services.playwright_service import _build_namespace, _MonitorHooks
 
@@ -610,6 +682,53 @@ async def run_test(page: Page) -> dict:
             self._db.commit()
             return False
 
+    def _retry_execution_sync(
+        self,
+        page,
+        code: str,
+        step: ExecutionStep,
+        execution_id: int,
+        case_id: int,
+    ) -> bool:
+        """在沙箱中执行修复后的代码（Android 同步版）"""
+        from app.utils.appium_code_injector import AppiumCodeInjector
+        from app.services.appium_service import _build_sync_namespace, _SyncMonitorHooks
+
+        # AST 注入监控钩子
+        try:
+            code = AppiumCodeInjector.inject(code)
+        except SecurityException:
+            logger.warning("Android 自愈代码注入失败，使用原始代码")
+
+        hooks = _SyncMonitorHooks(self._db, execution_id, case_id, page)
+        namespace = _build_sync_namespace(page, hooks)
+
+        try:
+            exec(code, namespace)
+        except Exception as e:
+            logger.error("Android 自愈代码 exec 失败: step_id=%s, %s", step.id, e)
+            return False
+
+        run_test = namespace.get("run_test")
+        if not run_test:
+            logger.error("Android 自愈代码缺少 run_test: step_id=%s", step.id)
+            return False
+
+        try:
+            result = run_test(page)
+            success = result.get("success", False) if isinstance(result, dict) else False
+            if success:
+                step.status = "success"
+                step.log_output = f"[HEALED] step {step.step_index}: 自愈修复成功"
+                step.error_message = None
+                self._db.commit()
+            return success
+        except Exception as e:
+            logger.error("Android 自愈执行异常: step_id=%s, %s", step.id, e)
+            step.error_message = f"自愈重试失败: {str(e)[:500]}"
+            self._db.commit()
+            return False
+
     # ═══════════════════════════════════════════════
     # 自愈记录 + 生成代码管理
     # ═══════════════════════════════════════════════
@@ -624,6 +743,13 @@ async def run_test(page: Page) -> dict:
         retry_count: int,
     ) -> HealRecord:
         """保存自愈记录到数据库"""
+        attempts = [{
+            "attempt": retry_count,
+            "generated_code": healed_code[:5000],
+            "status": "retrying",
+            "error": "",
+            "created_at": datetime.utcnow().isoformat(),
+        }]
         record = HealRecord(
             execution_step_id=step_id,
             original_code=original_code[:3000],
@@ -632,6 +758,7 @@ async def run_test(page: Page) -> dict:
             heal_prompt=prompt[:5000],
             retry_status="retrying",
             retry_count=retry_count,
+            attempts=json.dumps(attempts, ensure_ascii=False),
         )
         self._db.add(record)
         self._db.commit()
@@ -639,11 +766,30 @@ async def run_test(page: Page) -> dict:
         return record
 
     def _update_heal_record(self, record_id: int, status: str) -> None:
-        """更新自愈记录状态"""
+        """更新自愈记录状态 + 追加 attempt 结果"""
         record = self._db.query(HealRecord).filter(HealRecord.id == record_id).first()
-        if record:
-            record.retry_status = status
-            self._db.commit()
+        if not record:
+            return
+        record.retry_status = status
+
+        # 更新 attempts 最后一个 entry 的状态
+        try:
+            attempts = json.loads(record.attempts) if record.attempts else []
+        except (json.JSONDecodeError, TypeError):
+            attempts = []
+
+        if attempts:
+            last = attempts[-1]
+            last["status"] = status
+            if status == "failed":
+                from app.models.execution_step import ExecutionStep
+                step = self._db.query(ExecutionStep).filter(
+                    ExecutionStep.id == record.execution_step_id
+                ).first()
+                last["error"] = (step.error_message or "")[:500] if step else ""
+            record.attempts = json.dumps(attempts, ensure_ascii=False)
+
+        self._db.commit()
 
     def _insert_healed_code(self, case_id: int, healed_code: str, prompt: str) -> None:
         """将修复后的代码插入 generated_codes（is_healed=true）"""
@@ -679,3 +825,73 @@ def _filter_stable_classes(classes: list[str]) -> list[str]:
             continue
         result.append(c)
     return result
+
+
+# ═══════════════════════════════════════════════
+# Android 元素解析
+# ═══════════════════════════════════════════════
+
+_ANDROID_ELEMENT_PATTERN = re.compile(
+    r'<(android\.\w+\.\w+)\s+([^>]*)>'
+)
+
+_ANDROID_ATTR_PATTERN = re.compile(r'(\w+)="([^"]*)"')
+
+
+def _parse_android_elements(page_source: str) -> list[dict]:
+    """从 Android page_source XML 中提取可交互元素"""
+    if not page_source or page_source == "(无法获取 Page Source)":
+        return []
+    elements = []
+    for match in _ANDROID_ELEMENT_PATTERN.finditer(page_source):
+        tag = match.group(1)
+        attrs_str = match.group(2)
+        attrs = {}
+        for attr_match in _ANDROID_ATTR_PATTERN.finditer(attrs_str):
+            attrs[attr_match.group(1)] = attr_match.group(2)
+
+        # 只保留可交互或包含文本的元素
+        clickable = attrs.get("clickable", "false")
+        enabled = attrs.get("enabled", "true")
+        text = attrs.get("text", "").strip()
+        content_desc = attrs.get("content-desc", "").strip()
+        if clickable != "true" and not text and not content_desc:
+            continue
+
+        class_name = tag.split(".")[-1] if "." in tag else tag
+        resource_id = attrs.get("resource-id", "")
+        bounds = attrs.get("bounds", "")
+        package = attrs.get("package", "")
+
+        elements.append({
+            "resource_id": resource_id,
+            "content_desc": content_desc,
+            "text": text[:80] if text else "",
+            "class_name": class_name,
+            "bounds": bounds,
+            "enabled": enabled,
+            "clickable": clickable,
+            "package": package,
+        })
+    return elements
+
+
+def _format_android_elements(elements: list[dict]) -> str:
+    """格式化 Android 元素列表为可读文本"""
+    if not elements:
+        return "（无可用元素）"
+    lines = []
+    for el in elements:
+        parts = [f"[{el['class_name']}]"]
+        if el["resource_id"]:
+            parts.append(f"resource-id={el['resource_id']}")
+        if el["content_desc"]:
+            parts.append(f"content-desc={el['content_desc']}")
+        if el["text"]:
+            parts.append(f'text="{el["text"]}"')
+        if el["bounds"]:
+            parts.append(f"bounds={el['bounds']}")
+        if el["clickable"] == "true":
+            parts.append("clickable")
+        lines.append("  ".join(parts))
+    return "\n".join(lines)

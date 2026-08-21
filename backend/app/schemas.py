@@ -3,7 +3,7 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import Any, Generic, TypeVar, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 T = TypeVar("T")
 
@@ -36,6 +36,8 @@ class ProjectCreate(BaseModel):
     test_path: str = Field(default="/")
     browser_type: str = Field(default="chromium")
     headless: int = Field(default=1, ge=0, le=1)
+    platform: str = Field(default="web", pattern="^(web|android)$")
+    config_json: Optional[dict] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -45,6 +47,7 @@ class ProjectUpdate(BaseModel):
     browser_type: Optional[str] = None
     headless: Optional[int] = Field(default=None, ge=0, le=1)
     status: Optional[str] = None
+    config_json: Optional[dict] = None
 
 
 class ProjectResponse(BaseModel):
@@ -54,17 +57,31 @@ class ProjectResponse(BaseModel):
     test_path: str
     browser_type: str
     headless: int
+    platform: str
+    config_json: Optional[dict] = None
     status: str
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
 
+    @field_validator("config_json", mode="before")
+    @classmethod
+    def parse_config_json(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            import json
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+        return v or {}
+
 
 class ProjectListItem(BaseModel):
     id: int
     name: str
     target_url: str
+    platform: str = "web"
     status: str
     case_count: int = 0
     created_at: datetime
@@ -91,9 +108,12 @@ class PageElementResponse(BaseModel):
     is_visible: int
     bounding_box: Optional[dict]
     attributes: Optional[dict]
+    platform: str = "web"
+    selector_type: Optional[str] = None
+    element_metadata: Optional[dict] = Field(default=None, alias="metadata")
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class CrawlResponse(BaseModel):

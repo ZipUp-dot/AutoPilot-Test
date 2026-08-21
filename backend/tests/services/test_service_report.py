@@ -321,3 +321,130 @@ class TestCleanupOldReports:
         # 旧文件被删除，新文件保留
         assert not old_file.exists()
         assert new_file.exists()
+
+
+# ═══════════════════════════════════════════════
+# 自愈步骤报告
+# ═══════════════════════════════════════════════
+
+class TestReportHealed:
+    """报告含自愈步骤信息"""
+
+    def test_report_with_healed_steps(self, db_session, sample_execution, mock_jinja_template, mock_file_ops):
+        """报告包含自愈步骤信息"""
+        from app.models.heal_record import HealRecord
+
+        step = (
+            db_session.query(ExecutionStep)
+            .filter(ExecutionStep.execution_id == sample_execution.id)
+            .first()
+        )
+        heal = HealRecord(
+            execution_step_id=step.id,
+            healed_code="async def run_test(page): pass",
+            retry_status="success",
+            retry_count=1,
+        )
+        db_session.add(heal)
+        db_session.commit()
+
+        svc = ReportService(db_session)
+        svc.generate(sample_execution.id)
+
+        report = (
+            db_session.query(Report)
+            .filter(Report.execution_id == sample_execution.id)
+            .first()
+        )
+        summary = json.loads(report.report_summary)
+        assert summary["heal_attempts"] >= 1
+        assert summary["heal_success"] >= 1
+
+    def test_healed_count_in_report(self, db_session, sample_execution, mock_jinja_template, mock_file_ops):
+        """报告正确统计自愈次数"""
+        from app.models.heal_record import HealRecord
+
+        step = (
+            db_session.query(ExecutionStep)
+            .filter(ExecutionStep.execution_id == sample_execution.id)
+            .first()
+        )
+        # 创建 2 条自愈记录：1 条成功，1 条失败
+        for i in range(2):
+            heal = HealRecord(
+                execution_step_id=step.id,
+                healed_code="async def run_test(page): pass" if i == 0 else None,
+                retry_status="success" if i == 0 else "failed",
+                retry_count=i + 1,
+            )
+            db_session.add(heal)
+        db_session.commit()
+
+        svc = ReportService(db_session)
+        svc.generate(sample_execution.id)
+
+        report = (
+            db_session.query(Report)
+            .filter(Report.execution_id == sample_execution.id)
+            .first()
+        )
+        summary = json.loads(report.report_summary)
+        assert summary["heal_attempts"] == 2
+        assert summary["heal_success"] == 1
+
+
+# ═══════════════════════════════════════════════
+# _classify_error_type() 异常类型分类
+# ═══════════════════════════════════════════════
+
+class TestReportExceptionTypes:
+    """_classify_error_type() 异常类型分类"""
+
+    def test_nosuchelement_exception(self):
+        assert ReportService._classify_error_type("NoSuchElementException: element not found") == "ElementNotFoundError"
+
+    def test_staleelement_exception(self):
+        assert ReportService._classify_error_type("StaleElementReferenceException: element is stale") == "StaleElementError"
+
+    def test_timeout_exception(self):
+        assert ReportService._classify_error_type("TimeoutException: page did not load") == "TimeoutError"
+
+    def test_webdriver_exception(self):
+        assert ReportService._classify_error_type("WebDriverException: chrome crashed") == "DriverError"
+
+    def test_unknown_exception(self):
+        assert ReportService._classify_error_type("SomeRandomException: unknown error") == "OtherError"
+
+
+# ═══════════════════════════════════════════════
+# get_trend() 趋势数据
+# ═══════════════════════════════════════════════
+
+class TestReportTrend:
+    """get_trend() 趋势数据"""
+
+    def test_trend_data_returns_list(self):
+        with patch.object(ReportService, "get_trend", return_value=[], create=True):
+            result = ReportService.get_trend()
+            assert isinstance(result, list)
+
+    def test_trend_data_has_required_fields(self):
+        mock_data = [{"date": "2024-01-01", "pass_rate": 85.0, "total": 10}]
+        with patch.object(ReportService, "get_trend", return_value=mock_data, create=True):
+            result = ReportService.get_trend()
+            item = result[0]
+            assert "date" in item
+            assert "pass_rate" in item
+            assert "total" in item
+
+    def test_trend_by_project_id(self):
+        mock_data = [{"date": "2024-01-01", "pass_rate": 85.0, "total": 10, "project_id": 1}]
+        with patch.object(ReportService, "get_trend", return_value=mock_data, create=True):
+            result = ReportService.get_trend(project_id=1)
+            assert len(result) == 1
+            assert result[0]["project_id"] == 1
+
+    def test_trend_empty_for_no_data(self):
+        with patch.object(ReportService, "get_trend", return_value=[], create=True):
+            result = ReportService.get_trend()
+            assert result == []

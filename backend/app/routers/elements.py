@@ -1,4 +1,4 @@
-"""页面元素路由 — 委托 ElementService 处理抓取 + 查询 + 清空"""
+"""页面元素路由 — 委托 ElementService / AndroidCrawlService 处理抓取 + 查询 + 清空"""
 
 import logging
 import traceback
@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.dependencies import get_db, PaginationParams
 from app.services.element_service import ElementService
+from app.services.android_crawl_service import AndroidCrawlService
 from app.schemas import (
     ApiResponse,
     PaginatedData,
@@ -60,6 +61,51 @@ async def crawl_elements(project_id: int, body: CrawlRequest, db: Session = Depe
     })
 
 
+@router.post("/crawl/android", response_model=ApiResponse)
+def crawl_android_elements(project_id: int, db: Session = Depends(get_db)):
+    """触发 Android 屏幕元素抓取
+
+    使用 Appium 连接 Android 设备/模拟器，获取当前屏幕的 XML 页面源码，
+    解析提取所有可交互 UI 元素，保存到 PageElement 表（platform=android）。
+    """
+    svc = AndroidCrawlService(db)
+    try:
+        result = svc.crawl(project_id)
+    except Exception as e:
+        logger.error(f"Android 元素抓取异常: {type(e).__name__}: {e}")
+        logger.error(traceback.format_exc())
+        raise
+
+    if result.error:
+        return ApiResponse(
+            code=500,
+            message=result.error,
+            data={"crawled_count": 0, "elapsed_ms": result.elapsed_ms},
+        )
+
+    elements_data = [
+        {
+            "id": getattr(e, "db_id", 0),
+            "selector": e.selector,
+            "selector_type": e.selector_type,
+            "class_name": e.class_name,
+            "text": e.text,
+            "resource_id": e.resource_id,
+            "content_desc": e.content_desc,
+            "bounds": e.bounds,
+            "clickable": e.clickable,
+            "enabled": e.enabled,
+        }
+        for e in result.elements
+    ]
+
+    return ApiResponse(data={
+        "crawled_count": result.crawled_count,
+        "elements": elements_data,
+        "elapsed_ms": result.elapsed_ms,
+    })
+
+
 @router.get("/", response_model=ApiResponse[PaginatedData[PageElementResponse]])
 def list_elements(
     project_id: int,
@@ -69,9 +115,17 @@ def list_elements(
     db: Session = Depends(get_db),
 ):
     """元素列表（按类型、关键字筛选，分页）"""
+    from app.models.project import Project
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        from app.exceptions import NotFoundException
+        raise NotFoundException(f"项目 {project_id} 不存在")
+    platform = getattr(project, "platform", "web")
+
     svc = ElementService(db)
     result = svc.list_paginated(
         project_id=project_id,
+        platform=platform,
         element_type=element_type,
         keyword=keyword,
         page=pagination.page,
@@ -111,6 +165,13 @@ def list_elements(
 @router.delete("/", response_model=ApiResponse)
 def clear_elements(project_id: int, db: Session = Depends(get_db)):
     """清空项目的所有页面元素"""
+    from app.models.project import Project
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        from app.exceptions import NotFoundException
+        raise NotFoundException(f"项目 {project_id} 不存在")
+    platform = getattr(project, "platform", "web")
+
     svc = ElementService(db)
-    count = svc.clear_all(project_id)
+    count = svc.clear_all(project_id, platform=platform)
     return ApiResponse(data={"deleted_count": count})

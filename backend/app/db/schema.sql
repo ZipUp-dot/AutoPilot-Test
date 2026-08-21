@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS projects (
     browser_type VARCHAR(20) DEFAULT 'chromium',
     headless TINYINT DEFAULT 1,
     status VARCHAR(20) DEFAULT 'active',          -- active / archived
+    platform VARCHAR(10) DEFAULT 'web',           -- web / android (创建后只读)
+    config_json TEXT,                              -- JSON: 平台配置 (Android: appium_server_url, app_package 等)
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -32,6 +34,9 @@ CREATE TABLE IF NOT EXISTS page_elements (
     is_visible TINYINT DEFAULT 1,
     bounding_box TEXT,                            -- JSON: {x, y, width, height}
     attributes TEXT,                              -- JSON
+    platform VARCHAR(10) DEFAULT 'web',           -- web / android
+    selector_type VARCHAR(20),                    -- css / xpath / resource_id (NULL 兼容历史数据)
+    metadata TEXT,                                -- JSON (Android 专用: resource_id, content_desc, class_name, text, bounds)
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     INDEX idx_pe_project_id (project_id),
@@ -104,6 +109,7 @@ CREATE TABLE IF NOT EXISTS execution_steps (
     screenshot_after VARCHAR(500),
     log_output TEXT,
     error_message TEXT,
+    exception_type VARCHAR(100),
     duration_ms INT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (execution_id) REFERENCES executions(id) ON DELETE CASCADE,
@@ -133,6 +139,7 @@ CREATE TABLE IF NOT EXISTS heal_records (
     heal_prompt TEXT,
     retry_status VARCHAR(20) DEFAULT 'pending',   -- pending / success / failed
     retry_count INT DEFAULT 0,
+    attempts TEXT DEFAULT '[]',                    -- JSON: [{attempt, generated_code, status, error, created_at}]
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (execution_step_id) REFERENCES execution_steps(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

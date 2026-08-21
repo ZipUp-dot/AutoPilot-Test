@@ -20,6 +20,7 @@ import logging
 from typing import Any, Optional
 
 from app.models.generated_code import GeneratedCode
+from app.services.execution_state import clear_stop_flag
 
 logger = logging.getLogger("autopilot.orchestrator")
 
@@ -29,24 +30,44 @@ class TestOrchestrator:
 
     通过依赖注入传入服务，便于测试和替换。
     编排器只负责流程控制，不包含具体业务逻辑。
+
+    支持两种执行平台：
+        - Web (playwright): 异步执行，后台线程中 asyncio.run()
+        - Android (appium): 同步执行，后台线程中直接运行
     """
 
     def __init__(
         self,
         ai_service: Any = None,
         playwright_service: Any = None,
+        appium_service: Any = None,
         report_service: Any = None,
     ) -> None:
         """依赖注入初始化
 
         Args:
             ai_service: AIService 实例
-            playwright_service: PlaywrightService 实例
+            playwright_service: PlaywrightService 实例（Web 执行）
+            appium_service: AppiumService 实例（Android 执行）
             report_service: ReportService 实例
         """
         self.ai_service = ai_service
         self.playwright_service = playwright_service
+        self.appium_service = appium_service
         self.report_service = report_service
+
+    def _get_executor(self, platform: str = "web") -> tuple[Any, str]:
+        """根据平台类型获取对应的执行器
+
+        Args:
+            platform: "web" 或 "android"
+
+        Returns:
+            (executor_service, platform_type)
+        """
+        if platform == "android":
+            return self.appium_service, "android"
+        return self.playwright_service, "web"
 
     # ═══════════════════════════════════════════════
     # 完整流水线
@@ -58,6 +79,7 @@ class TestOrchestrator:
         case_ids: list[int],
         mode: str = "headless",
         batch_name: str | None = None,
+        platform: str = "web",
     ) -> dict:
         """完整流水线：检查 → 生成（如需）→ 执行 → 监听 → 报告
 
@@ -77,13 +99,15 @@ class TestOrchestrator:
                 # 异常隔离：生成失败不阻塞执行，继续用已有代码
                 logger.warning("编排器: 代码生成失败（异常隔离），继续执行: %s", e)
 
-        # Step 2: 创建执行记录 + 异步启动执行
-        execution_id = self.playwright_service.create_execution(
+        # Step 2: 根据平台获取执行器
+        executor, platform_type = self._get_executor(platform)
+
+        # 创建执行记录
+        execution_id = executor.create_execution(
             project_id, case_ids, mode, batch_name,
         )
 
         # 清除旧的停止标志
-        from app.services.playwright_service import clear_stop_flag
         clear_stop_flag(execution_id)
 
         # 后台线程启动执行
@@ -93,12 +117,16 @@ class TestOrchestrator:
             from app.db.database import SessionLocal
             db_session = SessionLocal()
             try:
-                from app.services.playwright_service import PlaywrightService
-                svc = PlaywrightService(db_session)
-                svc.execute(project_id, case_ids, execution_id, mode)
+                if platform_type == "android":
+                    from app.services.appium_service import AppiumService
+                    svc = AppiumService(db_session)
+                    svc.execute(project_id, case_ids, execution_id, mode)
+                else:
+                    from app.services.playwright_service import PlaywrightService
+                    svc = PlaywrightService(db_session)
+                    svc.execute(project_id, case_ids, execution_id, mode)
             except Exception:
                 logger.exception("后台执行线程异常: execution_id=%s", execution_id)
-                # 兜底：确保执行状态不为 running
                 try:
                     from app.models.execution import Execution
                     from datetime import datetime as dt
@@ -154,13 +182,14 @@ class TestOrchestrator:
         case_ids: list[int],
         mode: str = "headless",
         batch_name: str | None = None,
+        platform: str = "web",
     ) -> dict:
         """仅执行（假设代码已生成），启动执行 + 监听报告"""
-        execution_id = self.playwright_service.create_execution(
+        executor, platform_type = self._get_executor(platform)
+        execution_id = executor.create_execution(
             project_id, case_ids, mode, batch_name,
         )
 
-        from app.services.playwright_service import clear_stop_flag
         clear_stop_flag(execution_id)
 
         import threading
@@ -169,12 +198,16 @@ class TestOrchestrator:
             from app.db.database import SessionLocal
             db_session = SessionLocal()
             try:
-                from app.services.playwright_service import PlaywrightService
-                svc = PlaywrightService(db_session)
-                svc.execute(project_id, case_ids, execution_id, mode)
+                if platform_type == "android":
+                    from app.services.appium_service import AppiumService
+                    svc = AppiumService(db_session)
+                    svc.execute(project_id, case_ids, execution_id, mode)
+                else:
+                    from app.services.playwright_service import PlaywrightService
+                    svc = PlaywrightService(db_session)
+                    svc.execute(project_id, case_ids, execution_id, mode)
             except Exception:
                 logger.exception("后台执行线程异常: execution_id=%s", execution_id)
-                # 兜底：确保执行状态不为 running
                 try:
                     from app.models.execution import Execution
                     from datetime import datetime as dt

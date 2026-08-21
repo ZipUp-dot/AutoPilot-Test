@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     PLAYWRIGHT_HEADLESS: bool = True
     MAX_HEAL_RETRY: int = 3
 
+    # ── Appium ──
+    APPIUM_URL: str = "http://localhost:4723"
+    APPIUM_TIMEOUT: int = 30_000
+
     # ── 存储路径 ──
     UPLOAD_DIR: str = "./uploads"
     REPORT_DIR: str = "./reports"

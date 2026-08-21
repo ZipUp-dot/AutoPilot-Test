@@ -193,6 +193,7 @@
                   <div class="error-title">
                     <el-icon color="#f56c6c"><WarningFilled /></el-icon>
                     <span>错误信息</span>
+                    <el-tag v-if="step.exception_type" size="small" type="danger" style="margin-left:8px">{{ step.exception_type }}</el-tag>
                   </div>
                   <pre class="error-body">{{ step.error_message }}</pre>
                 </div>

@@ -1,5 +1,6 @@
 """项目管理业务逻辑"""
 
+import json
 import math
 from dataclasses import dataclass
 from typing import Optional
@@ -29,11 +30,14 @@ class ProjectService:
     # ── 创建 ──
 
     def create(self, name: str, target_url: str, test_path: str = "/",
-               browser_type: str = "chromium", headless: bool = True) -> Project:
-        """创建项目，校验浏览器类型"""
+               browser_type: str = "chromium", headless: bool = True,
+               platform: str = "web", config_json: Optional[dict] = None) -> Project:
+        """创建项目，校验浏览器类型和平台类型"""
         browser_type = browser_type.lower()
         if browser_type not in ("chromium", "firefox", "webkit"):
             raise ValidationException(f"不支持的浏览器类型: {browser_type}，可选 chromium/firefox/webkit")
+        if platform not in ("web", "android"):
+            raise ValidationException(f"不支持的平台类型: {platform}，可选 web/android")
 
         project = Project(
             name=name,
@@ -41,6 +45,8 @@ class ProjectService:
             test_path=test_path,
             browser_type=browser_type,
             headless=1 if headless else 0,
+            platform=platform,
+            config_json=json.dumps(config_json, ensure_ascii=False) if config_json else "{}",
         )
         self._db.add(project)
         self._db.commit()
@@ -66,7 +72,7 @@ class ProjectService:
             case_count = self._db.query(TestCase).filter(TestCase.project_id == p.id).count()
             result.append({
                 "id": p.id, "name": p.name, "target_url": p.target_url,
-                "status": p.status, "case_count": case_count,
+                "platform": p.platform, "status": p.status, "case_count": case_count,
                 "created_at": p.created_at, "updated_at": p.updated_at,
             })
         return PaginatedResult(
@@ -78,6 +84,8 @@ class ProjectService:
 
     def update(self, project_id: int, **kwargs) -> Project:
         project = self.get_or_404(project_id)
+        # platform 创建后只读，禁止修改
+        kwargs.pop("platform", None)
         if "browser_type" in kwargs and kwargs["browser_type"] is not None:
             bt = kwargs["browser_type"].lower()
             if bt not in ("chromium", "firefox", "webkit"):
@@ -85,6 +93,9 @@ class ProjectService:
             kwargs["browser_type"] = bt
         if "headless" in kwargs and kwargs["headless"] is not None:
             kwargs["headless"] = 1 if kwargs["headless"] else 0
+        # config_json 需要序列化为 JSON 字符串
+        if "config_json" in kwargs and kwargs["config_json"] is not None:
+            kwargs["config_json"] = json.dumps(kwargs["config_json"], ensure_ascii=False)
         for key, value in kwargs.items():
             if value is not None:
                 setattr(project, key, value)

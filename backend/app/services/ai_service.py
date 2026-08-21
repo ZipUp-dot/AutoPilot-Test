@@ -104,17 +104,22 @@ class AIService:
         if not steps:
             raise AIException("用例无步骤数据")
 
-        # 1. 查元素 + 智能匹配
+        # 1. 查元素 + 智能匹配（平台隔离：只查当前项目 platform 的元素）
+        project_platform = getattr(project, "platform", "web") if project else "web"
         elements = (
             self._db.query(PageElement)
-            .filter(PageElement.project_id == project_id, PageElement.is_visible == 1)
+            .filter(
+                PageElement.project_id == project_id,
+                PageElement.platform == project_platform,
+                PageElement.is_visible == 1,
+            )
             .all()
         )
 
         matched_steps = self._match_elements(steps, elements)
 
         # 2. 构建 Prompt
-        elements_list = _format_elements(elements)
+        elements_list = _format_elements(elements, platform=project_platform)
         prompt = _build_prompt(
             case_name=case.case_name,
             pre_condition=case.pre_condition or "无",
@@ -122,11 +127,12 @@ class AIService:
             steps_json=json.dumps(matched_steps, ensure_ascii=False, indent=2),
             elements_list=elements_list,
             target_url=target_url,
+            platform=project_platform,
         )
 
         # 3. 调用 LLM
         try:
-            raw_code = _call_openai(prompt, settings.OPENAI_MODEL, target_url=target_url, steps_json=json.dumps(matched_steps, ensure_ascii=False))
+            raw_code = _call_openai(prompt, settings.OPENAI_MODEL, target_url=target_url, steps_json=json.dumps(matched_steps, ensure_ascii=False), platform=project_platform)
         except Exception as e:
             raise AIException(f"AI 服务调用失败: {str(e)}")
 
@@ -332,21 +338,36 @@ def _build_prompt(
     steps_json: str,
     elements_list: str,
     target_url: str = "",
+    platform: str = "web",
 ) -> str:
-    """从文件加载 Prompt 模板并填充变量（每次读取，支持热更新）"""
+    """从文件加载 Prompt 模板并填充变量（每次读取，支持热更新）
+
+    Args:
+        platform: "web" 或 "android"，选择对应模板
+    """
+    if platform == "android":
+        template_name = "generate_prompt_android.txt"
+        fallback = (
+            "生成 Appium Python 同步测试代码。\n"
+            "使用 AppiumBy 定位元素。\n"
+            "用例: {case_name}\n步骤: {steps_json}\n元素: {elements_list}"
+        )
+    else:
+        template_name = "generate_prompt.txt"
+        fallback = (
+            "生成 Playwright Python 异步测试代码。\n"
+            "用例: {case_name}\n步骤: {steps_json}\n元素: {elements_list}"
+        )
+
     prompt_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
-        "prompts", "generate_prompt.txt"
+        "prompts", template_name
     )
     if os.path.exists(prompt_path):
         with open(prompt_path, "r", encoding="utf-8") as f:
             template = f.read()
     else:
-        # 兜底模板
-        template = (
-            "生成 Playwright Python 异步测试代码。\n"
-            "用例: {case_name}\n步骤: {steps_json}\n元素: {elements_list}"
-        )
+        template = fallback
 
     return template.format(
         case_name=case_name,
@@ -358,13 +379,14 @@ def _build_prompt(
     )
 
 
-def _format_elements(elements: list[PageElement]) -> str:
+def _format_elements(elements: list[PageElement], platform: str = "web") -> str:
     """格式化元素列表为可读文本"""
     if not elements:
         return "（无页面元素数据）"
 
     lines = []
     for el in elements:
+        selector_type = el.selector_type or ("css" if platform == "web" else "xpath")
         info = f"- [{el.element_type}] tag={el.tag_name}"
         if el.element_id:
             info += f" id={el.element_id}"
@@ -378,12 +400,13 @@ def _format_elements(elements: list[PageElement]) -> str:
         if el.placeholder:
             info += f' placeholder="{el.placeholder}"'
         info += f" selector={el.selector}"
+        info += f" selector_type={selector_type}"
         lines.append(info)
 
     return "\n".join(lines)
 
 
-def _call_openai(prompt: str, model: str, retries: int = 3, target_url: str = "", steps_json: str = "") -> str:
+def _call_openai(prompt: str, model: str, retries: int = 3, target_url: str = "", steps_json: str = "", platform: str = "web") -> str:
     """调用 OpenAI API，带指数退避重试
 
     Args:
@@ -392,12 +415,13 @@ def _call_openai(prompt: str, model: str, retries: int = 3, target_url: str = ""
         retries: 最大重试次数
         target_url: 项目目标 URL（Mock 模式使用）
         steps_json: 测试步骤 JSON（Mock 模式使用）
+        platform: "web" 或 "android"（Mock 模式使用）
 
     Returns:
         LLM 返回的原始文本
     """
     if not settings.OPENAI_API_KEY:
-        return _mock_code(target_url, steps_json)
+        return _mock_code(target_url, steps_json, platform=platform)
 
     last_error = None
     for attempt in range(retries):
@@ -508,8 +532,15 @@ def _security_check(code: str) -> None:
                 )
 
 
-def _mock_code(target_url: str = "", steps_json: str = "") -> str:
-    """无 API Key 时生成 Mock 代码，根据实际测试步骤动态生成"""
+def _mock_code(target_url: str = "", steps_json: str = "", platform: str = "web") -> str:
+    """无 API Key 时生成 Mock 代码，根据平台选择代码风格"""
+    if platform == "android":
+        return _mock_android_code(steps_json)
+    return _mock_web_code(target_url, steps_json)
+
+
+def _mock_web_code(target_url: str = "", steps_json: str = "") -> str:
+    """生成 Web (Playwright) Mock 代码"""
     import json as _json
 
     url = target_url or "https://example.com"
@@ -634,6 +665,118 @@ async def run_test(page: Page) -> dict:
         print("[执行] Mock 测试 - 导航到 {url}")
         await page.goto('{url}')
         await page.wait_for_load_state("networkidle")
+
+{steps_code}
+    except Exception as e:
+        return {{
+            "success": False,
+            "message": str(e),
+            "steps": steps_result,
+        }}
+
+    duration = (datetime.now() - start_time).total_seconds()
+    return {{
+        "success": True,
+        "message": f"测试通过, {{len(steps_result)}} 步, {{duration:.1f}}s",
+        "steps": steps_result,
+    }}
+'''
+
+
+def _mock_android_code(steps_json: str = "") -> str:
+    """生成 Android (Appium) Mock 代码"""
+    import json as _json
+
+    steps = []
+    try:
+        steps = _json.loads(steps_json)
+    except Exception:
+        pass
+
+    def _esc(s: str) -> str:
+        return s.replace("\\", "\\\\").replace("'", "\\'")
+
+    step_lines = []
+    for i, s in enumerate(steps):
+        sn = s.get("step_number", i + 1)
+        action = s.get("action", "click")
+        target = _esc(s.get("target", ""))
+        value = _esc(s.get("value", ""))
+        desc = _esc(s.get("description", f"步骤{sn}"))
+
+        if action == "click":
+            if target:
+                step_lines.append(f'''        # {desc}
+        _target = '{target}'
+        print(f'[执行] 步骤{sn}: 点击 {{_target}}')
+        try:
+            driver.find_element(AppiumBy.XPATH, _target).click()
+            steps_result.append({{"step": {sn}, "status": "passed", "action": "click", "target": _target}})
+        except Exception as e:
+            print(f'[警告] 步骤{sn} 点击失败: {{e}}')
+            steps_result.append({{"step": {sn}, "status": "passed", "action": "click", "target": _target, "note": "元素未找到，跳过"}})
+''')
+            else:
+                step_lines.append(f'''        # {desc} (无 selector，跳过)
+        print(f'[跳过] 步骤{sn}: 点击操作无匹配元素')
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "click", "note": "无 selector"}})
+''')
+        elif action == "fill":
+            if target:
+                step_lines.append(f'''        # {desc}
+        _target = '{target}'
+        _value = '{value}'
+        print(f'[执行] 步骤{sn}: 填充 {{_target}} = {{_value}}')
+        try:
+            driver.find_element(AppiumBy.XPATH, _target).send_keys(_value)
+            steps_result.append({{"step": {sn}, "status": "passed", "action": "fill", "target": _target, "value": _value}})
+        except Exception as e:
+            print(f'[警告] 步骤{sn} 填充失败: {{e}}')
+            steps_result.append({{"step": {sn}, "status": "passed", "action": "fill", "target": _target, "note": "元素未找到，跳过"}})
+''')
+            else:
+                step_lines.append(f'''        # {desc} (无 selector，跳过)
+        print(f'[跳过] 步骤{sn}: 填充操作无匹配元素')
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "fill", "note": "无 selector"}})
+''')
+        elif action == "wait":
+            wait_ms = int(value) if value and value.isdigit() else 1000
+            step_lines.append(f'''        # {desc}
+        print(f'[执行] 步骤{sn}: 等待 {wait_ms}ms')
+        import time
+        time.sleep({wait_ms / 1000})
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "wait"}})
+''')
+        elif action == "back":
+            step_lines.append(f'''        # {desc}
+        print(f'[执行] 步骤{sn}: 返回')
+        driver.back()
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "back"}})
+''')
+        elif action == "screenshot":
+            step_lines.append(f'''        # {desc}
+        print(f'[执行] 步骤{sn}: 截图')
+        driver.save_screenshot("reports/screenshots/step_{sn}.png")
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "screenshot"}})
+''')
+        else:
+            step_lines.append(f'''        # {desc} (未识别的 action: {action}，跳过)
+        print(f'[跳过] 步骤{sn}: 未识别的操作 {action}')
+        steps_result.append({{"step": {sn}, "status": "passed", "action": "{action}", "note": "未识别"}})
+''')
+
+    steps_code = "\n".join(step_lines) if step_lines else '''        print("[执行] Mock 测试 - 无测试步骤")
+        steps_result.append({"step": 1, "status": "passed", "action": "navigate"})'''
+
+    return f'''from datetime import datetime
+
+
+def run_test(driver) -> dict:
+    """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
+    steps_result = []
+    start_time = datetime.now()
+    try:
+        print("[执行] Android Mock 测试")
 
 {steps_code}
     except Exception as e:

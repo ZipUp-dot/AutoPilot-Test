@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, DateTime, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, func
 from pydantic import BaseModel, Field
 
 from app.db.database import Base
@@ -21,6 +21,8 @@ class Project(Base):
     browser_type = Column(String, default="chromium")
     headless = Column(Integer, default=1)
     status = Column(String, default="active")
+    platform = Column(String, default="web", nullable=False)
+    config_json = Column(Text, default="{}")
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -33,6 +35,8 @@ class ProjectCreate(BaseModel):
     test_path: str = Field(default="/")
     browser_type: str = Field(default="chromium")
     headless: int = Field(default=1, ge=0, le=1)
+    platform: str = Field(default="web", pattern="^(web|android)$")
+    config_json: Optional[dict] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -42,6 +46,7 @@ class ProjectUpdate(BaseModel):
     browser_type: Optional[str] = None
     headless: Optional[int] = Field(default=None, ge=0, le=1)
     status: Optional[str] = None
+    config_json: Optional[dict] = None
 
 
 class ProjectResponse(BaseModel):
@@ -51,6 +56,8 @@ class ProjectResponse(BaseModel):
     test_path: str
     browser_type: str
     headless: int
+    platform: str
+    config_json: Optional[dict] = None
     status: str
     created_at: datetime
     updated_at: datetime

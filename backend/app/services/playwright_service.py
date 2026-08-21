@@ -34,9 +34,7 @@ ALLOWED_BUILTINS = frozenset({
     "__import__",  # import 语句必需
 })
 
-# ── 全局停止标志 ──
-_stop_flags: dict[int, bool] = {}
-_stop_lock = threading.Lock()
+from app.services.execution_state import set_stop_flag, clear_stop_flag, is_stopped
 
 
 class PlaywrightService:
@@ -324,8 +322,7 @@ class PlaywrightService:
             logger.exception("更新执行状态失败: execution_id=%s, status=%s", execution_id, status)
 
     def _is_stopped(self, execution_id: int) -> bool:
-        with _stop_lock:
-            return _stop_flags.get(execution_id, False)
+        return is_stopped(execution_id)
 
     @staticmethod
     def _ensure_dir(path: str) -> str:
@@ -595,19 +592,3 @@ def _build_namespace(page, hooks: _MonitorHooks) -> dict:
         "__monitor_after": hooks.on_step_after,
         "print": lambda *a, **kw: logger.info(" ".join(str(x) for x in a)),
     }
-
-
-# ═══════════════════════════════════════════════
-# 停止控制
-# ═══════════════════════════════════════════════
-
-def set_stop_flag(execution_id: int) -> None:
-    """设置停止标志"""
-    with _stop_lock:
-        _stop_flags[execution_id] = True
-
-
-def clear_stop_flag(execution_id: int) -> None:
-    """清除停止标志"""
-    with _stop_lock:
-        _stop_flags.pop(execution_id, None)

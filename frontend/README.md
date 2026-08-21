@@ -1,8 +1,8 @@
 # AutoPilot Frontend
 
-> AI 驱动的自动化测试平台 — 前端管理界面
+> AI 驱动的自动化测试平台 — 前端管理界面（支持 Web + Android 双平台）
 
-基于 Vue 3 + Element Plus + Pinia 构建的 SPA 单页应用，提供项目管理、元素抓取、用例管理、AI 代码生成、执行监控、报告查看等完整前端功能。
+基于 Vue 3 + Element Plus + Pinia 构建的 SPA 单页应用，提供项目管理、元素抓取、用例管理、AI 代码生成、执行监控、报告查看等完整前端功能，统一管理 Web 和 Android 测试项目。
 
 ---
 
@@ -38,16 +38,16 @@ frontend/
 │   ├── main.js                   # 应用入口（挂载 Vue + Pinia + Router + Element Plus）
 │   ├── App.vue                   # 根组件（布局壳：侧边栏 + 顶部栏 + 内容区）
 │   ├── router/
-│   │   └── index.js              # 路由配置（8 条路由）
+│   │   └── index.js              # 路由配置（10 条路由）
 │   ├── stores/                   # Pinia 状态管理
 │   │   ├── index.js              # 统一导出
-│   │   ├── projectStore.js       # 项目状态
+│   │   ├── projectStore.js       # 项目状态（含 platform）
 │   │   ├── caseStore.js          # 用例状态 + 批量生成轮询
 │   │   ├── executionStore.js     # 执行状态 + 进度轮询
 │   │   └── reportStore.js        # 报告状态
-│   ├── api/                      # 后端 API 封装
+│   ├── api/                      # 后端 API 封装（8 个模块）
 │   │   ├── index.js              # Axios 实例 + 拦截器
-│   │   ├── project.js            # 项目 CRUD
+│   │   ├── project.js            # 项目 CRUD（含 platform / config_json）
 │   │   ├── element.js            # 元素抓取
 │   │   ├── case.js               # 用例管理
 │   │   ├── generate.js           # 代码生成 + 批量进度
@@ -65,20 +65,20 @@ frontend/
 │   │   └── PriorityTag.vue       # 优先级标签
 │   ├── composables/              # 可组合函数
 │   │   ├── usePolling.js         # 通用轮询 Hook（执行进度/批量生成状态）
-│   │   └── useWebSocket.js       # WebSocket 连接（预留，计划用于实时推送）
+│   │   └── useWebSocket.js       # WebSocket 连接（预留）
 │   ├── styles/                   # 全局样式
-│   │   ├── variables.css         # CSS 变量（颜色 / 间距 / 字体）
+│   │   ├── variables.css         # CSS 变量
 │   │   └── global.css            # 全局样式重置
 │   └── views/                    # 页面组件
-│       ├── ProjectList.vue       # 项目列表页
-│       ├── ProjectDetail.vue     # 项目详情页（Tab 容器）
-│       ├── Dashboard.vue         # 仪表盘
-│       ├── ExecutionDetail.vue   # 执行详情页（含截图对比）
-│       ├── ReportCenter.vue      # 报告中心
+│       ├── Dashboard.vue         # 仪表盘（含平台标签）
+│       ├── ProjectList.vue       # 项目列表（含 platform 选择/展示 + Android 配置）
+│       ├── ProjectDetail.vue     # 项目详情（含 platform 标签 + Android 配置编辑）
+│       ├── ExecutionDetail.vue   # 执行详情（含平台标签 + exception_type 展示）
+│       ├── ReportCenter.vue      # 报告中心（含平台标签）
 │       └── project/              # 项目子页面
 │           ├── ElementCapture.vue # 元素抓取页
 │           ├── CaseManagement.vue # 用例管理页
-│           ├── ExecutionPanel.vue  # 执行面板页
+│           ├── ExecutionPanel.vue  # 执行面板（含平台标签）
 │           └── ReportViewer.vue    # 报告查看页
 └── dist/                         # 构建产物
 ```
@@ -195,17 +195,16 @@ server: {
 | 路径 | 页面 | 说明 |
 |------|------|------|
 | `/` | → 重定向到 `/projects` | 默认首页 |
-| `/projects` | ProjectList | 项目列表，支持创建/编辑/删除 |
-| `/projects/:id` | ProjectDetail | 项目详情（Tab 容器） |
+| `/projects` | ProjectList | 项目列表，支持创建/编辑/删除（含 platform 选择 + Android 配置） |
+| `/projects/:id` | ProjectDetail | 项目详情（Tab 容器，含 platform 标签 + Android 配置编辑） |
 | `/projects/:id/elements` | ElementCapture | 元素抓取 + 列表 |
 | `/projects/:id/cases` | CaseManagement | 用例管理 + Excel 导入 + 代码生成 |
-| `/projects/:id/executions` | ExecutionPanel | 执行历史 + 创建执行 |
+| `/projects/:id/executions` | ExecutionPanel | 执行历史 + 创建执行（含平台标签） |
 | `/projects/:id/reports` | ReportViewer | 报告查看 |
-| `/executions/:executionId` | ExecutionDetail | 执行详情 + 步骤截图对比 |
-| `/reports` | ReportCenter | 报告中心 |
+| `/executions/:executionId` | ExecutionDetail | 执行详情 + 步骤截图对比 + exception_type 展示 |
+| `/reports` | ReportCenter | 报告中心（含平台标签） |
+| `/dashboard` | Dashboard | 仪表盘（含平台标签 + 最近执行） |
 | `/*` | → 重定向到 `/projects` | 404 兜底 |
-
-> **注意**：`Dashboard.vue` 组件已实现但尚未加入路由，计划后续版本作为首页仪表盘。
 
 ---
 
@@ -236,7 +235,7 @@ server: {
 | 报告 | [report.js](src/api/report.js) | 2 |
 | 自愈 | [heal.js](src/api/heal.js) | 2 |
 
-**总计 25 个前端 API 调用，与后端 25 个业务接口一一对应。**
+**总计 26 个前端 API 调用，与后端 26 个业务接口一一对应。**
 
 ### Axios 实例配置
 
@@ -266,40 +265,45 @@ server: {
 ### 1. 项目列表（ProjectList）
 
 - 分页卡片列表展示所有项目
-- 创建项目：填写名称、URL、测试路径、浏览器类型
-- 编辑项目：修改项目配置
+- 创建项目：填写名称、URL、测试路径、浏览器类型、**platform 选择（web/android）**、**Android 配置（Appium 地址、package、activity、设备名等）**
+- 编辑项目：修改项目配置，**platform 创建后只读**，**Android 配置动态编辑**
 - 删除项目：级联删除所有关联数据（需二次确认）
 - 表单校验：名称必填，URL 格式校验
+- **平台列**：Web 蓝色标签，Android 绿色标签
 
 ### 2. 项目详情（ProjectDetail）
 
-Tab 容器，包含 4 个子页面：
+Tab 容器，包含 4 个子页面，**顶部显示 platform 标签**：
 
 | Tab | 组件 | 功能 |
 |-----|------|------|
-| 页面元素 | ElementCapture | 触发 Playwright 抓取 → 元素列表 → 搜索筛选 |
+| 页面元素 | ElementCapture | 触发 Playwright/Appium 抓取 → 元素列表 → 搜索筛选 |
 | 测试用例 | CaseManagement | Excel 导入 → 用例列表 → 单条/批量生成代码 → 进度条 |
-| 执行历史 | ExecutionPanel | 创建执行 → 执行列表 → 状态轮询 → 停止执行 |
+| 执行历史 | ExecutionPanel | 创建执行 → 执行列表（含平台标签）→ 状态轮询 → 停止执行 |
 | 测试报告 | ReportViewer | 生成报告 → 内嵌 iframe 预览 → 下载 |
+
+**Android 配置编辑**：项目详情页显示"Android 配置"按钮，弹窗编辑 Appium 配置 6 个字段。
 
 ### 3. 执行详情（ExecutionDetail）
 
 - 步骤时间线展示（含执行前/后截图对比）
 - 实时进度轮询（2 秒间隔）
+- **平台标签**（Web / Android）
+- **exception_type 标签**：显示具体异常类型（NoSuchElementException 等）
 - Headed 模式实时截图推送
 - 截图 Lightbox 弹窗放大查看
 - 错误信息高亮显示
 - 自愈修复触发入口
 
-### 4. 仪表盘（Dashboard）🛠️ 计划中
+### 4. 仪表盘（Dashboard）
 
 - 项目总数、用例总数、执行总数统计卡片
-- 最近执行列表（快速跳转）
-- 组件已实现（`Dashboard.vue`），尚未加入路由
+- 最近执行列表（含**平台标签**，快速跳转）
+- 执行记录表格含"平台"列
 
 ### 5. 报告中心（ReportCenter）
 
-- 所有已生成报告列表
+- 所有已生成报告列表（含**平台标签**）
 - 按项目筛选
 - 空状态引导（无报告时提示创建）
 
