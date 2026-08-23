@@ -1,6 +1,7 @@
 """AI 代码生成服务 — 元素匹配 + Prompt 构建 + OpenAI 调用 + 安全校验"""
 
 import ast
+import base64
 import difflib
 import json
 import logging
@@ -463,6 +464,76 @@ def _call_openai(prompt: str, model: str, retries: int = 3, target_url: str = ""
                 time.sleep(wait)
 
     raise AIException(f"AI 服务调用失败(已重试{retries}次): {last_error}")
+
+
+def _call_openai_vision(prompt: str, image_bytes: bytes, model: str = None,
+                        retries: int = 2) -> str:
+    """调用 OpenAI Vision API，发送文本 + 截图进行分析
+
+    Args:
+        prompt: 文本提示
+        image_bytes: PNG 图片二进制数据
+        model: 模型名，默认使用 settings.OPENAI_MODEL
+        retries: 最大重试次数
+
+    Returns:
+        LLM 返回的原始文本
+    """
+    if not settings.OPENAI_API_KEY:
+        logger.warning("OPENAI_API_KEY 未配置，Vision 分析不可用")
+        return ""
+
+    model = model or settings.OPENAI_MODEL
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    data_url = f"data:image/png;base64,{image_b64}"
+
+    last_error = None
+    for attempt in range(retries):
+        try:
+            with httpx.Client(timeout=60.0) as client:
+                response = client.post(
+                    f"{settings.OPENAI_BASE_URL}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "你是一个网页自动化分析专家。分析截图中的页面状态，判断是否需要前置操作。只返回 JSON 格式结果。",
+                            },
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt},
+                                    {"type": "image_url", "image_url": {"url": data_url}},
+                                ],
+                            },
+                        ],
+                        "temperature": 0.1,
+                        "max_tokens": 1024,
+                    },
+                )
+                response.raise_for_status()
+                body = response.json()
+                content = body["choices"][0]["message"]["content"]
+                logger.info(
+                    "Vision 调用成功, model=%s, tokens=%s",
+                    model,
+                    body.get("usage", {}).get("total_tokens", "?"),
+                )
+                return content
+        except Exception as e:
+            last_error = e
+            if attempt < retries - 1:
+                wait = 2 ** attempt
+                logger.warning("Vision 调用失败(第%d次), %ds后重试: %s", attempt + 1, wait, e)
+                time.sleep(wait)
+
+    logger.error("Vision 调用失败(已重试%d次): %s", retries, last_error)
+    return ""
 
 
 def _extract_code(raw: str) -> str:

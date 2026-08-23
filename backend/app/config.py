@@ -18,10 +18,10 @@ class Settings(BaseSettings):
     # ── 数据库 ──
     DATABASE_URL: str = "mysql+pymysql://root:password@localhost:3306/autopilot"
 
-    # ── OpenAI ──
+    # ── OpenAI 兼容 AI ──
     OPENAI_API_KEY: str = ""
-    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
-    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_BASE_URL: str = "https://api.deepseek.com/v1"
+    OPENAI_MODEL: str = "deepseek-chat"
 
     # ── Playwright ──
     PLAYWRIGHT_TIMEOUT: int = 30_000

@@ -59,7 +59,7 @@ AutoPilot 构建了完整的自动化工作流，支持 Web 和 Android 双平�
 | 步骤 | Web | Android |
 | :--- | :--- | :--- |
 | **1. 环境配置** | 输入目标 URL，选择浏览器类型 | 输入 Appium 配置（server、package、activity、device） |
-| **2. 智能元素抓取** | Playwright 自动遍历页面，提取所有可交互元素 | Appium 自动遍历 Android 界面，提取元素（resource-id / content-desc / text / XPath） |
+| **2. 智能元素抓取** | Playwright 自动遍历页面，提取所有可交互元素；**goto 失败时 AI 感知导航**（截图分析 → 自动执行前置操作） | Appium 自动遍历 Android 界面，提取元素（resource-id / content-desc / text / XPath） |
 | **3. 用例导入** | 上传标准 Excel 测试用例，系统自动识别中英文列名，批量解析 | 与 Web 共享统一格式 |
 | **4. AI 精准生成** | 将**真实元素列表** + **用例步骤**作为上下文，生成 Playwright 异步代码 | 生成 Appium 同步代码（链式调用风格），注入监控钩子 |
 | **5. 可视化执行与监控** | 支持有头/无头模式运行，Web 界面实时展示执行进度、每步截图与完整日志 | 同步执行，每步截图（before/after），实时状态轮询 |
@@ -87,7 +87,7 @@ AutoPilot 构建了完整的自动化工作流，支持 Web 和 Android 双平�
 | :--- | :--- |
 | **后端** | FastAPI 0.115 · SQLAlchemy 2.0 · Pydantic 2.9 · Playwright 1.47 · Appium Python Client 4.2 · httpx 0.27 · openpyxl 3.1 · Jinja2 3.1 · Python 3.12+ |
 | **前端** | Vue 3 · Vite 5 · Vue Router 4 · Pinia 2 · Element Plus 2.5 · Axios 1.7 · Highlight.js 11.9 |
-| **数据库** | MySQL 8.0（生产） |
+| **数据库** | MySQL 8.0 |
 | **测试** | pytest 7.4+ · pytest-asyncio · pytest-cov · pytest-mock · factory-boy · faker · freezegun |
 
 
@@ -107,7 +107,7 @@ AutoPilot/
 │   │   ├── routers/                # 8 个 API 路由模块
 │   │   ├── services/               # 10 个业务服务（含编排器、AppiumService、AndroidCrawlService）
 │   │   ├── utils/                  # Excel 解析 / AST 校验 / 注入 / 截图 / Appium 代码注入
-│   │   ├── prompts/                # AI Prompt 模板（含 Android 专用模板）
+│   │   ├── prompts/                # AI Prompt 模板（代码生成/自愈/页面分析 共 5 个）
 │   │   ├── templates/              # HTML 报告模板
 │   │   └── middlewares/            # 请求日志 + 响应计时
 │   ├── tests/                      # pytest 四层测试套件（780+ 测试）
@@ -156,7 +156,7 @@ AutoPilot/
 | :--- | :--- | :--- |
 | **V1.0** | ✅ MVP 已发布 | 跑通"抓取 → 导入 → 生成 → 执行 → 容错重试 → 报告"全链路（Web 端） |
 | **V1.1** | ✅ Core 已完成 | 新增 Android 支持（AppiumService、元素抓取、AI 生成、执行、自愈、监控）、Orchestrator 平台分发、Heal History、Report 增强、Project/PageElement 平台隔离、780+ 测试 |
-| **V1.2** | 📅 规划中 | Heal History 可视化增强、Report Trend 趋势图、Failure Analytics、CI Gate、工程风险治理 |
+| **V1.2** | 🔧 开发中 | AI 感知页面抓取（goto 失败自动截图分析并执行前置操作）、执行失败标记修复、自愈历史字段补全、执行列表平台信息、Excel 导入反馈增强、Heal History 可视化增强、Report Trend 趋势图 |
 
 
 ## 十、快速开始
@@ -243,9 +243,9 @@ pytest tests/integration/           # 仅端到端集成测试
 
 | 项目 | 内容 |
 | :--- | :--- |
-| **当前版本** | V1.1 Core |
-| **文档版本** | V3.0 |
-| **最后更新** | 2026-08-22 |
+| **当前版本** | V1.2（开发中） |
+| **文档版本** | V3.1 |
+| **最后更新** | 2026-08-23 |
 | **后端测试** | 780 passed / 1 skipped |
 | **维护者** | ethan-peng（Mr-6Lawrence） |
 | **Gitee** | https://gitee.com/Mr-6Lawrence/auto-pilot-test |

@@ -13,6 +13,7 @@ from app.models.element import PageElement
 from app.models.project import Project
 from app.config import settings
 from app.exceptions import NotFoundException, PlaywrightException, ValidationException
+from app.services.ai_service import _call_openai_vision
 
 logger = logging.getLogger("autopilot.crawl")
 
@@ -211,9 +212,30 @@ class ElementService:
             try:
                 await page.goto(url, wait_until="networkidle", timeout=timeout_ms)
             except Exception as e:
-                await browser.close()
-                msg = str(e) or repr(e) or type(e).__name__
-                raise PlaywrightException(f"无法访问页面 {url}: {msg}")
+                logger.warning("首次 goto 失败: %s, 尝试 AI 辅助导航", e)
+                try:
+                    # 尝试 domcontentloaded 加载（部分页面可能已部分渲染）
+                    try:
+                        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                    except Exception:
+                        pass
+
+                    # AI 分析截图并执行前置操作
+                    ai_ok = await self._ai_assisted_navigation(page, url)
+                    if not ai_ok:
+                        await browser.close()
+                        msg = str(e) or repr(e) or type(e).__name__
+                        raise PlaywrightException(f"无法访问页面 {url}: {msg}")
+
+                    # 执行前置操作后重新尝试 goto
+                    await page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+                except PlaywrightException:
+                    await browser.close()
+                    raise
+                except Exception as e2:
+                    await browser.close()
+                    msg = str(e2) or repr(e2) or type(e2).__name__
+                    raise PlaywrightException(f"无法访问页面 {url}: {msg}")
 
             try:
                 raw_elements = await page.evaluate(_EXTRACT_JS)
@@ -242,6 +264,97 @@ class ElementService:
 
             await browser.close()
             return elements
+
+    # ═══════════════════════════════════════════════
+    # AI 辅助导航（方案 A: goto 失败时用 AI 分析截图并执行前置操作）
+    # ═══════════════════════════════════════════════
+
+    async def _ai_assisted_navigation(self, page, url: str) -> bool:
+        """AI 分析页面截图，执行前置操作（点击、填表等），返回是否成功处理
+
+        goto 失败时调用此方法：
+        1. 截图当前页面状态
+        2. 调用 Vision API 分析截图，判断是否需要前置操作
+        3. 解析 AI 返回的 JSON 指令，逐条执行
+        4. 返回 True 表示已执行前置操作（调用方应重试 goto）
+        """
+        prompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "prompts", "crawl_analyze.txt"
+        )
+        if os.path.exists(prompt_path):
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                prompt = f.read()
+        else:
+            logger.warning("crawl_analyze.txt 模板不存在，使用默认 Prompt")
+            prompt = (
+                "分析当前页面截图，判断是否需要执行前置操作（点击按钮、填写表单等）才能访问目标页面。"
+                "返回 JSON 格式：{\"need_pre_actions\": true/false, \"actions\": [...], \"reason\": \"...\"}"
+            )
+
+        # 截图
+        try:
+            screenshot_bytes = await page.screenshot(full_page=False)
+        except Exception as e:
+            logger.warning("AI 辅助导航截图失败: %s", e)
+            return False
+
+        # 调用 AI Vision
+        result = _call_openai_vision(prompt, screenshot_bytes)
+        if not result:
+            logger.info("AI Vision 返回空结果，跳过 AI 辅助导航")
+            return False
+
+        # 解析 JSON 响应
+        try:
+            clean = result.strip()
+            # 去除可能的 markdown 代码块标记
+            if clean.startswith("```"):
+                lines = clean.split("\n")
+                if len(lines) >= 3:
+                    clean = "\n".join(lines[1:-1])
+                else:
+                    clean = lines[-1] if len(lines) > 1 else ""
+            analysis = json.loads(clean)
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning("AI 分析结果 JSON 解析失败: %s\n原始响应: %s", e, result[:200])
+            return False
+
+        if not analysis.get("need_pre_actions"):
+            logger.info("AI 分析: 无需前置操作 - %s", analysis.get("reason", ""))
+            return False
+
+        logger.info("AI 分析: %s - 执行 %d 个前置操作", analysis.get("reason", ""), len(analysis.get("actions", [])))
+
+        # 逐条执行操作
+        actions = analysis.get("actions", [])
+        for i, action in enumerate(actions):
+            act = action.get("action", "")
+            selector = action.get("selector", "")
+            value = action.get("value", "")
+
+            try:
+                if act == "click":
+                    await page.click(selector)
+                    await page.wait_for_timeout(500)
+                elif act == "fill":
+                    await page.fill(selector, value)
+                    await page.wait_for_timeout(300)
+                elif act == "select":
+                    await page.select_option(selector, value)
+                    await page.wait_for_timeout(300)
+                elif act == "wait":
+                    delay = int(value) if value else 1000
+                    await page.wait_for_timeout(delay)
+                else:
+                    logger.warning("AI 操作未知类型: %s", act)
+                    continue
+                logger.info("AI 执行操作[%d]: %s %s", i, act, selector)
+            except Exception as e:
+                logger.warning("AI 操作[%d]失败: %s %s - %s", i, act, selector, e)
+
+        await page.wait_for_timeout(1000)
+        return True
 
     # ═══════════════════════════════════════════════
     # 选择器生成（7 级优先级）

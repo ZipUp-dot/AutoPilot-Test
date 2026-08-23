@@ -257,24 +257,37 @@ class AppiumService:
             exec(code, namespace)
         except Exception as e:
             logger.error("Appium 代码编译失败: case_id=%s, %s", case_id, e)
+            self._mark_case_failed(execution_id, case_id)
             return False
 
         run_test = namespace.get("run_test")
         if not run_test:
             logger.error("Appium 代码缺少 run_test 函数: case_id=%s", case_id)
+            self._mark_case_failed(execution_id, case_id)
             return False
 
         try:
             result = run_test(driver)
             success = result.get("success", False) if isinstance(result, dict) else False
+            if not success:
+                self._mark_case_failed(execution_id, case_id)
             return success
         except Exception:
             logger.exception("Appium 用例执行异常: case_id=%s", case_id)
+            self._mark_case_failed(execution_id, case_id)
             return False
 
     # ═══════════════════════════════════════════════
     # 辅助方法（与 PlaywrightService 一致）
     # ═══════════════════════════════════════════════
+
+    def _mark_case_failed(self, execution_id: int, case_id: int) -> None:
+        """用例失败时，将所有步骤标记为 failed"""
+        self._db.query(ExecutionStep).filter(
+            ExecutionStep.execution_id == execution_id,
+            ExecutionStep.case_id == case_id,
+        ).update({"status": "failed", "error_message": "case_failed"})
+        self._db.commit()
 
     def _init_steps(self, execution_id: int, case_id: int) -> None:
         """初始化执行步骤记录（清空旧数据，创建 pending 记录）"""

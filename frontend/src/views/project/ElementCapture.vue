@@ -8,7 +8,7 @@
         :loading="crawling"
         @click="handleCrawl"
       >
-        抓取元素
+        {{ projectPlatform === 'android' ? '抓取 Android 元素' : '抓取元素' }}
       </el-button>
     </div>
 
@@ -17,11 +17,11 @@
       <div class="filter-type">
         <span class="filter-label">类型：</span>
         <el-checkbox-group v-model="filter.types">
-          <el-checkbox label="button">按钮 (button)</el-checkbox>
-          <el-checkbox label="input">输入框 (input)</el-checkbox>
-          <el-checkbox label="link">链接 (link)</el-checkbox>
-          <el-checkbox label="select">下拉框 (select)</el-checkbox>
-          <el-checkbox label="textarea">文本域 (textarea)</el-checkbox>
+          <el-checkbox value="button">按钮 (button)</el-checkbox>
+          <el-checkbox value="input">输入框 (input)</el-checkbox>
+          <el-checkbox value="link">链接 (link)</el-checkbox>
+          <el-checkbox value="select">下拉框 (select)</el-checkbox>
+          <el-checkbox value="textarea">文本域 (textarea)</el-checkbox>
         </el-checkbox-group>
       </div>
       <el-input
@@ -166,9 +166,12 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh, CopyDocument, Search } from '@element-plus/icons-vue'
 import { elementApi } from '@/api/element'
+import { useProjectStore } from '@/stores/projectStore'
 
 const route = useRoute()
+const projectStore = useProjectStore()
 const projectId = computed(() => route.params.id)
+const projectPlatform = computed(() => projectStore.currentProject?.platform || 'web')
 
 const elements = ref([])
 const loading = ref(false)
@@ -226,13 +229,13 @@ const attributesEntries = computed(() => {
 
 function getTypeTagType(type) {
   const map = {
-    button: '',
+    button: 'primary',
     input: 'success',
     link: 'warning',
     select: 'danger',
     textarea: 'info',
   }
-  return map[type] || ''
+  return map[type] || 'info'
 }
 
 function getTypeLabel(type) {
@@ -266,7 +269,12 @@ async function fetchList() {
 async function handleCrawl() {
   crawling.value = true
   try {
-    await elementApi.crawl(projectId.value, 1)
+    if (projectPlatform.value === 'android') {
+      const config = projectStore.currentProject?.config_json || {}
+      await elementApi.crawlAndroid(projectId.value, config)
+    } else {
+      await elementApi.crawl(projectId.value, 1)
+    }
     ElMessage.success('抓取完成')
     pagination.page = 1
     await fetchList()

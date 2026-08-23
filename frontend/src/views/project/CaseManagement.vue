@@ -355,13 +355,15 @@ async function handleImport() {
     importProgress.value = 100
     importResult.value = {
       success: data?.success_count ?? data?.success ?? 0,
-      fail: data?.fail_count ?? data?.fail ?? 0,
+      fail: data?.failed ?? data?.fail_count ?? data?.fail ?? 0,
     }
     importErrors.value = data?.errors ?? data?.error_details ?? []
-    if (importResult.value.fail === 0) {
-      ElMessage.success('导入完成')
+    if (importResult.value.success > 0 && importResult.value.fail === 0) {
+      ElMessage.success(`导入完成，成功 ${importResult.value.success} 条`)
+    } else if (importResult.value.success > 0) {
+      ElMessage.warning(`导入完成，成功 ${importResult.value.success} 条，失败 ${importResult.value.fail} 条`)
     } else {
-      ElMessage.warning(`导入完成，部分失败`)
+      ElMessage.error(`导入失败：成功 0 条，失败 ${importResult.value.fail} 条，请检查文件格式是否与模板一致`)
     }
     await fetchCases()
   } catch {

@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS heal_records (
     heal_prompt TEXT,
     retry_status VARCHAR(20) DEFAULT 'pending',   -- pending / success / failed
     retry_count INT DEFAULT 0,
-    attempts TEXT DEFAULT '[]',                    -- JSON: [{attempt, generated_code, status, error, created_at}]
+    attempts TEXT,                                -- JSON: [{attempt, generated_code, status, error, created_at}]
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (execution_step_id) REFERENCES execution_steps(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

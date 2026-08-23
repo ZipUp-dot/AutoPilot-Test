@@ -5,7 +5,7 @@
         <h2>{{ project?.name || '项目详情' }}</h2>
         <div class="project-meta">
           <el-tag size="small" effect="plain">{{ project?.target_url }}</el-tag>
-          <el-tag :type="project?.platform === 'android' ? 'success' : ''" size="small" style="margin-left:8px">
+          <el-tag :type="project?.platform === 'android' ? 'success' : 'info'" size="small" style="margin-left:8px">
             {{ project?.platform === 'android' ? 'Android' : 'Web' }}
           </el-tag>
           <span v-if="project?.browser_type" style="margin-left:8px;color:var(--text-secondary);font-size:.82rem">{{ project.browser_type }}</span>

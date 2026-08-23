@@ -43,13 +43,62 @@ def test_list_executions(client, sample_project, sample_execution):
 
 
 def test_get_execution_detail(client, sample_execution):
-    """GET /api/v1/executions/{eid} — returns 200 with steps"""
+    """GET /api/v1/executions/{eid} — returns 200 with steps and case_results"""
     resp = client.get(f"/api/v1/executions/{sample_execution.id}")
     assert resp.status_code == 200
     data = resp.json()
     assert data["code"] == 0
     assert "steps" in data["data"]
     assert len(data["data"]["steps"]) >= 1
+    assert "case_results" in data["data"]
+    assert len(data["data"]["case_results"]) >= 1
+    # 验证 case_results 聚合正确：sample_execution 的步骤 status=success
+    for cr in data["data"]["case_results"]:
+        assert cr["status"] in ("success", "failed", "running", "pending", "skipped", "unknown")
+        assert "case_name" in cr
+        assert "step_count" in cr
+        assert "duration" in cr
+        assert "steps" in cr
+
+
+def test_get_execution_detail_with_failed_case(client, db_session, sample_project, sample_test_case):
+    """GET /api/v1/executions/{eid} — case_results 应包含 failed 状态"""
+    from app.models.execution import Execution
+    from app.models.execution_step import ExecutionStep
+    from datetime import datetime as dt
+
+    exec_obj = Execution(
+        project_id=sample_project.id,
+        batch_name="Failed Batch",
+        total_cases=1,
+        passed_cases=0,
+        failed_cases=1,
+        status="completed",
+        start_time=dt.utcnow(),
+        end_time=dt.utcnow(),
+    )
+    db_session.add(exec_obj)
+    db_session.flush()
+    step = ExecutionStep(
+        execution_id=exec_obj.id,
+        case_id=sample_test_case.id,
+        step_index=1,
+        action="click",
+        status="failed",
+        duration_ms=100,
+    )
+    db_session.add(step)
+    db_session.commit()
+
+    resp = client.get(f"/api/v1/executions/{exec_obj.id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["code"] == 0
+    cr = data["data"]["case_results"]
+    assert len(cr) == 1
+    assert cr[0]["status"] == "failed"
+    assert cr[0]["case_name"] == sample_test_case.case_name
+    assert cr[0]["step_count"] == 1
 
 
 def test_get_execution_detail_nonexistent(client):

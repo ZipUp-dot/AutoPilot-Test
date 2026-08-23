@@ -13,10 +13,10 @@
 | Web 框架 | FastAPI 0.115 |
 | ORM | SQLAlchemy 2.0 |
 | 数据库驱动 | PyMySQL 1.1 |
-| 数据库 | MySQL 8.0（生产） |
+| 数据库 | MySQL 8.0 |
 | 浏览器自动化 | Playwright 1.47（Chromium 无头模式） |
 | 移动端自动化 | Appium Python Client 4.2（UiAutomator2） |
-| AI 代码生成 | OpenAI API（gpt-4o / deepseek-chat，支持 Mock 模式） |
+| AI 代码生成 | OpenAI 兼容 API（DeepSeek / gpt-4o，支持 Vision 截图分析 + Mock 模式） |
 | HTTP 客户端 | httpx 0.27 |
 | 数据校验 | Pydantic 2.9 + pydantic-settings 2.5 |
 | 异步 | asyncio + threading |
@@ -58,27 +58,29 @@ backend/
 │   │   ├── executions.py        # 执行管理（创建 / 轮询 / 停止，平台分发）
 │   │   ├── reports.py           # 报告生成 / 查询
 │   │   └── heal.py              # 自愈修复（Web / Android 双分支）
-│   ├── services/                # 业务逻辑层（10 个服务）
-│   │   ├── project_service.py   # 项目 CRUD（含 platform 只读保护）
-│   │   ├── element_service.py   # 元素抓取 + 7 级选择器生成（平台感知）
-│   │   ├── case_service.py      # Excel 解析 + 用例管理
-│   │   ├── ai_service.py        # LLM 调用 + 代码生成（Web/Android 双平台）
-│   │   ├── playwright_service.py # Playwright 执行引擎（Web）
-│   │   ├── appium_service.py    # Appium 执行引擎（Android，同步链式调用）
-│   │   ├── android_crawl_service.py # Android 元素抓取（Appium）
-│   │   ├── orchestrator.py      # 执行编排器（平台分发 → 同步/异步线程）
-│   │   ├── heal_service.py      # 自愈修复（Web/Android 双分支）
-│   │   └── report_service.py    # HTML 报告生成（含异常类型分类）
+│   │   ├── services/                # 业务逻辑层（10 个服务）
+│   │   │   ├── project_service.py   # 项目 CRUD（含 platform 只读保护）
+│   │   │   ├── element_service.py   # 元素抓取 + 7 级选择器生成 + AI 辅助导航（平台感知）
+│   │   │   ├── case_service.py      # Excel 解析 + 用例管理
+│   │   │   ├── ai_service.py        # LLM 调用 + 代码生成 + Vision 截图分析（Web/Android 双平台）
+│   │   │   ├── playwright_service.py # Playwright 执行引擎（Web）
+│   │   │   ├── appium_service.py    # Appium 执行引擎（Android，同步链式调用）
+│   │   │   ├── android_crawl_service.py # Android 元素抓取（Appium）
+│   │   │   ├── orchestrator.py      # 执行编排器（平台分发 → 同步/异步线程）
+│   │   │   ├── heal_service.py      # 自愈修复（Web/Android 双分支）
+│   │   │   └── report_service.py    # HTML 报告生成（含异常类型分类）
 │   ├── utils/                   # 工具模块（6 个）
 │   │   ├── excel_parser.py      # Excel 智能解析（中文列名）
 │   │   ├── code_validator.py    # AST 语法校验 + 安全审计 + 平台合约检查
 │   │   ├── code_injector.py     # Web 截图/日志注入（异步）
 │   │   ├── appium_code_injector.py # Android 监控注入（同步，独立定义）
 │   │   └── screenshot.py        # 截图工具类
-│   ├── prompts/                 # AI Prompt 模板（3 个）
+│   ├── prompts/                 # AI Prompt 模板（5 个）
 │   │   ├── generate_prompt.txt   # Web 代码生成 Prompt
+│   │   ├── generate_prompt_android.txt # Android 代码生成 Prompt
 │   │   ├── heal_prompt.txt       # Web 自愈修复 Prompt
-│   │   └── heal_prompt_android.txt # Android 自愈修复 Prompt
+│   │   ├── heal_prompt_android.txt # Android 自愈修复 Prompt
+│   │   └── crawl_analyze.txt     # AI 感知页面抓取分析 Prompt（前置操作判定）
 │   ├── templates/                # Jinja2 模板
 │   │   └── report_template.html  # HTML 报告模板（内联 CSS/JS/Chart.js）
 │   ├── middlewares/              # 中间件
@@ -148,7 +150,7 @@ backend/
 | 依赖 | 版本 | 说明 |
 |------|------|------|
 | Python | 3.12+ | 推荐 3.12，最低 3.10 |
-| MySQL | 8.0+ | 可选，也可用 SQLite 免安装 |
+| MySQL | 8.0+ | 生产数据库（唯一支持） |
 | pip | 24.0+ | Python 包管理器 |
 | Playwright | 1.47 | Chromium 浏览器自动化 |
 
@@ -170,8 +172,6 @@ source venv/bin/activate
 
 ### 3. 创建数据库
 
-**方式一：MySQL**
-
 ```bash
 # 登录 MySQL
 mysql -u root -p
@@ -183,9 +183,7 @@ CREATE DATABASE autopilot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 exit
 ```
 
-**方式二：SQLite（免安装）**
-
-无需任何操作，首次启动会自动创建 `data/autopilot.db`。
+> 项目仅支持 MySQL 8.0+，SQLite 已移除。数据库连接通过 `.env` 中的 `DATABASE_URL` 配置。
 
 ### 4. 安装依赖
 
@@ -216,18 +214,14 @@ cp .env.example .env
 # ── 应用 ──
 SECRET_KEY=change-me-in-production
 
-# ── 数据库（二选一）──
-# MySQL 模式（推荐生产使用）
+# ── 数据库 ──
 DATABASE_URL=mysql+pymysql://root:你的密码@localhost:3306/autopilot
 
-# SQLite 模式（注释掉上面那行，用这行，免安装）
-# DATABASE_URL=sqlite:///./data/autopilot.db
-
 # ── AI 代码生成（可选）──
-# 不填则使用 Mock 模式，不影响其他功能
+# 默认使用 DeepSeek（国内可直连）；不填则使用 Mock 模式，不影响其他功能
 OPENAI_API_KEY=sk-xxxx
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4o
+OPENAI_BASE_URL=https://api.deepseek.com/v1
+OPENAI_MODEL=deepseek-chat
 
 # ── Playwright ──
 PLAYWRIGHT_HEADLESS=true
@@ -429,8 +423,11 @@ playwright install chromium
 ### Q: AI 代码生成返回空结果？
 未配置 `OPENAI_API_KEY` 时使用 Mock 模式，返回模拟数据。如需真实生成，请配置有效的 API Key。
 
-### Q: 如何切换数据库（MySQL ↔ SQLite）？
-修改 `.env` 中的 `DATABASE_URL` 后重启服务即可。SQLAlchemy ORM 层自动适配，无需改代码。
+### Q: 调用 AI 提示 "SSL: UNEXPECTED_EOF" 或连接失败？
+当前网络无法直连 `api.openai.com`。项目默认已配置 DeepSeek（`https://api.deepseek.com/v1`），国内可直连。如果你持有 OpenAI Key 且需直连，请使用支持视觉的国内中转或改用通义千问/智谱。
+
+### Q: 如何修改 AI 模型（DeepSeek / OpenAI / 通义千问等）？
+修改 `.env` 中的 `OPENAI_BASE_URL` 和 `OPENAI_MODEL` 后重启服务即可，所有 AI 调用均走 OpenAI 兼容接口。
 
 ---
 
@@ -462,7 +459,7 @@ projects (1)
 | `executions` | 执行批次 | total_cases, passed_cases, failed_cases, status, platform |
 | `execution_steps` | 执行步骤 | action, target_selector, screenshot_before/after, status, exception_type |
 | `execution_reports` | 执行报告 | report_html, report_summary(JSON), download_url |
-| `heal_records` | 自愈记录 | original_code, healed_code, retry_status, retry_count, attempts(JSON) |
+| `heal_records` | 自愈记录 | original_code, healed_code, retry_status, retry_count, attempts(TEXT) |
 
 **V1.1 新增字段**：
 - `projects.platform` — 项目平台（web/android），创建后只读
@@ -548,6 +545,18 @@ projects (1)
 3. `text` 文本（AppiumBy.XPATH）
 4. `class` + 属性（AppiumBy.XPATH）
 5. XPath 兜底
+
+**AI 感知导航（V1.2，Web 平台）**：
+
+当 `goto` 加载失败时，自动启动 AI 感知流程，无需人工干预：
+
+1. 以 `domcontentloaded` 重试加载（部分页面可能已部分渲染）
+2. 截图当前页面状态
+3. 调用 Vision API 分析截图，判断是否需要前置操作（登录、点击按钮、关闭弹窗等）
+4. 解析 AI 返回的 JSON 指令，逐条执行 `click` / `fill` / `select` / `wait`
+5. 重新尝试 `goto` 后继续正常抓取
+
+> **注意**：AI 感知导航依赖**视觉能力**（Vision API）。DeepSeek 为纯文本模型不支持截图分析，此时该功能自动跳过（优雅降级为原有行为）。如需启用，请使用通义千问（qwen-vl-max）或智谱（glm-4v）等支持视觉的模型。
 
 ### 用例管理
 
@@ -782,9 +791,9 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 |----------|--------|------|
 | `SECRET_KEY` | `change-me-in-production` | 应用密钥（生产环境务必修改） |
 | `DATABASE_URL` | `mysql+pymysql://root:password@localhost:3306/autopilot` | 数据库连接 |
-| `OPENAI_API_KEY` | `""` | OpenAI API Key（空则 Mock 模式） |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API 代理地址（兼容 deepseek 等） |
-| `OPENAI_MODEL` | `gpt-4o` | 默认模型 |
+| `OPENAI_API_KEY` | `""` | AI API Key（空则 Mock 模式） |
+| `OPENAI_BASE_URL` | `https://api.deepseek.com/v1` | API 地址（默认 DeepSeek，可换 OpenAI/通义千问/智谱等兼容接口） |
+| `OPENAI_MODEL` | `deepseek-chat` | 默认模型（视觉能力可选 qwen-vl-max / glm-4v） |
 | `PLAYWRIGHT_TIMEOUT` | `30000` | 页面加载超时（ms） |
 | `PLAYWRIGHT_HEADLESS` | `true` | 无头模式 |
 | `MAX_HEAL_RETRY` | `3` | 自愈最大重试次数 |

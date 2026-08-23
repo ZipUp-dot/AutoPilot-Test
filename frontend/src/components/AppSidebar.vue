@@ -8,7 +8,7 @@
       active-text-color="#409eff"
       router
     >
-      <el-menu-item index="/">
+      <el-menu-item index="/dashboard">
         <el-icon><Odometer /></el-icon>
         <span>仪表盘</span>
       </el-menu-item>
@@ -36,10 +36,10 @@ defineEmits(['toggle'])
 
 const route = useRoute()
 const activeRoute = computed(() => {
-  if (route.path === '/') return '/'
+  if (route.path === '/dashboard' || route.path === '/') return '/dashboard'
   if (route.path.startsWith('/projects')) return '/projects'
   if (route.path.startsWith('/reports')) return '/reports'
-  return '/'
+  return '/dashboard'
 })
 </script>
 

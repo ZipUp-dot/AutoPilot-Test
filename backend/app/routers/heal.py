@@ -24,6 +24,7 @@ from app.models.execution import Execution
 from app.models.execution_step import ExecutionStep
 from app.models.project import Project
 from app.models.heal_record import HealRecord
+from app.models.test_case import TestCase
 from app.schemas import ApiResponse, HealRequest
 from app.exceptions import NotFoundException, ValidationException
 
@@ -165,11 +166,33 @@ def get_heal_records(execution_id: int, db: Session = Depends(get_db)):
         .all()
     )
 
+    # 批量查询 step 和 case 信息
+    step_ids_list = [r.execution_step_id for r in records]
+    step_map = {}
+    if step_ids_list:
+        steps = (
+            db.query(ExecutionStep)
+            .filter(ExecutionStep.id.in_(step_ids_list))
+            .all()
+        )
+        case_ids = list({s.case_id for s in steps})
+        cases = (
+            db.query(TestCase)
+            .filter(TestCase.id.in_(case_ids))
+            .all()
+        )
+        case_map = {c.id: c.case_name for c in cases}
+        for s in steps:
+            step_map[s.id] = {"case_name": case_map.get(s.case_id, ""), "step_index": s.step_index}
+
     items = []
     for r in records:
+        step_info = step_map.get(r.execution_step_id, {})
         items.append({
             "id": r.id,
             "execution_step_id": r.execution_step_id,
+            "case_name": step_info.get("case_name", ""),
+            "step_index": step_info.get("step_index"),
             "original_code": r.original_code,
             "error_context": json.loads(r.error_context) if r.error_context else None,
             "healed_code": r.healed_code,

@@ -11,7 +11,7 @@
       <el-table-column prop="target_url" label="目标地址" show-overflow-tooltip />
       <el-table-column prop="platform" label="平台" width="90" align="center">
         <template #default="{ row }">
-          <el-tag :type="row.platform === 'android' ? 'success' : ''" size="small">
+          <el-tag :type="row.platform === 'android' ? 'success' : 'info'" size="small">
             {{ row.platform === 'android' ? 'Android' : 'Web' }}
           </el-tag>
         </template>

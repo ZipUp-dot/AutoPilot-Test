@@ -196,6 +196,16 @@
                     <el-tag v-if="step.exception_type" size="small" type="danger" style="margin-left:8px">{{ step.exception_type }}</el-tag>
                   </div>
                   <pre class="error-body">{{ step.error_message }}</pre>
+                  <div style="margin-top:8px">
+                    <el-button
+                      size="small"
+                      type="warning"
+                      :loading="healing"
+                      @click="handleTriggerHeal(step)"
+                    >
+                      手动自愈
+                    </el-button>
+                  </div>
                 </div>
 
                 <!-- 自愈记录 -->
@@ -231,6 +241,33 @@
         preview-teleported
       />
     </el-card>
+
+    <!-- 自愈历史 -->
+    <el-card class="heal-section" style="margin-top:16px">
+      <template #header><span>自愈历史</span></template>
+      <el-table v-if="healRecords.length > 0" :data="healRecords" size="small" stripe>
+        <el-table-column label="用例" min-width="120">
+          <template #default="{ row }">{{ row.case_name || row.case_id }}</template>
+        </el-table-column>
+        <el-table-column label="步骤" width="60" align="center">
+          <template #default="{ row }">{{ row.step_index }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="80">
+          <template #default="{ row }">
+            <el-tag :type="row.retry_status === 'success' ? 'success' : 'danger'" size="small">
+              {{ row.retry_status === 'success' ? '成功' : '失败' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="尝试次数" width="80" align="center">
+          <template #default="{ row }">{{ row.retry_count || 0 }}</template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="160">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
+      </el-table>
+      <EmptyState v-else icon="Document" description="暂无自愈记录" />
+    </el-card>
   </div>
 </template>
 
@@ -258,6 +295,8 @@ const detail = ref({})
 const loading = ref(false)
 const rerunning = ref(false)
 const stopping = ref(false)
+const healing = ref(false)
+const healRecords = ref([])
 const statusFilter = ref('all')
 const expandedRow = ref(null)
 const latestScreenshot = ref(null)
@@ -325,7 +364,7 @@ function formatDuration(val) {
   return minutes + 'm ' + seconds + 's'
 }
 
-function formatTime(val) {
+function formatDateTime(val) {
   if (!val) return '-'
   if (typeof val === 'string') return val.replace('T', ' ').substring(0, 19)
   return new Date(val).toLocaleString('zh-CN')
@@ -370,6 +409,7 @@ onMounted(async () => {
   loading.value = true
   try {
     await fetchDetail()
+    await fetchHealRecords()
     if (detail.value.status && !FINAL_STATUSES.includes(detail.value.status)) {
       polling.start()
     }
@@ -392,7 +432,7 @@ async function handleRerunFailed() {
       ElMessage.warning('没有失败的用例')
       return
     }
-    await executionApi.create(null, {
+    await executionApi.create(detail.value.project_id, {
       case_ids: failedCases,
       mode: detail.value.execution_mode || 'headless',
       batch_name: (detail.value.batch_name || '') + ' (重试)',
@@ -439,6 +479,29 @@ async function handleStop() {
     ElMessage.error('停止执行失败')
   } finally {
     stopping.value = false
+  }
+}
+
+async function handleTriggerHeal(step) {
+  healing.value = true
+  try {
+    await healApi.triggerHeal(executionId.value, step.case_id, step.step_index)
+    ElMessage.success('自愈触发成功')
+    await fetchHealRecords()
+    await fetchDetail()
+  } catch {
+    ElMessage.error('自愈触发失败')
+  } finally {
+    healing.value = false
+  }
+}
+
+async function fetchHealRecords() {
+  try {
+    const res = await healApi.getHealRecords(executionId.value)
+    healRecords.value = res.data?.items || res.data || []
+  } catch {
+    // 静默失败
   }
 }
 

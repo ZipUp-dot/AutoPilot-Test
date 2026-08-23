@@ -42,9 +42,12 @@ def _run_migrations() -> None:
     # 迁移定义：(表名, 字段名, 完整列定义 SQL)
     migrations = [
         ("projects", "platform", "VARCHAR(10) DEFAULT 'web'"),
+        ("projects", "config_json", "TEXT"),
         ("page_elements", "platform", "VARCHAR(10) DEFAULT 'web'"),
         ("page_elements", "selector_type", "VARCHAR(20)"),
         ("page_elements", "metadata", "TEXT"),
+        ("execution_steps", "exception_type", "VARCHAR(100)"),
+        ("heal_records", "attempts", "TEXT"),
     ]
 
     for table, column, col_def in migrations:

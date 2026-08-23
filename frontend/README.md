@@ -278,7 +278,7 @@ Tab 容器，包含 4 个子页面，**顶部显示 platform 标签**：
 | Tab | 组件 | 功能 |
 |-----|------|------|
 | 页面元素 | ElementCapture | 触发 Playwright/Appium 抓取 → 元素列表 → 搜索筛选 |
-| 测试用例 | CaseManagement | Excel 导入 → 用例列表 → 单条/批量生成代码 → 进度条 |
+| 测试用例 | CaseManagement | Excel 导入（含**导入结果分档反馈**：全部成功/部分成功/全部失败+错误明细） → 用例列表 → 单条/批量生成代码 → 进度条 |
 | 执行历史 | ExecutionPanel | 创建执行 → 执行列表（含平台标签）→ 状态轮询 → 停止执行 |
 | 测试报告 | ReportViewer | 生成报告 → 内嵌 iframe 预览 → 下载 |
 

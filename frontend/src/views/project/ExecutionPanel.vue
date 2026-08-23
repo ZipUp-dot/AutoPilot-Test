@@ -69,7 +69,7 @@
         <template #default="{ row }">
           <span class="row-link">{{ row.batch_name || '-' }}</span>
           <el-tag v-if="row.platform === 'android'" type="success" size="small" style="margin-left:6px">Android</el-tag>
-          <el-tag v-else-if="row.platform === 'web'" size="small" style="margin-left:6px">Web</el-tag>
+          <el-tag v-else-if="row.platform === 'web'" type="info" size="small" style="margin-left:6px">Web</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="执行模式" width="110" align="center">
@@ -137,23 +137,24 @@
       <div v-show="wizardStep === 0">
         <div v-if="loadingCases" v-loading="loadingCases" style="height: 160px" />
         <EmptyState
-          v-else-if="generatedCases.length === 0"
+          v-else-if="allCases.length === 0"
           icon="Document"
-          description="暂无已生成代码的用例"
+          description="暂无用例，请先在「用例管理」中导入或创建用例"
         />
         <el-table
           v-else
           ref="wizardTableRef"
-          :data="generatedCases"
+          :data="allCases"
           size="small"
           max-height="360"
           @selection-change="onWizardSelectionChange"
         >
           <el-table-column type="selection" width="44" />
           <el-table-column prop="case_name" label="用例名称" min-width="180" show-overflow-tooltip />
-          <el-table-column label="状态" width="100" align="center">
+          <el-table-column label="代码状态" width="100" align="center">
             <template #default="{ row }">
-              <el-tag type="success" size="small" effect="plain">已生成</el-tag>
+              <el-tag v-if="row.status === 'generated'" type="success" size="small" effect="plain">已生成</el-tag>
+              <el-tag v-else type="info" size="small" effect="plain">未生成</el-tag>
             </template>
           </el-table-column>
         </el-table>
@@ -318,10 +319,6 @@ const wizardMode = ref('headless')
 const wizardBatchName = ref('')
 const creating = ref(false)
 
-const generatedCases = computed(() =>
-  allCases.value.filter(c => c.status === 'generated')
-)
-
 const canGoNext = computed(() => {
   if (wizardStep.value === 0) return wizardSelectedCases.value.length > 0
   return true
@@ -446,8 +443,8 @@ async function handleStartExecution() {
     executionStore.startPolling(execId, 2000)
     ElMessage.success('执行已启动')
     await loadExecutions()
-  } catch {
-    ElMessage.error('创建执行失败')
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.message || err?.message || '创建执行失败')
   } finally {
     creating.value = false
   }

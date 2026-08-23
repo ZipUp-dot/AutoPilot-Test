@@ -3,6 +3,12 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   { path: '/', redirect: '/projects' },
   {
+    path: '/dashboard',
+    name: 'Dashboard',
+    component: () => import('@/views/Dashboard.vue'),
+    meta: { title: '仪表盘', icon: 'DataBoard' },
+  },
+  {
     path: '/projects',
     name: 'ProjectList',
     component: () => import('@/views/ProjectList.vue'),

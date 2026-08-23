@@ -114,6 +114,10 @@ async def create_execution(
     summary="获取项目下的执行列表",
 )
 def list_project_executions(project_id: int, db: Session = Depends(get_db)):
+    from app.models.project import Project
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    platform = project.platform if project else "web"
     executions = (
         db.query(Execution)
         .filter(Execution.project_id == project_id)
@@ -125,6 +129,7 @@ def list_project_executions(project_id: int, db: Session = Depends(get_db)):
             {
                 "id": e.id,
                 "batch_name": e.batch_name,
+                "platform": platform,
                 "total_cases": e.total_cases,
                 "passed_cases": e.passed_cases,
                 "failed_cases": e.failed_cases,
@@ -166,6 +171,65 @@ def get_execution_detail(execution_id: int, project_id: int = None, db: Session 
         .all()
     )
 
+    # 按 case_id 聚合成 case_results
+    from collections import OrderedDict
+
+    case_groups = OrderedDict()
+    case_ids = set()
+    for s in steps:
+        case_ids.add(s.case_id)
+        if s.case_id not in case_groups:
+            case_groups[s.case_id] = []
+        case_groups[s.case_id].append(s)
+
+    # 批量查询用例名
+    case_name_map = {}
+    if case_ids:
+        cases = db.query(TestCase).filter(TestCase.id.in_(case_ids)).all()
+        case_name_map = {c.id: c.case_name for c in cases}
+
+    case_results = []
+    for cid, csteps in case_groups.items():
+        statuses = {cs.status for cs in csteps}
+        if "failed" in statuses:
+            case_status = "failed"
+        elif "success" in statuses and all(cs.status == "success" for cs in csteps):
+            case_status = "success"
+        elif "running" in statuses:
+            case_status = "running"
+        elif "pending" in statuses:
+            case_status = "pending"
+        elif "skipped" in statuses:
+            case_status = "skipped"
+        else:
+            case_status = "unknown"
+
+        case_results.append({
+            "case_id": cid,
+            "case_name": case_name_map.get(cid, f"用例 #{cid}"),
+            "status": case_status,
+            "step_count": len(csteps),
+            "duration": sum(cs.duration_ms or 0 for cs in csteps),
+            "steps": [
+                {
+                    "id": cs.id,
+                    "step_index": cs.step_index,
+                    "action": cs.action,
+                    "target_selector": cs.target_selector,
+                    "input_value": cs.input_value,
+                    "status": cs.status,
+                    "screenshot_before": cs.screenshot_before,
+                    "screenshot_after": cs.screenshot_after,
+                    "log_output": cs.log_output,
+                    "error_message": cs.error_message,
+                    "exception_type": cs.exception_type,
+                    "duration_ms": cs.duration_ms,
+                    "created_at": str(cs.created_at) if cs.created_at else None,
+                }
+                for cs in csteps
+            ],
+        })
+
     return ApiResponse(data={
         "id": execution.id,
         "project_id": execution.project_id,
@@ -178,6 +242,7 @@ def get_execution_detail(execution_id: int, project_id: int = None, db: Session 
         "end_time": str(execution.end_time) if execution.end_time else None,
         "execution_mode": execution.execution_mode,
         "created_at": str(execution.created_at) if execution.created_at else None,
+        "case_results": case_results,
         "steps": [
             {
                 "id": s.id,
