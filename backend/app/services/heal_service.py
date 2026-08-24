@@ -35,8 +35,17 @@ from app.models.execution_step import ExecutionStep
 from app.models.generated_code import GeneratedCode
 from app.models.heal_record import HealRecord
 from app.exceptions import SecurityException
+from app.utils.ai_rate_limiter import AIRateLimiter
 
 logger = logging.getLogger("autopilot.heal")
+
+# 共享 AI 限流器（与代码生成共用同一个窗口）
+ai_rate_limiter = AIRateLimiter(max_calls_per_min=settings.OPENAI_MAX_CALLS_PER_MIN)
+
+# 快速失败缓存：key = "{step_id}_{error_type}"，value = 连续失败次数
+# 同一 step 的同类错误连续失败达到阈值后，跳过后续自愈（不再调用 AI）
+_HEAL_FAILURE_CACHE: dict[str, int] = {}
+_HEAL_FAILURE_CACHE_MAX_SIZE = 1000
 
 # ── 页面元素提取 JS（与 element_service 共用）──
 _EXTRACT_JS = """() => {
@@ -137,6 +146,21 @@ class HealService:
         step_index = step.step_index
         logger.info("开始自愈: execution_id=%s case=%s step=%s platform=%s", execution_id, case_id, step_index, platform)
 
+        # 0a. 页面健康检查：目标环境不可达时跳过自愈，避免无意义地调用 AI
+        if not await self._check_env_reachable(page, project_id, platform=platform):
+            logger.error("目标环境不可达，跳过自愈: execution_id=%s step_id=%s", execution_id, step.id)
+            return False
+
+        # 0b. 快速失败：同一 step 的同类错误已连续失败达到阈值，直接跳过
+        error_type = self._classify_error(step.error_message or "")
+        cache_key = f"{step.id}_{error_type}"
+        if _HEAL_FAILURE_CACHE.get(cache_key, 0) >= settings.HEAL_MAX_RETRY_SAME_ERROR:
+            logger.warning(
+                "步骤 %s 错误类型 %s 已连续失败 %d 次，跳过自愈（快速失败）",
+                step.id, error_type, settings.HEAL_MAX_RETRY_SAME_ERROR,
+            )
+            return False
+
         # 1. 捕获失败上下文
         error_ctx = await self._capture_failure_context(step, page, platform=platform)
 
@@ -182,13 +206,16 @@ class HealService:
                 self._update_heal_record(heal_record.id, "success")
                 # 插入修复后的代码到 generated_codes（is_healed=true）
                 self._insert_healed_code(case_id, healed_code, prompt)
+                # 自愈成功 → 清除快速失败计数
+                _HEAL_FAILURE_CACHE.pop(cache_key, None)
                 logger.info("自愈成功: step_id=%s 第%s次", step.id, attempt)
                 return True
             else:
                 self._update_heal_record(heal_record.id, "failed")
                 logger.warning("自愈重试失败: step_id=%s 第%s次", step.id, attempt)
 
-        # 全部失败 → 标记最终失败
+        # 全部失败 → 记录快速失败计数 + 标记最终失败
+        self._track_heal_failure(cache_key)
         step.status = "failed"
         self._db.commit()
         logger.error("自愈全部失败(%s次): step_id=%s", max_retries, step.id)
@@ -214,6 +241,27 @@ class HealService:
         """
         case_id = step.case_id
         logger.info("手动自愈: execution_id=%s case=%s step=%s platform=%s", execution_id, case_id, step.step_index, platform)
+
+        # 页面健康检查：目标环境不可达时跳过自愈
+        if not await self._check_env_reachable(page, project_id, platform=platform):
+            logger.error("目标环境不可达，跳过手动自愈: execution_id=%s step_id=%s", execution_id, step.id)
+            return HealResult(
+                heal_id=0, retry_status="failed", retry_count=0,
+                error_message="目标环境不可达，跳过自愈",
+            )
+
+        # 快速失败：同一 step 的同类错误已连续失败达到阈值
+        error_type = self._classify_error(step.error_message or "")
+        cache_key = f"{step.id}_{error_type}"
+        if _HEAL_FAILURE_CACHE.get(cache_key, 0) >= settings.HEAL_MAX_RETRY_SAME_ERROR:
+            logger.warning(
+                "步骤 %s 错误类型 %s 已连续失败 %d 次，跳过自愈（快速失败）",
+                step.id, error_type, settings.HEAL_MAX_RETRY_SAME_ERROR,
+            )
+            return HealResult(
+                heal_id=0, retry_status="failed", retry_count=0,
+                error_message=f"错误类型 {error_type} 已连续失败 {settings.HEAL_MAX_RETRY_SAME_ERROR} 次，跳过自愈",
+            )
 
         error_ctx = await self._capture_failure_context(step, page, platform=platform)
         original_code = self._get_original_code(case_id)
@@ -258,6 +306,7 @@ class HealService:
             if success:
                 self._update_heal_record(heal_record.id, "success")
                 self._insert_healed_code(case_id, healed_code, prompt)
+                _HEAL_FAILURE_CACHE.pop(cache_key, None)
                 return HealResult(
                     heal_id=heal_record.id,
                     healed_code=healed_code,
@@ -267,7 +316,8 @@ class HealService:
             else:
                 self._update_heal_record(heal_record.id, "failed")
 
-        # 全部失败
+        # 全部失败 → 记录快速失败计数
+        self._track_heal_failure(cache_key)
         step.status = "failed"
         self._db.commit()
         return HealResult(
@@ -277,6 +327,46 @@ class HealService:
             retry_count=max_retries,
             error_message=f"自愈全部失败({max_retries}次)",
         )
+
+    # ═══════════════════════════════════════════════
+    # 辅助：环境健康检查 + 快速失败计数
+    # ═══════════════════════════════════════════════
+
+    async def _check_env_reachable(self, page, project_id: int, platform: str = "web") -> bool:
+        """自愈前检查目标环境是否可达
+
+        目标网站/设备不可达时，AI 修复无意义（问题不在代码而在环境），
+        直接跳过自愈，避免无底线调用 AI 烧 Token。
+
+        Returns:
+            True 表示环境可达，可继续自愈
+        """
+        try:
+            if platform == "android":
+                # Appium driver 存活检查
+                _ = page.page_source
+                return True
+
+            # Web：尝试访问项目目标 URL
+            from app.models.project import Project
+            project = self._db.query(Project).filter(Project.id == project_id).first()
+            target_url = (project.target_url or "").strip() if project else ""
+            if not target_url:
+                return True  # 无目标 URL 则不拦截
+
+            await page.goto(target_url, wait_until="domcontentloaded", timeout=8000)
+            return True
+        except Exception as e:
+            logger.error("目标环境不可达: %s", str(e)[:200])
+            return False
+
+    @staticmethod
+    def _track_heal_failure(cache_key: str) -> None:
+        """记录一次自愈失败（含缓存容量保护）"""
+        # 缓存超限时清空（防止进程长期运行导致内存增长）
+        if len(_HEAL_FAILURE_CACHE) >= _HEAL_FAILURE_CACHE_MAX_SIZE:
+            _HEAL_FAILURE_CACHE.clear()
+        _HEAL_FAILURE_CACHE[cache_key] = _HEAL_FAILURE_CACHE.get(cache_key, 0) + 1
 
     # ═══════════════════════════════════════════════
     # 失败上下文捕获
@@ -514,9 +604,20 @@ class HealService:
         )
 
     def _call_heal_ai(self, prompt: str, platform: str = "web") -> str:
-        """调用 OpenAI API 生成修复代码（temperature=0.3, timeout=60s）"""
+        """调用 OpenAI API 生成修复代码（temperature=0.3, timeout=60s）
+
+        受全局限流器约束：每分钟超过 OPENAI_MAX_CALLS_PER_MIN 次时熔断，
+        抛出异常由调用方捕获（跳过本次自愈，不调用 AI）。
+        """
+        # Mock 模式不消耗限流额度
         if not settings.OPENAI_API_KEY:
             return self._mock_heal_response(platform=platform)
+
+        # 熔断：超出每分钟调用上限则跳过
+        if not ai_rate_limiter.acquire():
+            raise Exception(
+                f"AI API 调用熔断：每分钟最多 {settings.OPENAI_MAX_CALLS_PER_MIN} 次，请稍后重试"
+            )
 
         if platform == "android":
             system_msg = "你是 Appium Android 测试修复专家。只返回完整的 def run_test(driver) Python 代码，不含 markdown 标记和解释。"

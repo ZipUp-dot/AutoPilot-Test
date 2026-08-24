@@ -509,6 +509,37 @@ class TestCallOpenAI:
         with pytest.raises(AIException, match="已重试3次"):
             _call_openai("test prompt", "gpt-4o")
 
+    def test_circuit_breaker_raises_when_quota_exhausted(self, mock_settings):
+        """每分钟调用达到上限 → 抛 AIException（熔断，防止烧 Token）"""
+        from app.services.ai_service import ai_rate_limiter
+        from app.config import settings
+        mock_settings("OPENAI_API_KEY", "test-key")
+
+        ai_rate_limiter._max_calls = 3  # 临时降低上限
+        ai_rate_limiter._calls.clear()
+        try:
+            import time
+            now = time.time()
+            for _ in range(3):
+                ai_rate_limiter._calls.append(now)
+
+            with pytest.raises(AIException, match="熔断"):
+                _call_openai("test prompt", "gpt-4o")
+        finally:
+            ai_rate_limiter._calls.clear()
+            ai_rate_limiter._max_calls = settings.OPENAI_MAX_CALLS_PER_MIN
+
+    def test_mock_mode_does_not_consume_quota(self):
+        """Mock 模式（无 API Key）不消耗限流额度"""
+        from app.services.ai_service import ai_rate_limiter
+        ai_rate_limiter._calls.clear()
+        try:
+            result = _call_openai("test prompt", "gpt-4o")
+            assert "async def run_test" in result
+            assert len(ai_rate_limiter._calls) == 0
+        finally:
+            ai_rate_limiter._calls.clear()
+
 
 # ═══════════════════════════════════════════════
 # _extract_code() 测试

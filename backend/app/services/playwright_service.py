@@ -430,12 +430,25 @@ class PlaywrightService:
                         await context.close()
                         await browser.close()
 
-                    # 更新执行统计
+                    # 更新执行统计：按用例重新聚合步骤状态
+                    # （通过 = 该用例所有步骤 success；失败 = 存在 failed 步骤）
                     exec_row = db.query(Execution).filter(Execution.id == execution_id).first()
                     if exec_row:
-                        # passed_cases += healed 数量，failed_cases 减去已修复的
-                        exec_row.passed_cases = (exec_row.passed_cases or 0) + healed
-                        exec_row.failed_cases = still_failed
+                        from collections import defaultdict
+                        case_status: dict[int, list[str]] = defaultdict(list)
+                        for st in (
+                            db.query(ExecutionStep)
+                            .filter(ExecutionStep.execution_id == execution_id)
+                            .all()
+                        ):
+                            case_status[st.case_id].append(st.status)
+                        exec_row.passed_cases = sum(
+                            1 for sts in case_status.values()
+                            if sts and all(s == "success" for s in sts)
+                        )
+                        exec_row.failed_cases = sum(
+                            1 for sts in case_status.values() if "failed" in sts
+                        )
                         exec_row.status = "completed"
                         exec_row.end_time = datetime.utcnow()
                         db.commit()

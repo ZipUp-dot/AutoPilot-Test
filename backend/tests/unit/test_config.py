@@ -25,6 +25,7 @@ class TestSettingsDefaults:
             "UPLOAD_DIR", "REPORT_DIR", "SCREENSHOT_DIR", "VIDEO_DIR", "EXCEL_DIR",
             "CORS_ORIGINS", "APP_TITLE", "APP_VERSION", "API_PREFIX",
             "HOST", "PORT", "MAX_HEAL_RETRY", "OPENAI_BASE_URL", "SECRET_KEY",
+            "OPENAI_MAX_CALLS_PER_MIN", "HEAL_MAX_RETRY_SAME_ERROR", "PRE_EXECUTION_CHECK",
         ]
         for var in env_vars_to_clear:
             monkeypatch.delenv(var, raising=False)
@@ -35,12 +36,13 @@ class TestSettingsDefaults:
         assert field.default == "mysql+pymysql://root:password@localhost:3306/autopilot"
 
     def test_default_openai_api_key_is_empty_string(self):
-        s = Settings()
-        assert s.OPENAI_API_KEY == ""
+        # 验证模型字段默认值（避免实例化时读取 .env 文件中的真实 Key）
+        field = Settings.model_fields["OPENAI_API_KEY"]
+        assert field.default == ""
 
-    def test_default_openai_model_is_gpt4o(self):
-        s = Settings()
-        assert s.OPENAI_MODEL == "gpt-4o"
+    def test_default_openai_model_is_deepseek(self):
+        field = Settings.model_fields["OPENAI_MODEL"]
+        assert field.default == "deepseek-chat"
 
     def test_default_playwright_timeout_is_30000(self):
         s = Settings()
@@ -102,9 +104,21 @@ class TestSettingsDefaults:
         s = Settings()
         assert s.MAX_HEAL_RETRY == 3
 
-    def test_default_openai_base_url(self):
-        s = Settings()
-        assert s.OPENAI_BASE_URL == "https://api.openai.com/v1"
+    def test_default_openai_base_url_is_deepseek(self):
+        field = Settings.model_fields["OPENAI_BASE_URL"]
+        assert field.default == "https://api.deepseek.com/v1"
+
+    def test_default_openai_max_calls_per_min(self):
+        field = Settings.model_fields["OPENAI_MAX_CALLS_PER_MIN"]
+        assert field.default == 30
+
+    def test_default_heal_max_retry_same_error(self):
+        field = Settings.model_fields["HEAL_MAX_RETRY_SAME_ERROR"]
+        assert field.default == 3
+
+    def test_default_pre_execution_check(self):
+        field = Settings.model_fields["PRE_EXECUTION_CHECK"]
+        assert field.default is True
 
 
 # ═══════════════════════════════════════════════════════════════════

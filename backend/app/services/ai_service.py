@@ -20,8 +20,12 @@ from app.models.generated_code import GeneratedCode
 from app.models.element import PageElement
 from app.models.project import Project
 from app.exceptions import AIException, SecurityException
+from app.utils.ai_rate_limiter import AIRateLimiter
 
 logger = logging.getLogger("autopilot.ai")
+
+# 共享 AI 限流器（与自愈共用同一个窗口，防止无底线调用烧 Token）
+ai_rate_limiter = AIRateLimiter(max_calls_per_min=settings.OPENAI_MAX_CALLS_PER_MIN)
 
 # ── 危险导入黑名单 ──
 BANNED_IMPORTS = frozenset({
@@ -424,6 +428,12 @@ def _call_openai(prompt: str, model: str, retries: int = 3, target_url: str = ""
     if not settings.OPENAI_API_KEY:
         return _mock_code(target_url, steps_json, platform=platform)
 
+    # 熔断：超出每分钟调用上限则跳过（防止批量/异常流程无底线调用 AI）
+    if not ai_rate_limiter.acquire():
+        raise AIException(
+            f"AI 调用熔断：每分钟最多 {settings.OPENAI_MAX_CALLS_PER_MIN} 次，请稍后重试"
+        )
+
     last_error = None
     for attempt in range(retries):
         try:
@@ -481,6 +491,11 @@ def _call_openai_vision(prompt: str, image_bytes: bytes, model: str = None,
     """
     if not settings.OPENAI_API_KEY:
         logger.warning("OPENAI_API_KEY 未配置，Vision 分析不可用")
+        return ""
+
+    # 熔断：与代码生成共用同一限流窗口
+    if not ai_rate_limiter.acquire():
+        logger.warning("Vision 调用熔断：每分钟最多 %d 次，跳过本次分析", settings.OPENAI_MAX_CALLS_PER_MIN)
         return ""
 
     model = model or settings.OPENAI_MODEL

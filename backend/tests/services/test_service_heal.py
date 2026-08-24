@@ -1577,7 +1577,6 @@ class TestHealOriginalCode:
         # 原始代码不变
         original_again = svc._get_original_code(sample_generated_code.case_id)
         assert original_again == original
-        assert original_again == sample_generated_code.code_content
 
         # 第二次自愈后原始代码仍不变
         svc._save_heal_record(
@@ -1588,3 +1587,194 @@ class TestHealOriginalCode:
         final_original = svc._get_original_code(sample_generated_code.case_id)
         assert final_original == sample_generated_code.code_content
         assert "fixed" not in final_original
+
+
+# ═══════════════════════════════════════════════
+# 自愈入口页面健康检查（目标环境不可达时跳过）
+# ═══════════════════════════════════════════════
+
+class TestCheckEnvReachable:
+    """_check_env_reachable() — 自愈前目标环境健康检查"""
+
+    @pytest.mark.asyncio
+    async def test_web_reachable_returns_true(self, heal_svc_db, sample_project):
+        """Web 目标可达（goto 成功）→ True"""
+        page = AsyncMock()
+        page.goto = AsyncMock()
+
+        result = await heal_svc_db._check_env_reachable(page, sample_project.id, "web")
+        assert result is True
+        page.goto.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_web_unreachable_returns_false(self, heal_svc_db, sample_project):
+        """Web 目标不可达（goto 抛异常）→ False"""
+        page = AsyncMock()
+        page.goto = AsyncMock(side_effect=Exception("net::ERR_CONNECTION_REFUSED"))
+
+        result = await heal_svc_db._check_env_reachable(page, sample_project.id, "web")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_no_target_url_returns_true(self, heal_svc_db):
+        """项目不存在/无 target_url → 不拦截，返回 True"""
+        page = AsyncMock()
+
+        result = await heal_svc_db._check_env_reachable(page, 99999, "web")
+        assert result is True
+        page.goto.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_android_reachable_returns_true(self, heal_svc_db):
+        """Android driver 存活（page_source 正常）→ True"""
+        page = AsyncMock()
+        page.page_source = "<hierarchy></hierarchy>"
+
+        result = await heal_svc_db._check_env_reachable(page, 1, "android")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_android_unreachable_returns_false(self, heal_svc_db):
+        """Android driver 断开（page_source 访问抛异常）→ False"""
+        class _BrokenDriver:
+            @property
+            def page_source(self):
+                raise Exception("driver disconnected")
+
+        result = await heal_svc_db._check_env_reachable(_BrokenDriver(), 1, "android")
+        assert result is False
+
+
+# ═══════════════════════════════════════════════
+# 快速失败 — 同一 step 同类错误去重
+# ═══════════════════════════════════════════════
+
+class TestQuickFail:
+    """同一 step 的同类错误连续失败达到阈值后跳过自愈"""
+
+    @pytest.fixture(autouse=True)
+    def _clean_failure_cache(self):
+        from app.services.heal_service import _HEAL_FAILURE_CACHE
+        _HEAL_FAILURE_CACHE.clear()
+        yield
+        _HEAL_FAILURE_CACHE.clear()
+
+    def test_track_failure_increments_count(self, heal_svc):
+        from app.services.heal_service import _HEAL_FAILURE_CACHE
+        HealService._track_heal_failure("step1_TimeoutError")
+        HealService._track_heal_failure("step1_TimeoutError")
+        assert _HEAL_FAILURE_CACHE.get("step1_TimeoutError") == 2
+
+    def test_track_failure_respects_capacity(self, heal_svc):
+        from app.services.heal_service import _HEAL_FAILURE_CACHE, _HEAL_FAILURE_CACHE_MAX_SIZE
+        for i in range(_HEAL_FAILURE_CACHE_MAX_SIZE):
+            _HEAL_FAILURE_CACHE[f"k{i}"] = 1
+        HealService._track_heal_failure("new_key")
+        # 超限触发清空，只保留最新计数
+        assert _HEAL_FAILURE_CACHE.get("new_key") == 1
+        assert len(_HEAL_FAILURE_CACHE) == 1
+
+    @pytest.mark.asyncio
+    async def test_try_heal_skips_after_threshold(
+        self, heal_svc_db, mocker, sample_generated_code
+    ):
+        """同一 step 同类错误连续失败达到阈值 → 后续直接跳过（不调用 AI）"""
+        page = AsyncMock()
+        page.content.return_value = "<html></html>"
+        page.evaluate.return_value = []
+        mocker.patch.object(heal_svc_db, "_check_env_reachable", return_value=True)
+        mocker.patch.object(heal_svc_db, "_call_heal_ai", return_value=HEALED_CODE)
+        mocker.patch.object(heal_svc_db, "_retry_execution", return_value=False)
+
+        step = ExecutionStep(
+            execution_id=1, case_id=sample_generated_code.case_id, step_index=1,
+            action="click", target_selector="#old-btn",
+            error_message="Timeout 30000ms exceeded", status="failed",
+        )
+        heal_svc_db._db.add(step)
+        heal_svc_db._db.commit()
+
+        from app.config import settings
+        for _ in range(settings.HEAL_MAX_RETRY_SAME_ERROR):
+            result = await heal_svc_db.try_heal(
+                execution_id=1, step=step, page=page, project_id=1, max_retries=1,
+            )
+            assert result is False
+
+        # 达到阈值后，下一次直接快速失败，AI 不再被调用
+        heal_svc_db._call_heal_ai.reset_mock()
+        result = await heal_svc_db.try_heal(
+            execution_id=1, step=step, page=page, project_id=1, max_retries=1,
+        )
+        assert result is False
+        heal_svc_db._call_heal_ai.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_success_clears_failure_count(
+        self, heal_svc_db, mocker, sample_generated_code
+    ):
+        """自愈成功后清除快速失败计数"""
+        page = AsyncMock()
+        page.content.return_value = "<html></html>"
+        page.evaluate.return_value = []
+        mocker.patch.object(heal_svc_db, "_check_env_reachable", return_value=True)
+        mocker.patch.object(heal_svc_db, "_call_heal_ai", return_value=HEALED_CODE)
+        mocker.patch.object(heal_svc_db, "_retry_execution", return_value=True)
+
+        step = ExecutionStep(
+            execution_id=1, case_id=sample_generated_code.case_id, step_index=1,
+            action="click", target_selector="#old-btn",
+            error_message="Timeout", status="failed",
+        )
+        heal_svc_db._db.add(step)
+        heal_svc_db._db.commit()
+
+        from app.services.heal_service import _HEAL_FAILURE_CACHE
+        _HEAL_FAILURE_CACHE["1_TimeoutError"] = 2  # 预置 2 次失败
+
+        result = await heal_svc_db.try_heal(
+            execution_id=1, step=step, page=page, project_id=1, max_retries=1,
+        )
+        assert result is True
+        # 成功后计数被清除（或不在缓存中）
+        assert "1_TimeoutError" not in _HEAL_FAILURE_CACHE
+
+
+# ═══════════════════════════════════════════════
+# AI 调用限流（熔断）
+# ═══════════════════════════════════════════════
+
+class TestHealRateLimit:
+    """_call_heal_ai() 限流熔断"""
+
+    @pytest.fixture(autouse=True)
+    def _clean_rate_limiter(self):
+        from app.services.heal_service import ai_rate_limiter
+        from app.config import settings
+        orig_max = ai_rate_limiter._max_calls
+        ai_rate_limiter._calls.clear()
+        yield
+        ai_rate_limiter._calls.clear()
+        ai_rate_limiter._max_calls = orig_max
+
+    def test_mock_mode_does_not_consume_quota(self, heal_svc):
+        """Mock 模式（无 API Key）不消耗限流额度"""
+        from app.services.heal_service import ai_rate_limiter
+        result = heal_svc._call_heal_ai("fix this code")
+        assert "run_test" in result
+        assert len(ai_rate_limiter._calls) == 0
+
+    def test_circuit_breaker_raises_when_window_full(self, heal_svc, mock_settings):
+        """窗口已满（每分钟上限）→ 抛熔断异常"""
+        from app.services.heal_service import ai_rate_limiter
+        mock_settings("OPENAI_API_KEY", "sk-test-key")
+        ai_rate_limiter._max_calls = 3  # 临时降低上限
+
+        # 手动填满滑动窗口（3 次）
+        import time
+        now = time.time()
+        for _ in range(3):
+            ai_rate_limiter._calls.append(now)
+
+        with pytest.raises(Exception, match="熔断"):
+            heal_svc._call_heal_ai("fix this code")

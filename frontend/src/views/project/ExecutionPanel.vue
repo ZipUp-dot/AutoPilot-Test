@@ -79,7 +79,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="进度" width="200">
+      <el-table-column label="进度" width="220">
         <template #default="{ row }">
           <div class="progress-cell">
             <el-progress
@@ -87,7 +87,9 @@
               :stroke-width="8"
               :color="getRowProgressColor(row)"
             />
-            <span class="progress-text">{{ row.passed_cases ?? 0 }}/{{ row.total_cases ?? 0 }}</span>
+            <span class="progress-text">
+              通过 {{ row.passed_cases ?? 0 }} · 失败 {{ row.failed_cases ?? 0 }} · 共 {{ row.total_cases ?? 0 }}
+            </span>
           </div>
         </template>
       </el-table-column>
@@ -271,6 +273,8 @@ async function loadExecutions() {
 }
 
 function getRowProgress(row) {
+  // 后端已实时聚合步骤状态返回 progress，优先使用；旧数据回退本地计算
+  if (typeof row.progress === 'number') return row.progress
   const total = row.total_cases ?? 1
   const done = (row.passed_cases ?? 0) + (row.failed_cases ?? 0)
   return Math.round((done / total) * 100)

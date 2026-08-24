@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENAI_BASE_URL: str = "https://api.deepseek.com/v1"
     OPENAI_MODEL: str = "deepseek-chat"
+    OPENAI_MAX_CALLS_PER_MIN: int = 30  # AI 调用熔断：每分钟最多调用次数
+
+    # ── 自愈 ──
+    HEAL_MAX_RETRY_SAME_ERROR: int = 3  # 同一 step 同类错误快速失败阈值
+    PRE_EXECUTION_CHECK: bool = True     # 执行前目标环境健康检查
 
     # ── Playwright ──
     PLAYWRIGHT_TIMEOUT: int = 30_000

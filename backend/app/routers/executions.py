@@ -124,24 +124,59 @@ def list_project_executions(project_id: int, db: Session = Depends(get_db)):
         .order_by(Execution.created_at.desc())
         .all()
     )
+
+    # 批量查询步骤，实时聚合用例级通过/失败统计
+    # （自愈过程中 Execution 表的缓存统计不会实时更新，需以步骤状态为准）
+    from collections import defaultdict
+    exec_ids = [e.id for e in executions]
+    case_statuses: dict[int, dict[int, list[str]]] = defaultdict(lambda: defaultdict(list))
+    if exec_ids:
+        steps = (
+            db.query(ExecutionStep)
+            .filter(ExecutionStep.execution_id.in_(exec_ids))
+            .all()
+        )
+        for s in steps:
+            case_statuses[s.execution_id][s.case_id].append(s.status)
+
+    items = []
+    for e in executions:
+        # 实时聚合：用例通过 = 所有步骤 success；用例失败 = 存在 failed 步骤
+        cstatus_map = case_statuses.get(e.id, {})
+        passed = 0
+        failed = 0
+        if cstatus_map:
+            for sts in cstatus_map.values():
+                if "failed" in sts:
+                    failed += 1
+                elif all(st == "success" for st in sts):
+                    passed += 1
+        else:
+            # 无步骤记录（刚创建等）回退到缓存统计
+            passed = e.passed_cases or 0
+            failed = e.failed_cases or 0
+
+        total = e.total_cases or 0
+        progress = round((passed + failed) / total * 100) if total > 0 else 0
+
+        items.append({
+            "id": e.id,
+            "batch_name": e.batch_name,
+            "platform": platform,
+            "total_cases": total,
+            "passed_cases": passed,
+            "failed_cases": failed,
+            "status": e.status,
+            "execution_mode": e.execution_mode,
+            "progress": progress,
+            "duration": int((e.end_time - e.start_time).total_seconds()) if e.end_time and e.start_time else None,
+            "start_time": str(e.start_time) if e.start_time else None,
+            "end_time": str(e.end_time) if e.end_time else None,
+            "created_at": str(e.created_at) if e.created_at else None,
+        })
+
     return ApiResponse(data={
-        "items": [
-            {
-                "id": e.id,
-                "batch_name": e.batch_name,
-                "platform": platform,
-                "total_cases": e.total_cases,
-                "passed_cases": e.passed_cases,
-                "failed_cases": e.failed_cases,
-                "status": e.status,
-                "execution_mode": e.execution_mode,
-                "duration": int((e.end_time - e.start_time).total_seconds()) if e.end_time and e.start_time else None,
-                "start_time": str(e.start_time) if e.start_time else None,
-                "end_time": str(e.end_time) if e.end_time else None,
-                "created_at": str(e.created_at) if e.created_at else None,
-            }
-            for e in executions
-        ],
+        "items": items,
         "total": len(executions),
     })
 

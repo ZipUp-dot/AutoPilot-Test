@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, AsyncMock, patch, call
 
 import pytest
 from sqlalchemy.orm import Session
@@ -742,3 +742,110 @@ class TestRunFullPipelinePlatform:
 
         asyncio.run(orch_with_appium.run_full_pipeline(1, [1, 2], platform="android"))
         mock_appium.create_execution.assert_called_once()
+
+
+# ═══════════════════════════════════════════════
+# 执行前目标环境健康检查
+# ═══════════════════════════════════════════════
+
+class TestPreExecutionCheck:
+    """_pre_execution_check() — 目标环境不可达时提前拦截，防止无意义自愈"""
+
+    def test_disabled_returns_none(self, orch, mock_settings):
+        """PRE_EXECUTION_CHECK=False → 跳过检查"""
+        mock_settings("PRE_EXECUTION_CHECK", False)
+        result = asyncio.run(orch._pre_execution_check(1, "web"))
+        assert result is None
+
+    def test_project_not_found_returns_error(self, orch, mocker):
+        """项目不存在 → 返回错误"""
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mocker.patch("app.db.database.SessionLocal", return_value=mock_db)
+
+        result = asyncio.run(orch._pre_execution_check(99999, "web"))
+        assert result is not None
+        assert "不存在" in result
+
+    def test_web_unreachable_returns_error(self, orch, mocker):
+        """Web 目标不可达（httpx 异常）→ 返回错误"""
+        mock_project = MagicMock()
+        mock_project.target_url = "https://example.com"
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
+        mocker.patch("app.db.database.SessionLocal", return_value=mock_db)
+
+        async def _raise(*args, **kwargs):
+            raise Exception("Connection refused")
+        mocker.patch("httpx.AsyncClient.get", side_effect=_raise)
+
+        result = asyncio.run(orch._pre_execution_check(1, "web"))
+        assert result is not None
+        assert "不可达" in result
+
+    def test_web_reachable_returns_none(self, orch, mocker):
+        """Web 目标可达 → 返回 None"""
+        mock_project = MagicMock()
+        mock_project.target_url = "https://example.com"
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
+        mocker.patch("app.db.database.SessionLocal", return_value=mock_db)
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mocker.patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_resp)
+
+        result = asyncio.run(orch._pre_execution_check(1, "web"))
+        assert result is None
+
+    def test_no_target_url_returns_none(self, orch, mocker):
+        """无 target_url → 跳过检查"""
+        mock_project = MagicMock()
+        mock_project.target_url = ""
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
+        mocker.patch("app.db.database.SessionLocal", return_value=mock_db)
+
+        result = asyncio.run(orch._pre_execution_check(1, "web"))
+        assert result is None
+
+    def test_android_unreachable_returns_error(self, orch, mocker):
+        """Appium Server 不可达 → 返回错误"""
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = MagicMock()
+        mocker.patch("app.db.database.SessionLocal", return_value=mock_db)
+
+        async def _raise(*args, **kwargs):
+            raise Exception("Connection refused")
+        mocker.patch("httpx.AsyncClient.get", side_effect=_raise)
+
+        result = asyncio.run(orch._pre_execution_check(1, "android"))
+        assert result is not None
+        assert "Appium" in result
+
+
+class TestRunExecuteOnlyHealthCheck:
+    """run_execute_only() 健康检查失败 → 拒绝创建执行"""
+
+    @pytest.mark.usefixtures("mock_monitor_task")
+    def test_pre_check_failure_raises_validation(self, orch, mocker):
+        """健康检查返回错误 → 抛 ValidationException，不创建执行"""
+        from app.exceptions import ValidationException
+
+        async def _bad(*args, **kwargs):
+            return "目标网站不可达"
+        mocker.patch.object(orch, "_pre_execution_check", side_effect=_bad)
+
+        with pytest.raises(ValidationException, match="目标网站不可达"):
+            asyncio.run(orch.run_execute_only(1, [1, 2], "headless"))
+
+    @pytest.mark.usefixtures("mock_monitor_task")
+    def test_pre_check_ok_creates_execution(self, orch, mocker, mock_pw):
+        """健康检查通过 → 正常创建执行"""
+        async def _ok(*args, **kwargs):
+            return None
+        mocker.patch.object(orch, "_pre_execution_check", side_effect=_ok)
+
+        result = asyncio.run(orch.run_execute_only(1, [1, 2], "headless"))
+        assert result["execution_id"] == 42
+        mock_pw.create_execution.assert_called_once()

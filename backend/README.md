@@ -794,6 +794,9 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 | `OPENAI_API_KEY` | `""` | AI API Key（空则 Mock 模式） |
 | `OPENAI_BASE_URL` | `https://api.deepseek.com/v1` | API 地址（默认 DeepSeek，可换 OpenAI/通义千问/智谱等兼容接口） |
 | `OPENAI_MODEL` | `deepseek-chat` | 默认模型（视觉能力可选 qwen-vl-max / glm-4v） |
+| `OPENAI_MAX_CALLS_PER_MIN` | `30` | AI 调用熔断：每分钟最多调用次数（防无底线烧 Token） |
+| `HEAL_MAX_RETRY_SAME_ERROR` | `3` | 同一 step 同类错误连续失败阈值，达到后跳过自愈 |
+| `PRE_EXECUTION_CHECK` | `true` | 执行前目标环境健康检查（目标不可达时提前拦截） |
 | `PLAYWRIGHT_TIMEOUT` | `30000` | 页面加载超时（ms） |
 | `PLAYWRIGHT_HEADLESS` | `true` | 无头模式 |
 | `MAX_HEAL_RETRY` | `3` | 自愈最大重试次数 |

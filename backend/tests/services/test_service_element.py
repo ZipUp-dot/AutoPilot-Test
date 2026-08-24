@@ -355,6 +355,134 @@ class TestExtractElements:
 
 
 # ═══════════════════════════════════════════════
+# _ai_assisted_navigation() 测试（AI 感知页面抓取）
+# ═══════════════════════════════════════════════
+
+class TestAiAssistedNavigation:
+    """_ai_assisted_navigation() — goto 失败时 AI 分析截图并执行前置操作"""
+
+    @pytest.mark.asyncio
+    async def test_vision_unavailable_returns_false(self, db_session, mocker):
+        """无 API Key / Vision 返回空 → 返回 False（跳过 AI 导航）"""
+        mocker.patch(
+            "app.services.element_service._call_openai_vision", return_value=""
+        )
+        page = AsyncMock()
+        page.screenshot.return_value = b"fake_image"
+
+        service = ElementService(db_session)
+        result = await service._ai_assisted_navigation(page, "https://example.com")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_need_pre_actions_executes_click_and_fill(self, db_session, mocker):
+        """AI 判断需要前置操作 → 执行 click/fill → 返回 True"""
+        mocker.patch(
+            "app.services.element_service._call_openai_vision",
+            return_value=json.dumps({
+                "need_pre_actions": True,
+                "actions": [
+                    {"action": "click", "selector": "text=登录"},
+                    {"action": "fill", "selector": "#username", "value": "admin"},
+                ],
+                "reason": "需要登录后访问",
+            }),
+        )
+        page = AsyncMock()
+        page.screenshot.return_value = b"fake_image"
+
+        service = ElementService(db_session)
+        result = await service._ai_assisted_navigation(page, "https://example.com")
+
+        assert result is True
+        page.click.assert_awaited_once_with("text=登录")
+        page.fill.assert_awaited_once_with("#username", "admin")
+
+    @pytest.mark.asyncio
+    async def test_no_pre_actions_returns_false(self, db_session, mocker):
+        """AI 判断无需前置操作 → 返回 False"""
+        mocker.patch(
+            "app.services.element_service._call_openai_vision",
+            return_value=json.dumps({
+                "need_pre_actions": False,
+                "actions": [],
+                "reason": "页面已正常加载",
+            }),
+        )
+        page = AsyncMock()
+        page.screenshot.return_value = b"fake_image"
+
+        service = ElementService(db_session)
+        result = await service._ai_assisted_navigation(page, "https://example.com")
+        assert result is False
+        page.click.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_json_returns_false(self, db_session, mocker):
+        """AI 返回非法 JSON → 解析失败 → 返回 False"""
+        mocker.patch(
+            "app.services.element_service._call_openai_vision",
+            return_value="这不是 JSON",
+        )
+        page = AsyncMock()
+        page.screenshot.return_value = b"fake_image"
+
+        service = ElementService(db_session)
+        result = await service._ai_assisted_navigation(page, "https://example.com")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_markdown_wrapped_json_parsed(self, db_session, mocker):
+        """AI 返回 markdown 代码块包裹的 JSON → 正确解析并执行"""
+        mocker.patch(
+            "app.services.element_service._call_openai_vision",
+            return_value='```json\n{"need_pre_actions": true, "actions": [{"action": "click", "selector": "text=确认"}], "reason": "弹窗确认"}\n```',
+        )
+        page = AsyncMock()
+        page.screenshot.return_value = b"fake_image"
+
+        service = ElementService(db_session)
+        result = await service._ai_assisted_navigation(page, "https://example.com")
+        assert result is True
+        page.click.assert_awaited_once_with("text=确认")
+
+    @pytest.mark.asyncio
+    async def test_screenshot_failure_returns_false(self, db_session, mocker):
+        """截图失败 → 返回 False（不阻塞后续）"""
+        mocker.patch(
+            "app.services.element_service._call_openai_vision", return_value=""
+        )
+        page = AsyncMock()
+        page.screenshot.side_effect = Exception("screenshot error")
+
+        service = ElementService(db_session)
+        result = await service._ai_assisted_navigation(page, "https://example.com")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_operation_failure_does_not_raise(self, db_session, mocker):
+        """单个操作失败不中断 → 仍返回 True（执行了部分操作）"""
+        mocker.patch(
+            "app.services.element_service._call_openai_vision",
+            return_value=json.dumps({
+                "need_pre_actions": True,
+                "actions": [
+                    {"action": "click", "selector": "text=登录"},
+                    {"action": "fill", "selector": "#username", "value": "admin"},
+                ],
+                "reason": "需要登录",
+            }),
+        )
+        page = AsyncMock()
+        page.screenshot.return_value = b"fake_image"
+        page.click.side_effect = Exception("element not found")
+
+        service = ElementService(db_session)
+        result = await service._ai_assisted_navigation(page, "https://example.com")
+        assert result is True
+
+
+# ═══════════════════════════════════════════════
 # _generate_selector() 测试（7 级优先级）
 # ═══════════════════════════════════════════════
 

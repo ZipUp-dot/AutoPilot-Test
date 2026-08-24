@@ -19,6 +19,8 @@ import asyncio
 import logging
 from typing import Any, Optional
 
+from app.config import settings
+from app.exceptions import ValidationException
 from app.models.generated_code import GeneratedCode
 from app.services.execution_state import clear_stop_flag
 
@@ -98,6 +100,11 @@ class TestOrchestrator:
             except Exception as e:
                 # 异常隔离：生成失败不阻塞执行，继续用已有代码
                 logger.warning("编排器: 代码生成失败（异常隔离），继续执行: %s", e)
+
+        # Step 1.5: 执行前目标环境健康检查（防止目标不可达时集体失败 + 无意义自愈）
+        check_error = await self._pre_execution_check(project_id, platform)
+        if check_error:
+            raise ValidationException(f"执行前环境检查失败: {check_error}")
 
         # Step 2: 根据平台获取执行器
         executor, platform_type = self._get_executor(platform)
@@ -185,6 +192,11 @@ class TestOrchestrator:
         platform: str = "web",
     ) -> dict:
         """仅执行（假设代码已生成），启动执行 + 监听报告"""
+        # 执行前目标环境健康检查（防止目标不可达时集体失败 + 无意义自愈）
+        check_error = await self._pre_execution_check(project_id, platform)
+        if check_error:
+            raise ValidationException(f"执行前环境检查失败: {check_error}")
+
         executor, platform_type = self._get_executor(platform)
         execution_id = executor.create_execution(
             project_id, case_ids, mode, batch_name,
@@ -236,6 +248,53 @@ class TestOrchestrator:
     # ═══════════════════════════════════════════════
     # 内部方法 — 状态监听 + 自动生成报告
     # ═══════════════════════════════════════════════
+
+    async def _pre_execution_check(self, project_id: int, platform: str = "web") -> Optional[str]:
+        """执行前目标环境健康检查
+
+        目标网站 / Appium Server 不可达时提前拦截，避免创建执行后大量用例
+        集体失败，进而触发无意义的自愈 AI 调用（烧 Token）。
+
+        Returns:
+            None 表示检查通过；字符串为错误原因
+        """
+        if not settings.PRE_EXECUTION_CHECK:
+            return None
+
+        try:
+            from app.db.database import SessionLocal
+            db = SessionLocal()
+            try:
+                from app.models.project import Project
+                project = db.query(Project).filter(Project.id == project_id).first()
+            finally:
+                db.close()
+
+            if not project:
+                return f"项目 {project_id} 不存在"
+
+            import httpx
+            if platform == "android":
+                url = f"{settings.APPIUM_URL}/status"
+                label = "Appium Server"
+            else:
+                url = (project.target_url or "").strip()
+                label = "目标网站"
+                if not url:
+                    return None  # 无目标 URL，跳过检查
+
+            try:
+                async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+                    resp = await client.get(url)
+                logger.info("执行前健康检查: %s -> HTTP %s", url, resp.status_code)
+            except Exception as e:
+                return f"{label}不可达: {str(e)[:200]}"
+        except Exception as e:
+            # 检查过程自身异常不阻塞执行（异常隔离）
+            logger.warning("执行前健康检查异常（忽略）: %s", e)
+            return None
+
+        return None
 
     async def _monitor_and_generate_report(self, execution_id: int) -> None:
         """监听 execution 状态，当变为 'completed' 时生成报告
