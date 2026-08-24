@@ -85,7 +85,7 @@ AutoPilot 构建了完整的自动化工作流，支持 Web 和 Android 双平�
 
 | 端 | 技术 |
 | :--- | :--- |
-| **后端** | FastAPI 0.115 · SQLAlchemy 2.0 · Pydantic 2.9 · Playwright 1.47 · Appium Python Client 4.2 · httpx 0.27 · openpyxl 3.1 · Jinja2 3.1 · Python 3.12+ |
+| **后端** | FastAPI 0.115 · SQLAlchemy 2.0 · Pydantic 2.9 · Playwright 1.47 · Appium Python Client 4.1 · httpx 0.27 · openpyxl 3.1 · Jinja2 3.1 · Python 3.12+ |
 | **前端** | Vue 3 · Vite 5 · Vue Router 4 · Pinia 2 · Element Plus 2.5 · Axios 1.7 · Highlight.js 11.9 |
 | **数据库** | MySQL 8.0 |
 | **测试** | pytest 7.4+ · pytest-asyncio · pytest-cov · pytest-mock · factory-boy · faker · freezegun |
@@ -104,13 +104,13 @@ AutoPilot/
 │   │   ├── schemas.py              # Pydantic 响应模型（含 platform + config_json）
 │   │   ├── db/                     # SQLAlchemy 引擎 + schema.sql
 │   │   ├── models/                 # 9 个 ORM 模型（含 platform/selector_type/metadata/attempts）
-│   │   ├── routers/                # 8 个 API 路由模块
-│   │   ├── services/               # 10 个业务服务（含编排器、AppiumService、AndroidCrawlService）
-│   │   ├── utils/                  # Excel 解析 / AST 校验 / 注入 / 截图 / Appium 代码注入
+│   │   ├── routers/                # 7 个 API 路由模块
+│   │   ├── services/               # 11 个业务服务（含编排器、AppiumService、AndroidCrawlService、停止控制）
+│   │   ├── utils/                  # Excel 解析 / AST 校验 / 注入 / 截图 / Appium 代码注入 / AI 限流
 │   │   ├── prompts/                # AI Prompt 模板（代码生成/自愈/页面分析 共 5 个）
 │   │   ├── templates/              # HTML 报告模板
 │   │   └── middlewares/            # 请求日志 + 响应计时
-│   ├── tests/                      # pytest 四层测试套件（780+ 测试）
+│   ├── tests/                      # pytest 四层测试套件（980+ 测试，覆盖率 92%）
 │   │   ├── conftest.py             # 共享 Fixture（SQLite 内存库 + 全 Mock）
 │   │   ├── factories.py            # 工厂类
 │   │   ├── unit/                   # 单元测试
@@ -155,8 +155,8 @@ AutoPilot/
 | 版本 | 状态 | 核心内容 |
 | :--- | :--- | :--- |
 | **V1.0** | ✅ MVP 已发布 | 跑通"抓取 → 导入 → 生成 → 执行 → 容错重试 → 报告"全链路（Web 端） |
-| **V1.1** | ✅ Core 已完成 | 新增 Android 支持（AppiumService、元素抓取、AI 生成、执行、自愈、监控）、Orchestrator 平台分发、Heal History、Report 增强、Project/PageElement 平台隔离、780+ 测试 |
-| **V1.2** | 🔧 开发中 | AI 感知页面抓取（goto 失败自动截图分析并执行前置操作）、执行失败标记修复、自愈历史字段补全、执行列表平台信息、Excel 导入反馈增强、Heal History 可视化增强、Report Trend 趋势图 |
+| **V1.1** | ✅ Core 已完成 | 新增 Android 支持（AppiumService、元素抓取、AI 生成、执行、自愈、监控）、Orchestrator 平台分发、Heal History、Report 增强、Project/PageElement 平台隔离 |
+| **V1.2** | 🔧 开发中 | AI 感知页面抓取（goto 失败自动截图分析并执行前置操作）、自愈成本防护（入口健康检查 / 同类错误快速失败 / AI 调用限流熔断）、执行前环境健康检查、执行列表实时聚合、测试覆盖率 92%（983+ 测试） |
 
 
 ## 十、快速开始
@@ -219,7 +219,7 @@ pytest tests/integration/           # 仅端到端集成测试
 
 测试套件采用**四层架构**（unit / services / routers / integration），全部运行于 SQLite 内存数据库、零外部依赖：
 - LLM API、Playwright、Appium、文件系统均通过 Mock 隔离
-- 当前 **780 passed, 1 skipped**
+- 当前 **983 passed, 1 skipped**，语句覆盖率 **92%**
 - 完整说明见 [tests/README_TEST.md](backend/tests/README_TEST.md)
 
 > 详细技术文档、API 接口、数据库设计请参阅：
@@ -244,9 +244,9 @@ pytest tests/integration/           # 仅端到端集成测试
 | 项目 | 内容 |
 | :--- | :--- |
 | **当前版本** | V1.2（开发中） |
-| **文档版本** | V3.1 |
-| **最后更新** | 2026-08-23 |
-| **后端测试** | 780 passed / 1 skipped |
+| **文档版本** | V3.2 |
+| **最后更新** | 2026-08-24 |
+| **后端测试** | 983 passed / 1 skipped（覆盖率 92%） |
 | **维护者** | ethan-peng（Mr-6Lawrence） |
 | **Gitee** | https://gitee.com/Mr-6Lawrence/auto-pilot-test |
 | **GitHub** | https://github.com/ZipUp-dot/AutoPilot-Test |

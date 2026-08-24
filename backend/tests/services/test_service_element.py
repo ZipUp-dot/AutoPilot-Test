@@ -15,7 +15,7 @@ from app.services.element_service import (
 )
 from app.models.element import PageElement
 from app.models.project import Project
-from app.exceptions import NotFoundException, PlaywrightException
+from app.exceptions import NotFoundException, PlaywrightException, ValidationException
 
 
 # ═══════════════════════════════════════════════
@@ -43,6 +43,24 @@ class TestCrawl:
         service = ElementService(db_session)
         with pytest.raises(NotFoundException, match="项目 99999 不存在"):
             await service.crawl(99999)
+
+    @pytest.mark.asyncio
+    async def test_crawl_android_project_rejected(self, db_session):
+        """platform=android 项目调用 Web 抓取 → ValidationException"""
+        from app.models.project import Project
+        project = Project(
+            name="Android Project",
+            target_url="https://example.com",
+            platform="android",
+            status="active",
+        )
+        db_session.add(project)
+        db_session.commit()
+        db_session.refresh(project)
+
+        service = ElementService(db_session)
+        with pytest.raises(ValidationException, match="仅支持 platform=web"):
+            await service.crawl(project.id)
 
     @pytest.mark.asyncio
     async def test_crawl_success_saves_elements_to_db(

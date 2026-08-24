@@ -15,7 +15,7 @@
 | 数据库驱动 | PyMySQL 1.1 |
 | 数据库 | MySQL 8.0 |
 | 浏览器自动化 | Playwright 1.47（Chromium 无头模式） |
-| 移动端自动化 | Appium Python Client 4.2（UiAutomator2） |
+| 移动端自动化 | Appium Python Client 4.1（UiAutomator2） |
 | AI 代码生成 | OpenAI 兼容 API（DeepSeek / gpt-4o，支持 Vision 截图分析 + Mock 模式） |
 | HTTP 客户端 | httpx 0.27 |
 | 数据校验 | Pydantic 2.9 + pydantic-settings 2.5 |
@@ -50,7 +50,7 @@ backend/
 │   │   ├── execution_step.py    # 执行步骤表（含 exception_type）
 │   │   ├── report.py            # 执行报告表
 │   │   └── heal_record.py       # 自愈记录表（含 attempts JSON 数组）
-│   ├── routers/                 # API 路由（8 个）
+│   ├── routers/                 # API 路由（7 个）
 │   │   ├── projects.py          # 项目 CRUD（含 platform + config_json）
 │   │   ├── elements.py          # 元素抓取 / 列表 / 清空（平台感知）
 │   │   ├── cases.py             # 用例导入 / 列表 / 删除
@@ -58,22 +58,24 @@ backend/
 │   │   ├── executions.py        # 执行管理（创建 / 轮询 / 停止，平台分发）
 │   │   ├── reports.py           # 报告生成 / 查询
 │   │   └── heal.py              # 自愈修复（Web / Android 双分支）
-│   │   ├── services/                # 业务逻辑层（10 个服务）
-│   │   │   ├── project_service.py   # 项目 CRUD（含 platform 只读保护）
-│   │   │   ├── element_service.py   # 元素抓取 + 7 级选择器生成 + AI 辅助导航（平台感知）
-│   │   │   ├── case_service.py      # Excel 解析 + 用例管理
-│   │   │   ├── ai_service.py        # LLM 调用 + 代码生成 + Vision 截图分析（Web/Android 双平台）
-│   │   │   ├── playwright_service.py # Playwright 执行引擎（Web）
-│   │   │   ├── appium_service.py    # Appium 执行引擎（Android，同步链式调用）
-│   │   │   ├── android_crawl_service.py # Android 元素抓取（Appium）
-│   │   │   ├── orchestrator.py      # 执行编排器（平台分发 → 同步/异步线程）
-│   │   │   ├── heal_service.py      # 自愈修复（Web/Android 双分支）
-│   │   │   └── report_service.py    # HTML 报告生成（含异常类型分类）
+│   ├── services/                # 业务逻辑层（11 个服务）
+│   │   ├── project_service.py   # 项目 CRUD（含 platform 只读保护）
+│   │   ├── element_service.py   # 元素抓取 + 7 级选择器生成 + AI 辅助导航（平台感知）
+│   │   ├── case_service.py      # Excel 解析 + 用例管理
+│   │   ├── ai_service.py        # LLM 调用 + 代码生成 + Vision 截图分析（Web/Android 双平台）
+│   │   ├── playwright_service.py # Playwright 执行引擎（Web）
+│   │   ├── appium_service.py    # Appium 执行引擎（Android，同步链式调用）
+│   │   ├── android_crawl_service.py # Android 元素抓取（Appium）
+│   │   ├── orchestrator.py      # 执行编排器（平台分发 → 同步/异步线程）
+│   │   ├── heal_service.py      # 自愈修复（Web/Android 双分支）
+│   │   ├── report_service.py    # HTML 报告生成（含异常类型分类）
+│   │   └── execution_state.py   # 执行停止标志共享控制（Web/Android 共用）
 │   ├── utils/                   # 工具模块（6 个）
 │   │   ├── excel_parser.py      # Excel 智能解析（中文列名）
 │   │   ├── code_validator.py    # AST 语法校验 + 安全审计 + 平台合约检查
 │   │   ├── code_injector.py     # Web 截图/日志注入（异步）
 │   │   ├── appium_code_injector.py # Android 监控注入（同步，独立定义）
+│   │   ├── ai_rate_limiter.py   # AI 调用滑动窗口限流器（熔断防烧 Token）
 │   │   └── screenshot.py        # 截图工具类
 │   ├── prompts/                 # AI Prompt 模板（5 个）
 │   │   ├── generate_prompt.txt   # Web 代码生成 Prompt
@@ -86,17 +88,18 @@ backend/
 │   ├── middlewares/              # 中间件
 │   │   ├── logging.py            # 请求日志（method/path/status/duration/ip）
 │   │   └── timing.py             # 响应时间头
-├── tests/                       # pytest 测试套件（4 层架构，780+ 测试）
+├── tests/                       # pytest 测试套件（4 层架构，980+ 测试，覆盖率 92%）
 │   ├── conftest.py              # 共享 Fixture（SQLite 内存库 + 外部依赖 Mock）
 │   ├── factories.py             # 工厂类
 │   ├── README_TEST.md           # 测试运行说明
-│   ├── unit/                    # 第一层：单元测试（14 文件）
+│   ├── unit/                    # 第一层：单元测试（15 文件）
 │   │   ├── test_config.py
 │   │   ├── test_database.py
 │   │   ├── test_dependencies.py
 │   │   ├── test_exceptions.py
 │   │   ├── test_middlewares.py
 │   │   ├── test_models.py
+│   │   ├── test_migration.py             # 数据库迁移测试
 │   │   ├── test_utils_excel.py
 │   │   ├── test_utils_validator.py
 │   │   ├── test_utils_injector.py
@@ -110,12 +113,12 @@ backend/
 │   │   ├── test_service_ai.py
 │   │   ├── test_service_playwright.py
 │   │   ├── test_service_appium.py        # Appium 执行引擎测试
+│   │   ├── test_service_android_crawl.py # Android 元素抓取测试（XML 解析 + 选择器）
 │   │   ├── test_service_element.py
 │   │   ├── test_service_orchestrator.py  # 平台分发编排测试
 │   │   ├── test_service_case.py
 │   │   ├── test_service_heal.py
-│   │   ├── test_service_report.py
-│   │   └── test_migration.py             # 数据库迁移测试
+│   │   └── test_service_report.py
 │   ├── routers/                 # 第三层：路由集成测试（8 文件）
 │   │   ├── test_routers_init.py
 │   │   ├── test_routers_projects.py
@@ -625,6 +628,10 @@ pending → running → healing → completed
 - Web 项目 → `PlaywrightService.execute()`（异步 `asyncio.run`）
 - Android 项目 → `AppiumService.execute()`（同步 `Thread` 内直接调用）
 
+**执行前健康检查（V1.2）**：创建执行前先校验目标环境可达性（Web 检查目标 URL，Android 检查 Appium `/status`），目标不可达时提前拒绝创建，避免无意义失败与自愈。
+
+**执行列表实时聚合（V1.2）**：列表接口从 `execution_steps` 实时聚合用例级 passed/failed 与 `progress` 百分比，而非依赖缓存的 Execution 表统计（自愈过程中缓存统计不会实时更新）。
+
 **安全门禁**：未生成有效代码的用例将被拦截，拒绝执行。跨项目 case_id 将被拒绝。
 
 ### 报告
@@ -660,6 +667,11 @@ pending → running → healing → completed
 4. `ast.parse` 校验修复代码 + 平台合约检查
 5. 标记 `is_healed=1`，更新 `generated_codes`
 6. 自愈尝试记录保存到 `heal_records.attempts` JSON 数组
+
+**自愈成本防护（V1.2）**：
+- **入口健康检查**：目标环境不可达时直接跳过自愈，不调用 AI
+- **快速失败**：同一 step 同类错误连续失败达 `HEAL_MAX_RETRY_SAME_ERROR` 次后跳过自愈，防止死循环
+- **AI 调用熔断**：全局滑动窗口限流器（`OPENAI_MAX_CALLS_PER_MIN`/分钟），超限跳过调用，防止无底线烧 Token
 
 **Android 异常分类**：
 - `NoSuchElementException` → ElementNotFoundError
@@ -749,17 +761,17 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 
 | 指标 | 数值 | 目标 |
 |------|------|------|
-| 测试用例 | 780 passed / 1 skipped | 全通过 |
-| **语句覆盖率** | **≥ 90%** | ≥ 90% ✅ |
-| **分支覆盖率** | **≥ 80%** | ≥ 80% ✅ |
+| 测试用例 | 983 passed / 1 skipped | 全通过 |
+| **语句覆盖率** | **92%** | ≥ 90% ✅ |
+| **分支覆盖率** | **85%** | ≥ 80% ✅ |
 
 ### 各层覆盖情况
 
 | 层级 | 目录 | 覆盖内容 |
 |------|------|----------|
-| 单元测试 | `tests/unit/`（14 文件） | 配置、数据库、异常、中间件、9 个 ORM 模型、Excel 解析、AST 校验/注入、Appium 注入、Android 合约、元素定位器、平台隔离、截图 |
-| 服务层 | `tests/services/`（10 文件） | Project CRUD、LLM 生成、Web 执行引擎、Appium 执行引擎、元素抓取+7 级选择器、编排器+平台分发、Excel 导入、自愈+Android 分支、报告+异常分类、数据库迁移 |
-| 路由层 | `tests/routers/`（8 文件） | 项目/元素/用例/生成/执行/自愈/报告全部 API 端点 |
+| 单元测试 | `tests/unit/`（15 文件） | 配置、数据库、依赖、异常、中间件、ORM 模型、数据库迁移、Excel 解析、AST 校验/注入、Appium 注入、Android 合约、元素定位器、平台隔离、截图 |
+| 服务层 | `tests/services/`（10 文件） | Project CRUD、LLM 生成 + Vision + 限流熔断、Web 执行引擎、Appium 执行引擎、Android 元素抓取、元素抓取 + 7 级选择器 + AI 辅助导航、编排器 + 平台分发 + 执行前健康检查、Excel 导入、自愈 + Android 分支 + 快速失败、报告 + 异常分类 |
+| 路由层 | `tests/routers/`（8 文件） | 项目/元素/用例/生成/执行/自愈/报告全部 API 端点（含跨项目保护、实时聚合、状态分类） |
 | 集成测试 | `tests/integration/`（2 文件） | 健康检查/CORS/静态文件/生命周期 + 完整 7 步业务闭环 + 异常流水线 |
 
 详细运行说明见 [tests/README_TEST.md](tests/README_TEST.md)。

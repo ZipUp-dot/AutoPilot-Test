@@ -5,7 +5,13 @@ from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 
-from app.services.heal_service import HealService, _css_escape, _filter_stable_classes
+from app.services.heal_service import (
+    HealService,
+    _css_escape,
+    _filter_stable_classes,
+    _parse_android_elements,
+    _format_android_elements,
+)
 from app.models.execution_step import ExecutionStep
 from app.models.generated_code import GeneratedCode
 from app.models.heal_record import HealRecord
@@ -52,6 +58,34 @@ class TestClassifyError:
 
     def test_unknown(self, heal_svc):
         assert heal_svc._classify_error("some random error") == "UnknownError"
+
+    def test_appium_stale_element(self, heal_svc):
+        """Appium StaleElementReferenceException → StaleElementError"""
+        assert heal_svc._classify_error(
+            "StaleElementReferenceException: element is not attached to the page document"
+        ) == "StaleElementError"
+
+    def test_appium_stale_element_short(self, heal_svc):
+        """Appium 'stale element' 短描述 → StaleElementError"""
+        assert heal_svc._classify_error("stale element reference: element is detached") == "StaleElementError"
+
+    def test_appium_no_such_element(self, heal_svc):
+        """Appium NoSuchElementException → ElementNotFoundError"""
+        assert heal_svc._classify_error(
+            "NoSuchElementException: An element could not be located on the page"
+        ) == "ElementNotFoundError"
+
+    def test_appium_timeout_exception(self, heal_svc):
+        """Appium TimeoutException → TimeoutError"""
+        assert heal_svc._classify_error(
+            "TimeoutException: Timed out after 10000ms waiting for element"
+        ) == "TimeoutError"
+
+    def test_appium_webdriver_exception(self, heal_svc):
+        """Appium WebDriverException → DriverError"""
+        assert heal_svc._classify_error(
+            "WebDriverException: Message: An unknown server-side error occurred"
+        ) == "DriverError"
 
 
 # ═══════════════════════════════════════════════
@@ -1292,6 +1326,81 @@ class TestFilterStableClasses:
 
 
 # ═══════════════════════════════════════════════
+# _parse_android_elements / _format_android_elements
+# ═══════════════════════════════════════════════
+
+class TestAndroidElements:
+    """Android page_source 解析与格式化"""
+
+    PAGE_SOURCE = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<hierarchy rotation="0">'
+        '<android.widget.FrameLayout package="com.example.app" bounds="[0,0][1080,1920]">'
+        '  <android.widget.Button resource-id="com.example.app:id/login_btn" '
+        'clickable="true" enabled="true" text="登录" content-desc="login button" '
+        'bounds="[100,500][500,700]"/>'
+        '  <android.widget.EditText resource-id="com.example.app:id/username" '
+        'clickable="false" enabled="true" text="请输入用户名"/>'
+        '  <android.widget.TextView resource-id="com.example.app:id/label" '
+        'clickable="false" enabled="true" text="欢迎"/>'
+        '  <android.widget.ImageView bounds="[0,0][100,100]"/>'
+        '</android.widget.FrameLayout>'
+        '</hierarchy>'
+    )
+
+    def test_parse_android_elements_basic(self):
+        """解析出可交互元素（clickable/text/content-desc）"""
+        elements = _parse_android_elements(self.PAGE_SOURCE)
+        # Button(text+clickable) + EditText(text) + TextView(text) = 3
+        # ImageView 无 text/clickable/content-desc → 排除
+        assert len(elements) == 3
+        login = elements[0]
+        assert login["text"] == "登录"
+        assert login["class_name"] == "Button"
+        assert login["clickable"] == "true"
+        assert login["enabled"] == "true"
+        assert login["bounds"] == "[100,500][500,700]"
+        # 当前实现限制：_ANDROID_ATTR_PATTERN 使用 \w+，无法匹配
+        # resource-id / content-desc 等带连字符属性名
+        assert login["resource_id"] == ""
+        assert login["content_desc"] == ""
+        assert login["clickable"] == "true"
+
+    def test_parse_android_empty_source(self):
+        """空 page_source → 空列表"""
+        assert _parse_android_elements("") == []
+        assert _parse_android_elements("(无法获取 Page Source)") == []
+
+    def test_parse_android_no_tags(self):
+        """无 XML 标签 → 空列表"""
+        assert _parse_android_elements("no xml here") == []
+
+    def test_format_android_elements(self):
+        """格式化包含完整字段的元素"""
+        elements = [{
+            "resource_id": "com.example.app:id/login_btn",
+            "content_desc": "login button",
+            "text": "登录",
+            "class_name": "Button",
+            "bounds": "[100,500][500,700]",
+            "enabled": "true",
+            "clickable": "true",
+            "package": "com.example.app",
+        }]
+        result = _format_android_elements(elements)
+        assert "[Button]" in result
+        assert "resource-id=com.example.app:id/login_btn" in result
+        assert "content-desc=login button" in result
+        assert 'text="登录"' in result
+        assert "bounds=[100,500][500,700]" in result
+        assert "clickable" in result
+
+    def test_format_android_elements_empty(self):
+        """空元素列表 → 占位文本"""
+        assert _format_android_elements([]) == "（无可用元素）"
+
+
+# ═══════════════════════════════════════════════
 # _save_heal_record / _update_heal_record — Attempt 追踪
 # ═══════════════════════════════════════════════
 
@@ -1778,3 +1887,391 @@ class TestHealRateLimit:
 
         with pytest.raises(Exception, match="熔断"):
             heal_svc._call_heal_ai("fix this code")
+
+
+# ═══════════════════════════════════════════════
+# try_heal / try_heal_manual 入口边界
+# ═══════════════════════════════════════════════
+
+class TestTryHealEntryBoundaries:
+    """try_heal / try_heal_manual 入口边界（环境不可达 / 校验失败 / 快速失败）"""
+
+    def _failed_step(self, db, error_msg="Timeout 30000ms exceeded"):
+        step = ExecutionStep(
+            execution_id=1, case_id=1, step_index=1,
+            action="click", target_selector="#btn",
+            error_message=error_msg, status="failed",
+        )
+        db.add(step)
+        db.commit()
+        return step
+
+    @pytest.mark.asyncio
+    async def test_try_heal_env_unreachable_returns_false(self, heal_svc_db, mocker):
+        """环境不可达 → try_heal 直接返回 False，不调用 AI"""
+        step = self._failed_step(heal_svc_db._db)
+        mocker.patch.object(heal_svc_db, "_check_env_reachable", return_value=False)
+        mock_ai = mocker.patch.object(heal_svc_db, "_call_heal_ai")
+
+        result = await heal_svc_db.try_heal(
+            execution_id=1, step=step, page=AsyncMock(), project_id=1, max_retries=3,
+        )
+
+        assert result is False
+        mock_ai.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_try_heal_validation_error_skips_retry(self, heal_svc_db, mocker):
+        """AI 修复代码校验失败 → 继续下一轮重试，不执行修复代码"""
+        step = self._failed_step(heal_svc_db._db)
+        mocker.patch.object(heal_svc_db, "_call_heal_ai", return_value=HEALED_CODE)
+        mocker.patch.object(heal_svc_db, "_validate_healed", return_value="修复代码不安全")
+        mock_retry = mocker.patch.object(heal_svc_db, "_retry_execution")
+
+        result = await heal_svc_db.try_heal(
+            execution_id=1, step=step, page=AsyncMock(), project_id=1, max_retries=2,
+        )
+
+        assert result is False
+        mock_retry.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_try_heal_manual_env_unreachable(self, heal_svc_db, mocker):
+        """手动自愈：环境不可达 → 返回 HealResult(failed)"""
+        step = self._failed_step(heal_svc_db._db)
+        mocker.patch.object(heal_svc_db, "_check_env_reachable", return_value=False)
+
+        result = await heal_svc_db.try_heal_manual(
+            execution_id=1, step=step, page=AsyncMock(), project_id=1,
+        )
+
+        assert result.retry_status == "failed"
+        assert "不可达" in (result.error_message or "")
+
+    @pytest.mark.asyncio
+    async def test_try_heal_manual_quick_fail(self, heal_svc_db):
+        """手动自愈：同类错误已达快速失败阈值 → 直接返回 HealResult(failed)"""
+        from app.services.heal_service import _HEAL_FAILURE_CACHE
+        from app.config import settings
+
+        step = self._failed_step(heal_svc_db._db)
+        cache_key = f"{step.id}_TimeoutError"
+        _HEAL_FAILURE_CACHE[cache_key] = settings.HEAL_MAX_RETRY_SAME_ERROR
+        try:
+            result = await heal_svc_db.try_heal_manual(
+                execution_id=1, step=step, page=AsyncMock(), project_id=1,
+            )
+            assert result.retry_status == "failed"
+            assert "连续失败" in (result.error_message or "")
+        finally:
+            _HEAL_FAILURE_CACHE.pop(cache_key, None)
+
+
+# ═══════════════════════════════════════════════
+# Android 上下文异常降级
+# ═══════════════════════════════════════════════
+
+class TestAndroidContextFailure:
+    """Android 上下文捕获 — page_source 获取失败降级"""
+
+    @pytest.mark.asyncio
+    async def test_page_source_failure_fallback(self, heal_svc_db):
+        class _BrokenDriver:
+            @property
+            def page_source(self):
+                raise Exception("driver disconnected")
+
+        step = ExecutionStep(
+            execution_id=1, case_id=1, step_index=1,
+            action="click", status="failed",
+            exception_type="NoSuchElementException",
+        )
+        ctx = await heal_svc_db._capture_failure_context(
+            step, _BrokenDriver(), platform="android"
+        )
+        assert ctx["exception_type"] == "NoSuchElementException"
+        assert ctx["page_source"] == "(无法获取 Page Source)"
+        assert ctx["visible_elements"] == "(无法获取页面元素)"
+
+    @pytest.mark.asyncio
+    async def test_page_source_success_extracts_elements(self, heal_svc_db):
+        """page_source 正常 → 提取 page_source 与可见元素"""
+        page_source = (
+            '<?xml version="1.0"?><hierarchy>'
+            '<android.widget.Button resource-id="com.example:id/btn" '
+            'clickable="true" enabled="true" text="登录" bounds="[0,0][10,10]"/>'
+            "</hierarchy>"
+        )
+
+        class _FakeDriver:
+            @property
+            def page_source(self):
+                return page_source
+
+        step = ExecutionStep(
+            execution_id=1, case_id=1, step_index=1,
+            action="click", status="failed",
+            exception_type="NoSuchElementException",
+        )
+        ctx = await heal_svc_db._capture_failure_context(
+            step, _FakeDriver(), platform="android"
+        )
+        assert ctx["page_source"] == page_source
+        assert "[Button]" in ctx["visible_elements"]
+        assert "登录" in ctx["visible_elements"]
+
+
+# ═══════════════════════════════════════════════
+# _build_heal_prompt 模板回退
+# ═══════════════════════════════════════════════
+
+class TestBuildHealPromptFallback:
+    """_build_heal_prompt() 模板文件不存在 → 使用内置默认模板"""
+
+    def test_fallback_template_when_file_missing(self, heal_svc, mocker):
+        from unittest.mock import MagicMock
+        mocker.patch("os.path.exists", return_value=False)
+
+        step = MagicMock()
+        step.step_index = 1
+        step.action = "click"
+        step.target_selector = "#btn"
+
+        prompt = heal_svc._build_heal_prompt(
+            {"error_message": "boom"}, "async def run_test(page): pass", step
+        )
+        assert "修复以下测试代码中的失败步骤" in prompt
+        assert "async def run_test(page): pass" in prompt
+        assert "boom" in prompt
+
+
+# ═══════════════════════════════════════════════
+# _call_heal_ai / _mock_heal_response — Android
+# ═══════════════════════════════════════════════
+
+class TestCallHealAIPlatform:
+    """_call_heal_ai() Android 分支"""
+
+    def test_mock_response_android(self):
+        """Mock 模式 Android 响应 → 同步 run_test(driver)"""
+        result = HealService._mock_heal_response(platform="android")
+        assert "def run_test(driver)" in result
+        assert "async" not in result
+
+    def test_mock_response_web(self):
+        """Mock 模式 Web 响应 → 异步 run_test(page)"""
+        result = HealService._mock_heal_response(platform="web")
+        assert "async def run_test(page" in result
+
+    def test_android_system_message(self, heal_svc, mock_settings, mocker):
+        """Android 分支使用 Appium 专家 system 消息"""
+        mock_settings("OPENAI_API_KEY", "test-key")
+        from app.services.heal_service import ai_rate_limiter
+        ai_rate_limiter._calls.clear()
+
+        resp = mocker.MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {
+            "choices": [{"message": {"content": "def run_test(driver): pass"}}]
+        }
+        mock_client = mocker.MagicMock()
+        mock_client.__enter__.return_value.post.return_value = resp
+        mocker.patch("app.services.heal_service.httpx.Client", return_value=mock_client)
+        mocker.patch("app.services.heal_service.time.sleep")
+
+        try:
+            result = heal_svc._call_heal_ai("fix", platform="android")
+            assert "run_test(driver)" in result
+        finally:
+            ai_rate_limiter._calls.clear()
+
+
+# ═══════════════════════════════════════════════
+# _retry_execution — Android 分发 + inject 失败
+# ═══════════════════════════════════════════════
+
+class TestRetryExecutionAndroid:
+    """_retry_execution() Android 分支"""
+
+    @pytest.mark.asyncio
+    async def test_android_dispatches_to_sync(self, heal_svc_db, mocker):
+        """platform=android → 分发到 _retry_execution_sync"""
+        mock_sync = mocker.patch.object(
+            heal_svc_db, "_retry_execution_sync", return_value=True
+        )
+        result = await heal_svc_db._retry_execution(
+            AsyncMock(), "code", MagicMock(), 1, 1, platform="android"
+        )
+        assert result is True
+        mock_sync.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_inject_failure_uses_original_code(self, heal_svc_db, mocker):
+        """CodeInjector.inject 抛 SecurityException → 使用原始代码继续"""
+        from app.exceptions import SecurityException
+        mock_code_injector = mocker.patch("app.utils.code_injector.CodeInjector")
+        mock_code_injector.inject.side_effect = SecurityException("inject failed")
+        mocker.patch("app.services.playwright_service._MonitorHooks")
+        mocker.patch("app.services.playwright_service._build_namespace", return_value={})
+
+        mock_run_test = AsyncMock(return_value={"success": True})
+
+        def mock_exec(code, ns):
+            ns["run_test"] = mock_run_test
+
+        mocker.patch("builtins.exec", side_effect=mock_exec)
+
+        step = ExecutionStep(
+            execution_id=1, case_id=1, step_index=1,
+            action="click", status="failed",
+        )
+        result = await heal_svc_db._retry_execution(
+            AsyncMock(), "async def run_test(page): pass", step, 1, 1
+        )
+        assert result is True
+
+
+# ═══════════════════════════════════════════════
+# _retry_execution_sync — Android 同步重试
+# ═══════════════════════════════════════════════
+
+class TestRetryExecutionSync:
+    """_retry_execution_sync() Android 同步沙箱重试"""
+
+    def test_sync_success(self, heal_svc_db, mocker, mock_file_ops):
+        """同步重试成功 → step 标记 success"""
+        mocker.patch("app.utils.appium_code_injector.AppiumCodeInjector")
+        mocker.patch("app.services.appium_service._build_sync_namespace", return_value={})
+
+        def mock_exec(code, ns):
+            ns["run_test"] = lambda driver: {"success": True}
+
+        mocker.patch("builtins.exec", side_effect=mock_exec)
+
+        step = ExecutionStep(
+            execution_id=1, case_id=1, step_index=1,
+            action="click", status="failed",
+        )
+        heal_svc_db._db.add(step)
+        heal_svc_db._db.commit()
+
+        result = heal_svc_db._retry_execution_sync(
+            AsyncMock(), "def run_test(driver): pass", step, 1, 1
+        )
+        assert result is True
+        heal_svc_db._db.refresh(step)
+        assert step.status == "success"
+        assert "HEALED" in (step.log_output or "")
+
+    def test_sync_run_test_returns_false(self, heal_svc_db, mocker, mock_file_ops):
+        """run_test 返回 success=False → 返回 False"""
+        mocker.patch("app.utils.appium_code_injector.AppiumCodeInjector")
+        mocker.patch("app.services.appium_service._build_sync_namespace", return_value={})
+
+        def mock_exec(code, ns):
+            ns["run_test"] = lambda driver: {"success": False}
+
+        mocker.patch("builtins.exec", side_effect=mock_exec)
+
+        step = ExecutionStep(
+            execution_id=1, case_id=1, step_index=1,
+            action="click", status="failed",
+        )
+        heal_svc_db._db.add(step)
+        heal_svc_db._db.commit()
+
+        result = heal_svc_db._retry_execution_sync(
+            AsyncMock(), "def run_test(driver): pass", step, 1, 1
+        )
+        assert result is False
+
+    def test_sync_run_test_exception(self, heal_svc_db, mocker, mock_file_ops):
+        """run_test 抛异常 → 记录 error_message 并返回 False"""
+        mocker.patch("app.utils.appium_code_injector.AppiumCodeInjector")
+        mocker.patch("app.services.appium_service._build_sync_namespace", return_value={})
+
+        def mock_exec(code, ns):
+            def run_test(driver):
+                raise RuntimeError("boom")
+            ns["run_test"] = run_test
+
+        mocker.patch("builtins.exec", side_effect=mock_exec)
+
+        step = ExecutionStep(
+            execution_id=1, case_id=1, step_index=1,
+            action="click", status="failed",
+        )
+        heal_svc_db._db.add(step)
+        heal_svc_db._db.commit()
+
+        result = heal_svc_db._retry_execution_sync(
+            AsyncMock(), "def run_test(driver): pass", step, 1, 1
+        )
+        assert result is False
+        heal_svc_db._db.refresh(step)
+        assert "自愈重试失败" in (step.error_message or "")
+
+    def test_sync_inject_failure_uses_original(self, heal_svc_db, mocker, mock_file_ops):
+        """Android 注入失败 → 使用原始代码继续"""
+        from app.exceptions import SecurityException
+        mock_injector = mocker.patch("app.utils.appium_code_injector.AppiumCodeInjector")
+        mock_injector.inject.side_effect = SecurityException("inject failed")
+        mocker.patch("app.services.appium_service._build_sync_namespace", return_value={})
+
+        def mock_exec(code, ns):
+            ns["run_test"] = lambda driver: {"success": True}
+
+        mocker.patch("builtins.exec", side_effect=mock_exec)
+
+        step = ExecutionStep(
+            execution_id=1, case_id=1, step_index=1,
+            action="click", status="failed",
+        )
+        heal_svc_db._db.add(step)
+        heal_svc_db._db.commit()
+
+        result = heal_svc_db._retry_execution_sync(
+            AsyncMock(), "def run_test(driver): pass", step, 1, 1
+        )
+        assert result is True
+
+
+# ═══════════════════════════════════════════════
+# _update_heal_record 边界
+# ═══════════════════════════════════════════════
+
+class TestUpdateHealRecordEdgeCases:
+    """_update_heal_record() 边界分支"""
+
+    def test_record_not_found(self, heal_svc_db):
+        """记录不存在 → 静默跳过"""
+        heal_svc_db._update_heal_record(99999, "success")  # 不应抛异常
+
+    def test_invalid_attempts_json(self, db_session, sample_project, sample_test_case, sample_execution):
+        """attempts 字段为无效 JSON → 回退为空，不崩溃"""
+        step = ExecutionStep(
+            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            action="click", status="failed",
+        )
+        db_session.add(step)
+        db_session.commit()
+
+        record = HealRecord(
+            execution_step_id=step.id,
+            original_code="code",
+            error_context="{}",
+            healed_code="new code",
+            heal_prompt="prompt",
+            retry_status="retrying",
+            retry_count=1,
+            attempts="not json {{{",
+        )
+        db_session.add(record)
+        db_session.commit()
+        db_session.refresh(record)
+
+        svc = HealService(db_session)
+        svc._update_heal_record(record.id, "success")
+
+        db_session.refresh(record)
+        assert record.retry_status == "success"

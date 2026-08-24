@@ -200,3 +200,100 @@ class TestExtractOpInfo:
         assert action is None
         assert target == ""
         assert value == ""
+
+
+class TestCodeInjectorEdgeCases:
+    """inject() 边界分支 — 赋值/参数类型/异常路径"""
+
+    def test_inject_assign_await_operation(self):
+        """赋值语句中的 await 操作 → 注入监控"""
+        code = '''from playwright.async_api import Page
+async def run_test(page: Page) -> dict:
+    result = await page.goto("https://example.com")
+    return {"success": True, "steps": [], "result": str(result)}
+'''
+        injected = CodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "__monitor_after" in injected
+        assert "result = await page.goto" in injected
+
+    def test_inject_assign_non_operation_not_injected(self):
+        """赋值语句中的非操作 await → 不注入"""
+        code = '''import asyncio
+async def run_test(page) -> dict:
+    x = await asyncio.sleep(1)
+    return {"success": True, "steps": []}
+'''
+        injected = CodeInjector.inject(code)
+        assert injected == code
+
+    def test_inject_fstring_target_extracted(self):
+        """f-string 选择器 → 提取文字部分"""
+        code = '''from playwright.async_api import Page
+async def run_test(page: Page) -> dict:
+    uid = 42
+    await page.locator(f"#user-{uid}").click()
+    return {"success": True, "steps": []}
+'''
+        injected = CodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "#user-{...}" in injected
+
+    def test_inject_name_arg_extracted(self):
+        """变量名作为参数 → 提取变量名"""
+        code = '''from playwright.async_api import Page
+async def run_test(page: Page) -> dict:
+    selector = "#btn"
+    await page.locator(selector).click()
+    return {"success": True, "steps": []}
+'''
+        injected = CodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "selector" in injected
+
+    def test_inject_expect_to_have_value(self):
+        """expect().to_have_value() → assert_text 监控"""
+        code = '''from playwright.async_api import Page, expect
+async def run_test(page: Page) -> dict:
+    await expect(page.locator("#input")).to_have_value("hello")
+    return {"success": True, "steps": []}
+'''
+        injected = CodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "assert_text" in injected
+
+    def test_inject_nested_function_not_injected(self):
+        """run_test 之外的函数操作 → 不注入"""
+        code = '''from playwright.async_api import Page
+async def helper(page: Page) -> None:
+    await page.goto("https://example.com")
+
+async def run_test(page: Page) -> dict:
+    return {"success": True, "steps": []}
+'''
+        injected = CodeInjector.inject(code)
+        # 无注入，返回原代码
+        assert injected == code
+
+    def test_inject_visit_error_raises_security(self, mocker):
+        """transformer.visit 抛异常 → SecurityException('AST 注入失败')"""
+        code = '''async def run_test(page):
+    await page.goto("https://example.com")
+    return {"success": True, "steps": []}
+'''
+        mocker.patch(
+            "app.utils.code_injector._MonitorTransformer.visit",
+            side_effect=RuntimeError("boom"),
+        )
+        with pytest.raises(SecurityException, match="AST 注入失败"):
+            CodeInjector.inject(code)
+
+    def test_inject_unparse_error_raises_security(self, mocker):
+        """ast.unparse 抛异常 → SecurityException('AST 反序列化失败')"""
+        code = '''async def run_test(page):
+    await page.goto("https://example.com")
+    return {"success": True, "steps": []}
+'''
+        mocker.patch("app.utils.code_injector.ast.unparse", side_effect=RuntimeError("boom"))
+        with pytest.raises(SecurityException, match="AST 反序列化失败"):
+            CodeInjector.inject(code)

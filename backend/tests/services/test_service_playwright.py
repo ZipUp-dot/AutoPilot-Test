@@ -85,6 +85,34 @@ class TestCreateExecution:
         )
         assert len(steps) == 0
 
+    def test_create_execution_invalid_json_steps_skipped(self, db_session, sample_project):
+        """create_execution() 用例 steps 为无效 JSON -> 跳过该用例步骤，不崩溃"""
+        from app.models.test_case import TestCase
+        case = TestCase(
+            project_id=sample_project.id,
+            case_name="Broken Steps",
+            steps="not valid json {{{",
+            status="imported",
+        )
+        db_session.add(case)
+        db_session.commit()
+        db_session.refresh(case)
+
+        svc = PlaywrightService(db_session)
+        exec_id = svc.create_execution(
+            project_id=sample_project.id,
+            case_ids=[case.id],
+        )
+
+        exec_obj = db_session.query(Execution).filter(Execution.id == exec_id).first()
+        assert exec_obj is not None
+        steps = (
+            db_session.query(ExecutionStep)
+            .filter(ExecutionStep.execution_id == exec_id)
+            .all()
+        )
+        assert len(steps) == 0  # 无效 JSON 不产生步骤
+
 
 # ═══════════════════════════════════════════════
 # _init_steps() 测试
@@ -144,6 +172,36 @@ class TestInitSteps:
         svc = PlaywrightService(db_session)
         svc._init_steps(exec_obj.id, 99999)  # 不存在的 case，不应崩溃
 
+    def test_init_steps_invalid_json(self, db_session, sample_project):
+        """_init_steps() 用例 steps 为无效 JSON → 直接返回"""
+        from app.services.playwright_service import PlaywrightService
+        from app.models.execution import Execution
+        from app.models.test_case import TestCase
+        from datetime import datetime as dt
+
+        case = TestCase(
+            project_id=sample_project.id,
+            case_name="Broken Steps",
+            case_no="TC900",
+            steps="not valid json {{{",
+            status="imported",
+        )
+        db_session.add(case)
+        db_session.commit()
+        db_session.refresh(case)
+
+        exec_obj = Execution(
+            project_id=sample_project.id,
+            total_cases=1,
+            status="running",
+            start_time=dt.utcnow(),
+        )
+        db_session.add(exec_obj)
+        db_session.commit()
+
+        svc = PlaywrightService(db_session)
+        svc._init_steps(exec_obj.id, case.id)  # 不应抛异常
+
 
 # ═══════════════════════════════════════════════
 # _update_execution() 测试
@@ -176,6 +234,32 @@ class TestUpdateExecution:
         assert exec_obj.passed_cases == 2
         assert exec_obj.failed_cases == 1
 
+    def test_update_execution_not_found(self, db_session, sample_project):
+        """_update_execution() 记录不存在 → 静默跳过"""
+        from app.services.playwright_service import PlaywrightService
+        svc = PlaywrightService(db_session)
+        svc._update_execution(99999, passed=1, failed=0)  # 不应抛异常
+
+    def test_update_execution_db_error_logged(self, db_session, sample_project, mocker):
+        """_update_execution() DB 异常 → 记录日志，不向上抛"""
+        from app.services.playwright_service import PlaywrightService
+        from app.models.execution import Execution
+        from datetime import datetime as dt
+
+        exec_obj = Execution(
+            project_id=sample_project.id,
+            total_cases=1,
+            status="running",
+            start_time=dt.utcnow(),
+        )
+        db_session.add(exec_obj)
+        db_session.commit()
+        db_session.refresh(exec_obj)
+
+        svc = PlaywrightService(db_session)
+        mocker.patch.object(svc._db, "commit", side_effect=RuntimeError("db down"))
+        svc._update_execution(exec_obj.id, passed=1, failed=0)  # 不应抛异常
+
 
 # ═══════════════════════════════════════════════
 # _update_execution_status() 测试
@@ -205,6 +289,30 @@ class TestUpdateExecutionStatus:
         db_session.refresh(exec_obj)
         assert exec_obj.status == "completed"
         assert exec_obj.end_time is not None
+
+    def test_update_execution_status_not_found(self, db_session, sample_project):
+        """_update_execution_status() 记录不存在 → 静默跳过"""
+        from app.services.playwright_service import PlaywrightService
+        svc = PlaywrightService(db_session)
+        svc._update_execution_status(99999, "failed")  # 不应抛异常
+
+
+# ═══════════════════════════════════════════════
+# _ensure_dir() 测试
+# ═══════════════════════════════════════════════
+
+class TestEnsureDir:
+    """_ensure_dir() 目录创建"""
+
+    def test_ensure_dir_creates_and_returns(self):
+        """创建嵌套目录并返回原路径"""
+        from app.services.playwright_service import PlaywrightService
+        import tempfile, os
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "nested", "dir")
+            result = PlaywrightService._ensure_dir(path)
+            assert result == path
+            assert os.path.isdir(path)
 
 
 # ═══════════════════════════════════════════════
@@ -349,6 +457,45 @@ class TestMonitorHooks:
         assert step.status == "failed"
         assert step.error_message is not None
         assert "Element not found" in step.error_message
+
+    @pytest.mark.asyncio
+    async def test_upsert_step_creates_new_record(self, db_session, sample_execution, sample_test_case, mock_file_ops):
+        """场景: _MonitorHooks._upsert_step() step 不存在 → 创建新记录"""
+        from unittest.mock import AsyncMock
+        mock_page = AsyncMock()
+        mock_page.screenshot.return_value = b"fake"
+
+        hooks = _MonitorHooks(
+            db_session, sample_execution.id, sample_test_case.id, mock_page
+        )
+        # sample_execution fixture 只含 step_index=1，这里用不存在的 step_index=9
+        await hooks.on_step_before(9, "click", "#btn", "")
+
+        step = (
+            db_session.query(ExecutionStep)
+            .filter(
+                ExecutionStep.execution_id == sample_execution.id,
+                ExecutionStep.step_index == 9,
+            )
+            .first()
+        )
+        assert step is not None
+        assert step.status == "running"
+        assert step.action == "click"
+
+    @pytest.mark.asyncio
+    async def test_upsert_step_rollback_failure_ignored(self, db_session, sample_execution, sample_test_case, mock_file_ops, mocker):
+        """场景: _MonitorHooks._upsert_step() commit 与 rollback 均失败 → 静默忽略"""
+        from unittest.mock import AsyncMock
+        mock_page = AsyncMock()
+        mock_page.screenshot.return_value = b"fake"
+
+        hooks = _MonitorHooks(
+            db_session, sample_execution.id, sample_test_case.id, mock_page
+        )
+        mocker.patch.object(hooks._db, "commit", side_effect=RuntimeError("db down"))
+        mocker.patch.object(hooks._db, "rollback", side_effect=RuntimeError("rollback down"))
+        await hooks.on_step_before(1, "click", "#btn", "")  # 不应抛异常
 
 
 # ═══════════════════════════════════════════════
@@ -615,6 +762,63 @@ class TestExecuteCase:
         result = await svc._execute_case(mock_page, exec_obj.id, sample_test_case.id)
         assert result is False
 
+    @pytest.mark.asyncio
+    async def test_execute_case_inject_security_exception(self, db_session, sample_test_case, sample_generated_code, mocker):
+        """场景: _execute_case() CodeInjector.inject 抛 SecurityException → 原样抛出"""
+        from app.exceptions import SecurityException
+        mocker.patch("app.services.playwright_service.CodeValidator.validate", return_value=None)
+        mocker.patch("app.services.playwright_service.CodeInjector.inject",
+                      side_effect=SecurityException("inject failed"))
+        mocker.patch("pathlib.Path.mkdir")
+
+        from app.models.execution import Execution
+        from datetime import datetime as dt
+        exec_obj = Execution(
+            project_id=sample_test_case.project_id,
+            total_cases=1,
+            status="running",
+            start_time=dt.utcnow(),
+        )
+        db_session.add(exec_obj)
+        db_session.commit()
+        db_session.refresh(exec_obj)
+
+        svc = PlaywrightService(db_session)
+        with pytest.raises(SecurityException, match="inject failed"):
+            await svc._execute_case(AsyncMock(), exec_obj.id, sample_test_case.id)
+
+    @pytest.mark.asyncio
+    async def test_execute_case_run_test_raises(self, db_session, sample_test_case, sample_generated_code, mocker):
+        """场景: _execute_case() run_test 抛通用异常 → 标记失败并返回 False"""
+        mocker.patch("app.services.playwright_service.CodeValidator.validate", return_value=None)
+        # 注入会在运行时抛异常的代码
+        mocker.patch("app.services.playwright_service.CodeInjector.inject",
+                      return_value="async def run_test(page):\n    raise RuntimeError('boom')\n")
+        mocker.patch("pathlib.Path.mkdir")
+
+        from app.models.execution import Execution
+        from datetime import datetime as dt
+        exec_obj = Execution(
+            project_id=sample_test_case.project_id,
+            total_cases=1,
+            status="running",
+            start_time=dt.utcnow(),
+        )
+        db_session.add(exec_obj)
+        db_session.commit()
+        db_session.refresh(exec_obj)
+
+        svc = PlaywrightService(db_session)
+        result = await svc._execute_case(AsyncMock(), exec_obj.id, sample_test_case.id)
+        assert result is False
+
+        # 步骤被标记为 failed
+        from app.models.execution_step import ExecutionStep
+        steps = db_session.query(ExecutionStep).filter(
+            ExecutionStep.execution_id == exec_obj.id,
+        ).all()
+        assert all(s.status == "failed" for s in steps)
+
 
 # ═══════════════════════════════════════════════
 # _execute_async() 批量执行测试
@@ -738,6 +942,61 @@ class TestExecuteAsync:
 
         db_session.refresh(exec_obj)
         assert exec_obj.status == "failed"
+
+    @pytest.mark.asyncio
+    async def test_execute_async_goto_fails_continues(self, db_session, sample_project, sample_test_case, sample_generated_code, mocker):
+        """场景: _execute_async() 初始导航失败 → 记录警告并继续执行"""
+        mock_page = mock_playwright_for_execution_service_func(mocker)
+        mock_page.goto.side_effect = RuntimeError("Navigation timeout")
+        mocker.patch.object(PlaywrightService, "_execute_case", return_value=True)
+        mocker.patch.object(PlaywrightService, "_start_healing")
+
+        from app.models.execution import Execution
+        from datetime import datetime as dt
+        exec_obj = Execution(
+            project_id=sample_project.id,
+            total_cases=1,
+            status="running",
+            start_time=dt.utcnow(),
+        )
+        db_session.add(exec_obj)
+        db_session.commit()
+        db_session.refresh(exec_obj)
+
+        svc = PlaywrightService(db_session)
+        await svc._execute_async(sample_project.id, [sample_test_case.id], exec_obj.id, "headless")
+
+        # 导航失败不影响后续执行，用例仍通过
+        db_session.refresh(exec_obj)
+        assert exec_obj.status == "completed"
+        assert exec_obj.passed_cases == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_async_case_raises_counts_failed(self, db_session, sample_project, sample_test_case, sample_generated_code, mocker):
+        """场景: _execute_async() 用例执行抛异常 → 计入 failed 并触发自愈"""
+        mock_playwright_for_execution_service_func(mocker)
+        mocker.patch.object(PlaywrightService, "_execute_case", side_effect=RuntimeError("boom"))
+        mock_heal = mocker.patch.object(PlaywrightService, "_start_healing")
+
+        from app.models.execution import Execution
+        from datetime import datetime as dt
+        exec_obj = Execution(
+            project_id=sample_project.id,
+            total_cases=1,
+            status="running",
+            start_time=dt.utcnow(),
+        )
+        db_session.add(exec_obj)
+        db_session.commit()
+        db_session.refresh(exec_obj)
+
+        svc = PlaywrightService(db_session)
+        await svc._execute_async(sample_project.id, [sample_test_case.id], exec_obj.id, "headless")
+
+        db_session.refresh(exec_obj)
+        assert exec_obj.status == "healing"
+        assert exec_obj.failed_cases == 1
+        mock_heal.assert_called_once()
 
 
 # ═══════════════════════════════════════════════

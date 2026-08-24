@@ -558,3 +558,501 @@ class TestAppiumStartupFailure:
 
         # driver.quit 不应被调用（driver 从未成功创建）
         mock_driver.quit.assert_not_called()
+
+
+# ═══════════════════════════════════════════════════
+# Tests: create_execution 边界
+# ═══════════════════════════════════════════════════
+
+class TestAppiumCreateExecutionEdgeCases:
+    """create_execution() — 无效步骤数据分支"""
+
+    def test_create_execution_skips_invalid_json_steps(self, db_session, android_project):
+        """用例 steps 为无效 JSON → 跳过该用例步骤"""
+        from app.services.appium_service import AppiumService
+        from app.models.test_case import TestCase
+        case = TestCase(
+            project_id=android_project.id,
+            case_name="Broken Steps",
+            case_no="TC999",
+            steps="not valid json {{{",
+            status="imported",
+        )
+        db_session.add(case)
+        db_session.commit()
+        db_session.refresh(case)
+
+        svc = AppiumService(db_session)
+        exec_id = svc.create_execution(android_project.id, [case.id])
+
+        from app.models.execution_step import ExecutionStep
+        steps = db_session.query(ExecutionStep).filter(
+            ExecutionStep.execution_id == exec_id,
+        ).all()
+        assert len(steps) == 0
+
+    def test_create_execution_skips_case_without_steps(self, db_session, android_project):
+        """用例无 steps → 跳过该用例步骤"""
+        from app.services.appium_service import AppiumService
+        from app.models.test_case import TestCase
+        case = TestCase(
+            project_id=android_project.id,
+            case_name="No Steps",
+            case_no="TC998",
+            steps="",
+            status="imported",
+        )
+        db_session.add(case)
+        db_session.commit()
+        db_session.refresh(case)
+
+        svc = AppiumService(db_session)
+        exec_id = svc.create_execution(android_project.id, [case.id])
+
+        from app.models.execution_step import ExecutionStep
+        steps = db_session.query(ExecutionStep).filter(
+            ExecutionStep.execution_id == exec_id,
+        ).all()
+        assert len(steps) == 0
+
+
+# ═══════════════════════════════════════════════════
+# Tests: _execute_sync 失败路径
+# ═══════════════════════════════════════════════════
+
+class TestAppiumExecuteSyncFailures:
+    """_execute_sync() — 失败/异常分支"""
+
+    @patch("appium.webdriver.Remote")
+    def test_case_exception_triggers_healing(self, mock_remote, db_session, android_project):
+        """_execute_case 抛异常 → 计入 failed，触发 healing 并启动自愈"""
+        from app.services.appium_service import AppiumService
+        svc = AppiumService(db_session)
+
+        mock_driver = MagicMock()
+        mock_remote.return_value = mock_driver
+
+        case = _create_case_and_code(db_session, android_project, CLICK_CODE)
+        exec_obj = _create_execution(db_session, android_project)
+
+        mock_start_healing = patch.object(AppiumService, "_start_healing")
+        with mock_start_healing as mock_heal:
+            svc._execute_case = MagicMock(side_effect=RuntimeError("boom"))
+            svc._execute_sync(android_project.id, [case.id], exec_obj.id, "headless")
+
+        from app.models.execution import Execution
+        db_session.expire_all()
+        updated = db_session.query(Execution).filter(Execution.id == exec_obj.id).first()
+        assert updated.status == "healing"
+        assert updated.failed_cases == 1
+        mock_heal.assert_called_once()
+
+    @patch("appium.webdriver.Remote")
+    def test_driver_quit_exception_ignored(self, mock_remote, db_session, android_project):
+        """driver.quit() 抛异常 → 被忽略，状态仍正常更新"""
+        from app.services.appium_service import AppiumService
+        svc = AppiumService(db_session)
+
+        mock_driver = MagicMock()
+        mock_remote.return_value = mock_driver
+        mock_driver.quit.side_effect = RuntimeError("quit failed")
+
+        case = _create_case_and_code(db_session, android_project, CLICK_CODE)
+        exec_obj = _create_execution(db_session, android_project)
+
+        with patch.object(AppiumService, "_start_healing"):
+            svc._execute_sync(android_project.id, [case.id], exec_obj.id, "headless")
+
+        from app.models.execution import Execution
+        db_session.expire_all()
+        updated = db_session.query(Execution).filter(Execution.id == exec_obj.id).first()
+        assert updated.status == "completed"  # quit 异常不影响状态
+
+    @patch("appium.webdriver.Remote")
+    def test_project_not_found_uses_default_config(self, mock_remote, db_session, android_project):
+        """项目不存在 → 使用默认配置连接"""
+        from app.services.appium_service import AppiumService
+        svc = AppiumService(db_session)
+
+        mock_driver = MagicMock()
+        mock_remote.return_value = mock_driver
+
+        case = _create_case_and_code(db_session, android_project, CLICK_CODE)
+        exec_obj = _create_execution(db_session, android_project)
+
+        with patch.object(AppiumService, "_start_healing"):
+            svc._execute_sync(99999, [case.id], exec_obj.id, "headless")
+
+        # 项目不存在 → config={} → 使用 settings.APPIUM_URL
+        call_args, _ = mock_remote.call_args
+        assert call_args[1]["automationName"] == "UiAutomator2"
+
+    @patch("appium.webdriver.Remote")
+    def test_case_returns_false_counts_failed(self, mock_remote, db_session, android_project):
+        """_execute_case 返回 False → 计入 failed，触发 healing"""
+        from app.services.appium_service import AppiumService
+        svc = AppiumService(db_session)
+
+        mock_driver = MagicMock()
+        mock_remote.return_value = mock_driver
+
+        case = _create_case_and_code(db_session, android_project, CLICK_CODE)
+        exec_obj = _create_execution(db_session, android_project)
+
+        with patch.object(AppiumService, "_start_healing") as mock_heal:
+            svc._execute_case = MagicMock(return_value=False)
+            svc._execute_sync(android_project.id, [case.id], exec_obj.id, "headless")
+
+        from app.models.execution import Execution
+        db_session.expire_all()
+        updated = db_session.query(Execution).filter(Execution.id == exec_obj.id).first()
+        assert updated.status == "healing"
+        assert updated.failed_cases == 1
+        mock_heal.assert_called_once()
+
+
+# ═══════════════════════════════════════════════════
+# Tests: _execute_case 边界
+# ═══════════════════════════════════════════════════
+
+class TestAppiumExecuteCaseEdgeCases:
+    """_execute_case() — 校验/执行失败分支"""
+
+    def test_inject_security_exception_rejected(self, db_session, appium_svc, mock_driver, android_project, mocker):
+        """AppiumCodeInjector.inject 抛 SecurityException → 原样抛出"""
+        from app.exceptions import SecurityException
+        from app.utils.appium_code_injector import AppiumCodeInjector
+        case = _create_case_and_code(db_session, android_project, CLICK_CODE)
+        exec_obj = _create_execution(db_session, android_project)
+
+        mocker.patch.object(AppiumCodeInjector, "inject", side_effect=SecurityException("inject failed"))
+
+        with pytest.raises(SecurityException, match="inject failed"):
+            appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
+
+    def test_exec_compile_error_marks_failed(self, db_session, appium_svc, mock_driver, android_project, mocker):
+        """exec 执行失败 → 用例标记失败并返回 False"""
+        case = _create_case_and_code(db_session, android_project, CLICK_CODE)
+        exec_obj = _create_execution(db_session, android_project)
+
+        mocker.patch("builtins.exec", side_effect=RuntimeError("compile error"))
+
+        result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
+        assert result is False
+
+        from app.models.execution_step import ExecutionStep
+        steps = db_session.query(ExecutionStep).filter(
+            ExecutionStep.execution_id == exec_obj.id,
+            ExecutionStep.case_id == case.id,
+        ).all()
+        assert all(s.status == "failed" for s in steps)
+
+    def test_missing_run_test_marks_failed(self, db_session, appium_svc, mock_driver, android_project, mocker):
+        """代码中无 run_test 函数 → 标记失败并返回 False"""
+        case = _create_case_and_code(db_session, android_project, CLICK_CODE)
+        exec_obj = _create_execution(db_session, android_project)
+
+        # 模拟注入后代码不包含 run_test（namespace 中无 run_test）
+        mocker.patch("builtins.exec")
+
+        result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
+        assert result is False
+
+    def test_run_test_returns_false_marks_failed(self, db_session, appium_svc, mock_driver, android_project):
+        """run_test 返回 success=False → 标记失败并返回 False"""
+        code = "def run_test(driver):\n    return {'success': False}\n"
+        case = _create_case_and_code(db_session, android_project, code)
+        exec_obj = _create_execution(db_session, android_project)
+
+        result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
+        assert result is False
+
+        from app.models.execution_step import ExecutionStep
+        steps = db_session.query(ExecutionStep).filter(
+            ExecutionStep.execution_id == exec_obj.id,
+            ExecutionStep.case_id == case.id,
+        ).all()
+        assert all(s.status == "failed" for s in steps)
+
+
+# ═══════════════════════════════════════════════════
+# Tests: 辅助方法
+# ═══════════════════════════════════════════════════
+
+class TestAppiumHelpers:
+    """_init_steps / _update_execution / _update_execution_status / _ensure_dir"""
+
+    def test_init_steps_skips_case_without_steps(self, db_session, android_project):
+        """_init_steps 用例无 steps → 直接返回"""
+        from app.services.appium_service import AppiumService
+        from app.models.test_case import TestCase
+        from app.models.execution import Execution
+        case = TestCase(
+            project_id=android_project.id,
+            case_name="No Steps",
+            case_no="TC997",
+            steps="",
+            status="imported",
+        )
+        db_session.add(case)
+        db_session.commit()
+        db_session.refresh(case)
+        exec_obj = Execution(
+            project_id=android_project.id,
+            total_cases=1,
+            status="running",
+        )
+        db_session.add(exec_obj)
+        db_session.commit()
+        db_session.refresh(exec_obj)
+
+        svc = AppiumService(db_session)
+        svc._init_steps(exec_obj.id, case.id)  # 不应抛异常
+
+    def test_init_steps_skips_invalid_json(self, db_session, android_project):
+        """_init_steps 用例 steps 无效 JSON → 直接返回"""
+        from app.services.appium_service import AppiumService
+        from app.models.test_case import TestCase
+        from app.models.execution import Execution
+        case = TestCase(
+            project_id=android_project.id,
+            case_name="Broken",
+            case_no="TC996",
+            steps="not json {{{",
+            status="imported",
+        )
+        db_session.add(case)
+        db_session.commit()
+        db_session.refresh(case)
+        exec_obj = Execution(
+            project_id=android_project.id,
+            total_cases=1,
+            status="running",
+        )
+        db_session.add(exec_obj)
+        db_session.commit()
+        db_session.refresh(exec_obj)
+
+        svc = AppiumService(db_session)
+        svc._init_steps(exec_obj.id, case.id)  # 不应抛异常
+
+    def test_update_execution_not_found(self, db_session, android_project):
+        """_update_execution 执行记录不存在 → 静默跳过"""
+        from app.services.appium_service import AppiumService
+        svc = AppiumService(db_session)
+        svc._update_execution(99999, 1, 0)  # 不应抛异常
+
+    def test_update_execution_db_error_logged(self, db_session, android_project, mocker):
+        """_update_execution DB 异常 → 记录日志，不向上抛"""
+        from app.services.appium_service import AppiumService
+        from app.models.execution import Execution
+        exec_obj = Execution(
+            project_id=android_project.id,
+            total_cases=1,
+            status="running",
+        )
+        db_session.add(exec_obj)
+        db_session.commit()
+        db_session.refresh(exec_obj)
+
+        svc = AppiumService(db_session)
+        mocker.patch.object(svc._db, "commit", side_effect=RuntimeError("db down"))
+        svc._update_execution(exec_obj.id, 1, 0)  # 不应抛异常
+
+    def test_update_execution_status_sets_end_time(self, db_session, android_project):
+        """_update_execution_status 终态 → 设置 end_time"""
+        from app.services.appium_service import AppiumService
+        from app.models.execution import Execution
+        from datetime import datetime as dt
+        exec_obj = Execution(
+            project_id=android_project.id,
+            total_cases=1,
+            status="running",
+            start_time=dt.utcnow(),
+        )
+        db_session.add(exec_obj)
+        db_session.commit()
+        db_session.refresh(exec_obj)
+        assert exec_obj.end_time is None
+
+        svc = AppiumService(db_session)
+        svc._update_execution_status(exec_obj.id, "stopped")
+
+        db_session.refresh(exec_obj)
+        assert exec_obj.status == "stopped"
+        assert exec_obj.end_time is not None
+
+    def test_update_execution_status_not_found(self, db_session, android_project):
+        """_update_execution_status 记录不存在 → 静默跳过"""
+        from app.services.appium_service import AppiumService
+        svc = AppiumService(db_session)
+        svc._update_execution_status(99999, "failed")  # 不应抛异常
+
+    def test_ensure_dir(self):
+        """_ensure_dir 创建目录并返回路径"""
+        from app.services.appium_service import AppiumService
+        import tempfile, os
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "nested", "dir")
+            result = AppiumService._ensure_dir(path)
+            assert result == path
+            assert os.path.isdir(path)
+
+
+# ═══════════════════════════════════════════════════
+# Tests: _SyncMonitorHooks 边界
+# ═══════════════════════════════════════════════════
+
+class TestSyncMonitorHooksEdgeCases:
+    """_SyncMonitorHooks — 截图失败 / 新建步骤 / DB 异常"""
+
+    def _make_hooks(self, db_session, android_project, driver, mock_file_ops):
+        from app.services.appium_service import _SyncMonitorHooks
+        from app.models.execution import Execution
+        from app.models.test_case import TestCase
+        case = TestCase(
+            project_id=android_project.id,
+            case_name="Hooks Case",
+            case_no="TC995",
+            steps=json.dumps([{"step_number": 1, "action": "click", "target": "#b", "value": ""}]),
+            status="imported",
+        )
+        db_session.add(case)
+        db_session.commit()
+        db_session.refresh(case)
+        exec_obj = Execution(
+            project_id=android_project.id,
+            total_cases=1,
+            status="running",
+        )
+        db_session.add(exec_obj)
+        db_session.commit()
+        db_session.refresh(exec_obj)
+        return _SyncMonitorHooks(db_session, exec_obj.id, case.id, driver), exec_obj, case
+
+    def test_on_step_before_screenshot_fails(self, db_session, android_project, mock_file_ops):
+        """before 截图失败 → 记录空截图路径，不中断"""
+        from app.services.appium_service import _SyncMonitorHooks
+        driver = MagicMock()
+        driver.save_screenshot.side_effect = RuntimeError("shot failed")
+        hooks, exec_obj, case = self._make_hooks(db_session, android_project, driver, mock_file_ops)
+
+        hooks.on_step_before(1, "click", "#b", "")
+
+        from app.models.execution_step import ExecutionStep
+        step = db_session.query(ExecutionStep).filter(
+            ExecutionStep.execution_id == exec_obj.id,
+            ExecutionStep.case_id == case.id,
+        ).first()
+        assert step is not None
+        assert step.status == "running"
+        assert step.screenshot_before == ""
+
+    def test_on_step_after_passed_sets_success(self, db_session, android_project, mock_file_ops):
+        """after 成功 → status=success + log_output"""
+        from app.services.appium_service import _SyncMonitorHooks
+        driver = MagicMock()
+        hooks, exec_obj, case = self._make_hooks(db_session, android_project, driver, mock_file_ops)
+
+        hooks.on_step_before(1, "click", "#b", "")
+        hooks.on_step_after(1, "passed")
+
+        from app.models.execution_step import ExecutionStep
+        step = db_session.query(ExecutionStep).filter(
+            ExecutionStep.execution_id == exec_obj.id,
+            ExecutionStep.case_id == case.id,
+        ).first()
+        assert step.status == "success"
+        assert "[PASS]" in (step.log_output or "")
+
+    def test_on_step_after_failed_without_error_msg(self, db_session, android_project, mock_file_ops):
+        """after 失败但无 error_msg → error_message 不设置"""
+        from app.services.appium_service import _SyncMonitorHooks
+        driver = MagicMock()
+        hooks, exec_obj, case = self._make_hooks(db_session, android_project, driver, mock_file_ops)
+
+        hooks.on_step_before(1, "click", "#b", "")
+        hooks.on_step_after(1, "failed")
+
+        from app.models.execution_step import ExecutionStep
+        step = db_session.query(ExecutionStep).filter(
+            ExecutionStep.execution_id == exec_obj.id,
+            ExecutionStep.case_id == case.id,
+        ).first()
+        assert step.status == "failed"
+        assert step.error_message is None  # 无 error_msg → else 分支
+
+    def test_on_step_after_failed_with_error_msg(self, db_session, android_project, mock_file_ops):
+        """after 失败且有 error_msg → 组合 exception_type 与 error_message"""
+        from app.services.appium_service import _SyncMonitorHooks
+        driver = MagicMock()
+        hooks, exec_obj, case = self._make_hooks(db_session, android_project, driver, mock_file_ops)
+
+        hooks.on_step_before(1, "click", "#b", "")
+        hooks.on_step_after(1, "failed", "NoSuchElement: not found", "NoSuchElementException")
+
+        from app.models.execution_step import ExecutionStep
+        step = db_session.query(ExecutionStep).filter(
+            ExecutionStep.execution_id == exec_obj.id,
+            ExecutionStep.case_id == case.id,
+        ).first()
+        assert step.status == "failed"
+        assert step.error_message.startswith("NoSuchElementException: NoSuchElement")
+        assert step.exception_type == "NoSuchElementException"
+        assert "[FAIL]" in (step.log_output or "")
+
+    def test_upsert_step_db_error_rolls_back(self, db_session, android_project, mock_file_ops, mocker):
+        """_upsert_step DB 异常 → 回滚，不向上抛"""
+        from app.services.appium_service import _SyncMonitorHooks
+        driver = MagicMock()
+        hooks, exec_obj, case = self._make_hooks(db_session, android_project, driver, mock_file_ops)
+
+        mocker.patch.object(hooks._db, "commit", side_effect=RuntimeError("db down"))
+        hooks.on_step_before(1, "click", "#b", "")  # 不应抛异常
+
+    def test_on_step_after_screenshot_fails(self, db_session, android_project, mock_file_ops):
+        """after 截图失败 → 记录空截图路径，状态仍更新"""
+        from app.services.appium_service import _SyncMonitorHooks
+        driver = MagicMock()
+        # 第一次（before）成功，第二次（after）失败
+        driver.save_screenshot.side_effect = [None, RuntimeError("shot failed")]
+        hooks, exec_obj, case = self._make_hooks(db_session, android_project, driver, mock_file_ops)
+
+        hooks.on_step_before(1, "click", "#b", "")
+        hooks.on_step_after(1, "passed")
+
+        from app.models.execution_step import ExecutionStep
+        step = db_session.query(ExecutionStep).filter(
+            ExecutionStep.execution_id == exec_obj.id,
+            ExecutionStep.case_id == case.id,
+        ).first()
+        assert step.status == "success"
+        assert step.screenshot_after == ""
+
+    def test_on_step_after_failed_without_exception_type(self, db_session, android_project, mock_file_ops):
+        """after 失败且有 error_msg 但无 exception_type → 直接使用 error_msg"""
+        from app.services.appium_service import _SyncMonitorHooks
+        driver = MagicMock()
+        hooks, exec_obj, case = self._make_hooks(db_session, android_project, driver, mock_file_ops)
+
+        hooks.on_step_before(1, "click", "#b", "")
+        hooks.on_step_after(1, "failed", "plain error message")
+
+        from app.models.execution_step import ExecutionStep
+        step = db_session.query(ExecutionStep).filter(
+            ExecutionStep.execution_id == exec_obj.id,
+            ExecutionStep.case_id == case.id,
+        ).first()
+        assert step.status == "failed"
+        assert step.error_message == "plain error message"
+        assert step.exception_type == ""
+
+    def test_upsert_step_rollback_failure_ignored(self, db_session, android_project, mock_file_ops, mocker):
+        """_upsert_step 中 commit 与 rollback 均失败 → 静默忽略"""
+        from app.services.appium_service import _SyncMonitorHooks
+        driver = MagicMock()
+        hooks, exec_obj, case = self._make_hooks(db_session, android_project, driver, mock_file_ops)
+
+        mocker.patch.object(hooks._db, "commit", side_effect=RuntimeError("db down"))
+        mocker.patch.object(hooks._db, "rollback", side_effect=RuntimeError("rollback down"))
+        hooks.on_step_before(1, "click", "#b", "")  # 不应抛异常

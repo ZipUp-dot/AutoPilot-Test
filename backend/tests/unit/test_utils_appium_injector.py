@@ -187,3 +187,170 @@ class TestAppiumCodeInjectorCodeStyle:
         injected = AppiumCodeInjector.inject(code)
         assert "__monitor_before" in injected
         assert "__monitor_after" in injected
+
+
+class TestAppiumCodeInjectorEdgeCases:
+    """inject() 边界分支 — 更多链式操作/参数类型/异常路径"""
+
+    def test_inject_chain_clear(self):
+        """链式 clear() → fill 动作注入"""
+        code = """def run_test(driver):
+    driver.find_element(AppiumBy.ID, "com.example:id/input").clear()
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "__monitor_after" in injected
+
+    def test_inject_chain_submit(self):
+        """链式 submit() → click 动作注入"""
+        code = """def run_test(driver):
+    driver.find_element(AppiumBy.XPATH, "//form").submit()
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "click" in injected
+
+    def test_inject_chain_is_displayed(self):
+        """链式 is_displayed() → assert_visible 动作注入"""
+        code = """def run_test(driver):
+    driver.find_element(AppiumBy.ID, "com.example:id/msg").is_displayed()
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "assert_visible" in injected
+
+    def test_inject_chain_get_attribute(self):
+        """链式 get_attribute() → assert_text 动作注入"""
+        code = """def run_test(driver):
+    driver.find_element(AppiumBy.ID, "com.example:id/label").get_attribute("text")
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "assert_text" in injected
+
+    def test_inject_driver_swipe(self):
+        """driver.swipe() 多参数 → 目标为 4 个坐标拼接"""
+        code = """def run_test(driver):
+    driver.swipe(500, 1000, 300, 300)
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "500,1000,300,300" in injected
+
+    def test_inject_driver_get_screenshot_as_file(self):
+        """driver.get_screenshot_as_file() → screenshot 动作"""
+        code = """def run_test(driver):
+    driver.get_screenshot_as_file("/sdcard/s.png")
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "screenshot" in injected
+        assert "/sdcard/s.png" in injected
+
+    def test_inject_driver_launch_app(self):
+        """driver.launch_app() → navigate 动作"""
+        code = """def run_test(driver):
+    driver.launch_app()
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "navigate" in injected
+
+    def test_inject_driver_implicitly_wait(self):
+        """driver.implicitly_wait() → wait 动作"""
+        code = """def run_test(driver):
+    driver.implicitly_wait(5)
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "wait" in injected
+
+    def test_inject_driver_current_activity(self):
+        """driver.current_activity() → navigate 动作"""
+        code = """def run_test(driver):
+    driver.current_activity()
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "navigate" in injected
+
+    def test_inject_driver_property_access_not_injected(self):
+        """driver 属性访问（非调用）→ 不注入"""
+        code = """def run_test(driver):
+    driver.current_activity
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert injected == code
+
+    def test_inject_fstring_target(self):
+        """f-string 定位值 → 提取文字部分"""
+        code = """def run_test(driver):
+    uid = 42
+    driver.find_element(AppiumBy.ID, f"com.example:id/user_{uid}").click()
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "com.example:id/user_{...}" in injected
+
+    def test_inject_nested_function_not_injected(self):
+        """run_test 之外函数中的操作 → 不注入"""
+        code = """def helper(driver):
+    driver.find_element(AppiumBy.ID, "com.example:id/btn").click()
+
+def run_test(driver):
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert injected == code
+
+    def test_inject_non_driver_chain_not_injected(self):
+        """非 driver 对象链式调用 → 不注入"""
+        code = """def run_test(driver):
+    other_obj.find_element(AppiumBy.ID, "x").click()
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert injected == code
+
+    def test_inject_driver_unknown_method_not_injected(self):
+        """driver 未映射方法 → 不注入"""
+        code = """def run_test(driver):
+    driver.unknown_method()
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert injected == code
+
+    def test_inject_visit_error_raises_security(self, mocker):
+        """transformer.visit 抛异常 → SecurityException('AST 注入失败')"""
+        code = """def run_test(driver):
+    driver.find_element(AppiumBy.ID, "com.example:id/btn").click()
+    return {"success": True, "steps": []}
+"""
+        mocker.patch(
+            "app.utils.appium_code_injector._AppiumMonitorTransformer.visit",
+            side_effect=RuntimeError("boom"),
+        )
+        with pytest.raises(SecurityException, match="AST 注入失败"):
+            AppiumCodeInjector.inject(code)
+
+    def test_inject_unparse_error_raises_security(self, mocker):
+        """ast.unparse 抛异常 → SecurityException('AST 反序列化失败')"""
+        code = """def run_test(driver):
+    driver.find_element(AppiumBy.ID, "com.example:id/btn").click()
+    return {"success": True, "steps": []}
+"""
+        mocker.patch("app.utils.appium_code_injector.ast.unparse", side_effect=RuntimeError("boom"))
+        with pytest.raises(SecurityException, match="AST 反序列化失败"):
+            AppiumCodeInjector.inject(code)

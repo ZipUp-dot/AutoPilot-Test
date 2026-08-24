@@ -40,8 +40,17 @@ def mock_report():
 
 
 @pytest.fixture
-def orch(mock_ai, mock_pw, mock_report):
-    """完整注入的编排器"""
+def orch(mock_ai, mock_pw, mock_report, mocker):
+    """完整注入的编排器
+
+    同时 patch 全局 threading.Thread.start，防止 run_execute_only /
+    run_full_pipeline 真实启动后台线程（函数内 import threading + 真实
+    t.start()，且线程内部重新实例化 PlaywrightService 而非注入的 mock）。
+    否则线程在测试结束后仍运行，访问已回滚的 DB 事务并调用被全局 mock
+    的 asyncio.sleep，造成跨测试污染（flaky）。
+    """
+    import threading
+    mocker.patch.object(threading.Thread, "start")
     return TestOrchestrator(
         ai_service=mock_ai,
         playwright_service=mock_pw,

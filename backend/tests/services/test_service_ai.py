@@ -12,7 +12,9 @@ from app.services.ai_service import (
     _validate_syntax,
     _security_check,
     _mock_code,
+    _mock_android_code,
     _call_openai,
+    _call_openai_vision,
     _format_elements,
 )
 from app.exceptions import AIException, SecurityException
@@ -541,6 +543,165 @@ class TestCallOpenAI:
             ai_rate_limiter._calls.clear()
 
 
+class TestVisionCall:
+    """_call_openai_vision() 测试 — 截图 + 文本多模态分析"""
+
+    def test_vision_no_api_key_returns_empty(self):
+        """无 API Key → 返回空字符串（Vision 不可用）"""
+        result = _call_openai_vision("分析页面", b"fake_png")
+        assert result == ""
+
+    def test_vision_success(self, mock_settings, mocker):
+        """正常调用 → 返回 LLM 内容"""
+        mock_settings("OPENAI_API_KEY", "test-key")
+        from app.services.ai_service import ai_rate_limiter
+        ai_rate_limiter._calls.clear()
+
+        resp = mocker.MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {
+            "choices": [{"message": {"content": '{"need_action": false}'}}],
+            "usage": {"total_tokens": 50},
+        }
+        mock_client = mocker.MagicMock()
+        mock_client.__enter__.return_value.post.return_value = resp
+        mocker.patch("app.services.ai_service.httpx.Client", return_value=mock_client)
+
+        try:
+            result = _call_openai_vision("分析页面", b"fake_png")
+            assert result == '{"need_action": false}'
+        finally:
+            ai_rate_limiter._calls.clear()
+
+    def test_vision_retry_then_success(self, mock_settings, mocker):
+        """前2次失败 → 第3次成功"""
+        mock_settings("OPENAI_API_KEY", "test-key")
+        import httpx
+        from app.services.ai_service import ai_rate_limiter
+        ai_rate_limiter._calls.clear()
+
+        call_count = [0]
+
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] < 3:
+                raise httpx.TimeoutException("Timeout")
+            resp = mocker.MagicMock()
+            resp.raise_for_status.return_value = None
+            resp.json.return_value = {
+                "choices": [{"message": {"content": '{"need_action": true}'}}],
+            }
+            return resp
+
+        mock_client = mocker.MagicMock()
+        mock_client.__enter__.return_value.post.side_effect = side_effect
+        mocker.patch("app.services.ai_service.httpx.Client", return_value=mock_client)
+        mocker.patch("app.services.ai_service.time.sleep")
+
+        try:
+            result = _call_openai_vision("分析页面", b"fake_png", retries=3)
+            assert result == '{"need_action": true}'
+            assert call_count[0] == 3
+        finally:
+            ai_rate_limiter._calls.clear()
+
+    def test_vision_all_failed_returns_empty(self, mock_settings, mocker):
+        """全部重试失败 → 返回空字符串（不抛异常）"""
+        mock_settings("OPENAI_API_KEY", "test-key")
+        import httpx
+        from app.services.ai_service import ai_rate_limiter
+        ai_rate_limiter._calls.clear()
+
+        mock_client = mocker.MagicMock()
+        mock_client.__enter__.return_value.post.side_effect = httpx.TimeoutException("Timeout")
+        mocker.patch("app.services.ai_service.httpx.Client", return_value=mock_client)
+        mocker.patch("app.services.ai_service.time.sleep")
+
+        try:
+            result = _call_openai_vision("分析页面", b"fake_png")
+            assert result == ""
+        finally:
+            ai_rate_limiter._calls.clear()
+
+    def test_vision_circuit_breaker_returns_empty(self, mock_settings):
+        """限流熔断 → 返回空字符串（跳过 Vision 分析）"""
+        mock_settings("OPENAI_API_KEY", "test-key")
+        from app.services.ai_service import ai_rate_limiter
+        from app.config import settings
+        import time
+
+        ai_rate_limiter._max_calls = 2
+        ai_rate_limiter._calls.clear()
+        try:
+            now = time.time()
+            for _ in range(2):
+                ai_rate_limiter._calls.append(now)
+            assert _call_openai_vision("分析页面", b"fake_png") == ""
+        finally:
+            ai_rate_limiter._calls.clear()
+            ai_rate_limiter._max_calls = settings.OPENAI_MAX_CALLS_PER_MIN
+
+
+class TestRateLimiter:
+    """AIRateLimiter 单元测试 — 滑动窗口熔断器"""
+
+    @pytest.fixture(autouse=True)
+    def _cleanup(self):
+        from app.services.ai_service import ai_rate_limiter
+        from app.config import settings
+        ai_rate_limiter._calls.clear()
+        ai_rate_limiter._total_calls = 0
+        yield
+        ai_rate_limiter._calls.clear()
+        ai_rate_limiter._total_calls = 0
+        ai_rate_limiter._max_calls = settings.OPENAI_MAX_CALLS_PER_MIN
+
+    def test_acquire_returns_true_below_limit(self):
+        """未达上限 → acquire 返回 True，计数增加"""
+        from app.services.ai_service import ai_rate_limiter
+        assert ai_rate_limiter.acquire() is True
+        assert ai_rate_limiter.recent_count == 1
+        assert ai_rate_limiter.total_calls == 1
+
+    def test_acquire_returns_false_when_full(self):
+        """窗口已满 → acquire 返回 False（熔断）"""
+        from app.services.ai_service import ai_rate_limiter
+        ai_rate_limiter._max_calls = 2
+        assert ai_rate_limiter.acquire() is True
+        assert ai_rate_limiter.acquire() is True
+        assert ai_rate_limiter.acquire() is False
+        assert ai_rate_limiter.recent_count == 2
+
+    def test_window_expiry_cleans_old_records(self, mocker):
+        """超过 60 秒的记录被清理 → 重新获得额度"""
+        from app.services.ai_service import ai_rate_limiter
+        import time
+        ai_rate_limiter._max_calls = 1
+
+        fake_now = [time.time()]
+        mocker.patch("app.utils.ai_rate_limiter.time.time", side_effect=lambda: fake_now[0])
+
+        assert ai_rate_limiter.acquire() is True
+        assert ai_rate_limiter.acquire() is False  # 窗口已满
+
+        # 61 秒后，旧记录过期
+        fake_now[0] += 61
+        assert ai_rate_limiter.recent_count == 0
+        assert ai_rate_limiter.acquire() is True
+
+    def test_recent_count_cleans_expired(self, mocker):
+        """recent_count 同样清理过期记录"""
+        from app.services.ai_service import ai_rate_limiter
+        import time
+
+        fake_now = [time.time()]
+        mocker.patch("app.utils.ai_rate_limiter.time.time", side_effect=lambda: fake_now[0])
+
+        ai_rate_limiter._calls.append(fake_now[0] - 120)  # 过期记录
+        assert ai_rate_limiter.recent_count == 0
+        assert ai_rate_limiter.acquire() is True
+
+
 # ═══════════════════════════════════════════════
 # _extract_code() 测试
 # ═══════════════════════════════════════════════
@@ -930,6 +1091,112 @@ class TestMockCode:
         code = _mock_code(target_url="https://example.com", steps_json=steps)
         assert "select_option" in code
         assert "#dropdown" in code
+
+
+class TestMockAndroidCode:
+    """Android Mock 代码结构测试（_mock_android_code）"""
+
+    def test_platform_android_dispatches_to_android(self):
+        """_mock_code() platform=android → 生成同步 run_test(driver) 代码"""
+        code = _mock_code(target_url="https://example.com", steps_json="[]", platform="android")
+        assert "def run_test(driver)" in code
+        assert "async" not in code
+        assert "AppiumBy" not in code  # 注入运行时不导入 AppiumBy
+
+    def test_mock_android_structure(self):
+        """基础结构：同步函数 + steps_result"""
+        code = _mock_android_code(steps_json="[]")
+        assert "def run_test(driver)" in code
+        assert "steps_result = []" in code
+        assert "from datetime import datetime" in code
+
+    def test_click_with_target(self):
+        """click 有 target → 生成 find_element + click 代码"""
+        steps = json.dumps([
+            {"step_number": 1, "action": "click", "target": "//button[@id='btn']", "value": "", "description": "点击"},
+        ])
+        code = _mock_android_code(steps_json=steps)
+        assert "点击" in code
+        assert "find_element" in code
+        assert "click" in code
+
+    def test_click_without_target(self):
+        """click 无 target → 生成跳过代码"""
+        steps = json.dumps([
+            {"step_number": 1, "action": "click", "target": "", "value": "", "description": "点击"},
+        ])
+        code = _mock_android_code(steps_json=steps)
+        assert "无 selector" in code
+
+    def test_fill_with_target(self):
+        """fill 有 target → 生成 send_keys 代码"""
+        steps = json.dumps([
+            {"step_number": 1, "action": "fill", "target": "//input[@id='user']", "value": "admin", "description": "输入"},
+        ])
+        code = _mock_android_code(steps_json=steps)
+        assert "send_keys" in code
+        assert "admin" in code
+
+    def test_fill_without_target(self):
+        """fill 无 target → 生成跳过代码"""
+        steps = json.dumps([
+            {"step_number": 1, "action": "fill", "target": "", "value": "admin", "description": "输入"},
+        ])
+        code = _mock_android_code(steps_json=steps)
+        assert "无 selector" in code
+
+    def test_wait_with_numeric_value(self):
+        """wait 数字 value → 生成 time.sleep(2.0)"""
+        steps = json.dumps([
+            {"step_number": 1, "action": "wait", "target": "", "value": "2000", "description": "等待"},
+        ])
+        code = _mock_android_code(steps_json=steps)
+        assert "time.sleep(2.0)" in code
+
+    def test_wait_with_non_numeric_value(self):
+        """wait 非数字 value → 回退默认 1000ms"""
+        steps = json.dumps([
+            {"step_number": 1, "action": "wait", "target": "", "value": "abc", "description": "等待"},
+        ])
+        code = _mock_android_code(steps_json=steps)
+        assert "time.sleep(1.0)" in code
+
+    def test_back_action(self):
+        """back 动作 → 生成 driver.back()"""
+        steps = json.dumps([
+            {"step_number": 1, "action": "back", "target": "", "value": "", "description": "返回"},
+        ])
+        code = _mock_android_code(steps_json=steps)
+        assert "driver.back()" in code
+
+    def test_screenshot_action(self):
+        """screenshot 动作 → 生成 save_screenshot"""
+        steps = json.dumps([
+            {"step_number": 1, "action": "screenshot", "target": "", "value": "", "description": "截图"},
+        ])
+        code = _mock_android_code(steps_json=steps)
+        assert "save_screenshot" in code
+
+    def test_unrecognized_action(self):
+        """未识别动作 → 生成跳过代码"""
+        steps = json.dumps([
+            {"step_number": 1, "action": "tap", "target": "", "value": "", "description": "未知"},
+        ])
+        code = _mock_android_code(steps_json=steps)
+        assert "未识别" in code
+
+    def test_invalid_json(self):
+        """无效 JSON → 静默回退，生成空步骤代码"""
+        code = _mock_android_code(steps_json="not valid {{{")
+        assert "def run_test(driver)" in code
+
+    def test_special_chars_escaped(self):
+        """target 含引号/反斜杠 → 正确转义"""
+        steps = json.dumps([
+            {"step_number": 1, "action": "click", "target": "//div[@title='it\\'s']", "value": "", "description": "点击"},
+        ])
+        code = _mock_android_code(steps_json=steps)
+        assert "\\\\'" in code or "\\'" in code
 
 
 # ═══════════════════════════════════════════════
