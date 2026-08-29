@@ -20,10 +20,14 @@ class Execution(Base):
     total_cases = Column(Integer, default=0)
     passed_cases = Column(Integer, default=0)
     failed_cases = Column(Integer, default=0)
-    status = Column(String, default="running")
+    status = Column(String, default="queued")
     start_time = Column(DateTime)
     end_time = Column(DateTime)
     execution_mode = Column(String, default="headless")
+    # 执行期持久化字段：Docker 重启后依赖数据库恢复状态
+    progress = Column(Integer, default=0)            # 0-100 完成百分比
+    worker_id = Column(String)                       # 执行 worker 标识（hostname:pid）
+    heartbeat_at = Column(DateTime)                  # 最近一次心跳时间
     created_at = Column(DateTime, default=func.now())
 
 
@@ -46,6 +50,9 @@ class ExecutionResponse(BaseModel):
     start_time: Optional[datetime]
     end_time: Optional[datetime]
     execution_mode: str
+    progress: int = 0
+    worker_id: Optional[str] = None
+    heartbeat_at: Optional[datetime] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

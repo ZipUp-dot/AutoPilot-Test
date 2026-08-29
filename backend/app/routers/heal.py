@@ -93,12 +93,20 @@ async def trigger_heal(
 
     async def _heal():
         from playwright.async_api import async_playwright
+        from app.utils.url_policy import UrlPolicy, install_network_policy
+
+        try:
+            config_json = json.loads(project.config_json) if project and project.config_json else None
+        except (TypeError, ValueError):
+            config_json = None
 
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=True)
             context = await browser.new_context(
                 viewport={"width": 1920, "height": 1080},
+                service_workers="block",
             )
+            await install_network_policy(context, UrlPolicy(target_url, config_json=config_json))
             page = await context.new_page()
             page.set_default_timeout(settings.PLAYWRIGHT_TIMEOUT)
 

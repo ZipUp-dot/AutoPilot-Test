@@ -8,7 +8,7 @@ class TestRouterImport:
         """__all__ 中所有路由模块均可导入且包含 router 属性"""
         from app.routers import __all__ as router_names
 
-        assert len(router_names) == 7
+        assert len(router_names) == 8
         for name in router_names:
             module = __import__(f"app.routers.{name.replace('_router', '')}", fromlist=[name])
             assert hasattr(module, "router"), f"{name} 缺少 router 属性"

@@ -5,6 +5,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# 安装与 requirements.txt 中 playwright==1.56.0 严格对应的 Chromium revision。
+# 必须在本层执行：pip 包与浏览器版本同层构建，避免 revision 不匹配。
 RUN playwright install chromium --with-deps
 
 COPY . .

@@ -383,7 +383,7 @@ def stop_execution(execution_id: int, project_id: int = None, db: Session = Depe
     if project_id is not None and execution.project_id != project_id:
         raise NotFoundException(f"执行批次 {execution_id} 不存在")
 
-    if execution.status not in ("running", "healing"):
+    if execution.status not in ("queued", "running", "healing"):
         return ApiResponse(message=f"执行已结束（{execution.status}），无需停止", data={
             "status": execution.status,
         })

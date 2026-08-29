@@ -20,7 +20,17 @@ logger = logging.getLogger("autopilot.injector")
 
 # ── Playwright 操作 → action 名称映射 ──
 PLAYWRIGHT_ACTIONS: dict[str, str] = {
-    # page-level
+    # safe-API（SafePlaywright 白名单方法）
+    "safe.goto": "navigate",
+    "safe.click": "click",
+    "safe.fill": "fill",
+    "safe.select": "select",
+    "safe.hover": "hover",
+    "safe.assert_text": "assert_text",
+    "safe.assert_visible": "assert_visible",
+    "safe.screenshot": "screenshot",
+    "safe.wait": "wait",
+    # page-level（旧式，兼容历史代码）
     "page.goto": "navigate",
     "page.screenshot": "screenshot",
     "page.wait_for_timeout": "wait",
@@ -161,6 +171,16 @@ def _extract_op_info(node: ast.AST) -> tuple[Optional[str], str, str]:
         (action_name, target_selector, input_value)
         如果节点不是 Playwright 操作，返回 (None, "", "")
     """
+    # 模式: safe.goto(url) / safe.click(sel) / safe.fill(sel, val) 等 Safe API 调用
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        obj = node.func
+        if isinstance(obj.value, ast.Name) and obj.value.id == "safe":
+            action = PLAYWRIGHT_ACTIONS.get(f"safe.{obj.attr}")
+            if action:
+                target = _extract_first_arg(node)
+                value = _extract_second_arg(node) if action in ("fill", "select", "assert_text") else ""
+                return (action, target, value)
+
     # 模式: page.goto(url)
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         obj = node.func
@@ -197,6 +217,25 @@ def _extract_op_info(node: ast.AST) -> tuple[Optional[str], str, str]:
                     return (action, target, value)
 
     return (None, "", "")
+
+
+def _extract_second_arg(call: ast.Call) -> str:
+    """提取第二个参数值（字符串或变量名）"""
+    if len(call.args) >= 2:
+        second = call.args[1]
+        if isinstance(second, ast.Constant):
+            return str(second.value)
+        if isinstance(second, ast.Name):
+            return second.id
+        if isinstance(second, ast.JoinedStr):
+            parts = []
+            for p in second.values:
+                if isinstance(p, ast.Constant):
+                    parts.append(str(p.value))
+                elif isinstance(p, ast.FormattedValue):
+                    parts.append("{...}")
+            return "".join(parts)
+    return ""
 
 
 def _extract_first_arg(call: ast.Call) -> str:

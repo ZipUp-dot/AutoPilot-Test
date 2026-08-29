@@ -735,7 +735,7 @@ class TestAppiumExecuteCaseEdgeCases:
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
         exec_obj = _create_execution(db_session, android_project)
 
-        mocker.patch("builtins.exec", side_effect=RuntimeError("compile error"))
+        mocker.patch("app.services.appium_service.exec", side_effect=RuntimeError("compile error"))
 
         result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
         assert result is False
@@ -753,7 +753,7 @@ class TestAppiumExecuteCaseEdgeCases:
         exec_obj = _create_execution(db_session, android_project)
 
         # 模拟注入后代码不包含 run_test（namespace 中无 run_test）
-        mocker.patch("builtins.exec")
+        mocker.patch("app.services.appium_service.exec")
 
         result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
         assert result is False

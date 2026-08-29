@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from jinja2 import Environment, FileSystemLoader, Template
+from jinja2 import Environment, FileSystemLoader, Template, select_autoescape
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -38,8 +38,13 @@ from app.models.test_case import TestCase
 logger = logging.getLogger("autopilot.report")
 
 # ── Jinja2 环境 ──
+# autoescape 开启：模板中所有 {{ }} 输出的不可信动态内容（用例名/错误/日志/代码等）
+# 默认 HTML 转义，防止 Excel 内容 / 执行日志 / AI 输出注入 HTML 造成 XSS。
 _TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
-_env = Environment(loader=FileSystemLoader(_TEMPLATE_DIR), autoescape=False)
+_env = Environment(
+    loader=FileSystemLoader(_TEMPLATE_DIR),
+    autoescape=select_autoescape(["html", "htm"]),
+)
 
 
 class ReportService:
@@ -350,6 +355,7 @@ class ReportService:
             "heal_details": heal_details_list,
             "gallery": gallery,
             # 内嵌 JSON 供图表 JS 读取
+            # 转义 "</" -> "<\/"：防止不可信内容（用例名/错误信息）闭合 <script> 标签逃逸 XSS
             "report_json": json.dumps({
                 "overview": {
                     "total_cases": total_cases,
@@ -374,7 +380,7 @@ class ReportService:
                     }
                     for c in case_results
                 ],
-            }, ensure_ascii=False),
+            }, ensure_ascii=False).replace("</", "<\\/"),
         }
 
     # ═══════════════════════════════════════════════

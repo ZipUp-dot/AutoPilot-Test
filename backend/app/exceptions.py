@@ -45,6 +45,12 @@ class SecurityException(AppException):
         super().__init__(code=403, message=message, status_code=403)
 
 
+class UnauthorizedException(AppException):
+    """未授权（令牌缺失/无效）"""
+    def __init__(self, message: str = "未授权访问"):
+        super().__init__(code=401, message=message, status_code=401)
+
+
 # ═══════════════════════════════════════════════
 # 全局异常处理器
 # ═══════════════════════════════════════════════

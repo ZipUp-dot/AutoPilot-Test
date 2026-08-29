@@ -16,6 +16,11 @@ from app.models.execution_step import ExecutionStep
 from app.models.generated_code import GeneratedCode
 from app.models.heal_record import HealRecord
 
+# 提前导入 appium_service：其顶部 `from app.utils.appium_code_injector import AppiumCodeInjector`
+# 会在首次导入时绑定类引用。若在测试 mock AppiumCodeInjector 期间才首次导入，
+# 将绑定被 mock 的 MagicMock 并永久污染该模块（后续 appium 测试全挂）。
+from app.services import appium_service  # noqa: F401
+
 
 # ── Fixtures ──
 
@@ -137,16 +142,15 @@ class TestValidateHealed:
     """_validate_healed() 代码校验"""
 
     VALID_CODE = (
-        "from playwright.async_api import Page, expect\n"
         "import asyncio\n"
         "from datetime import datetime\n\n"
-        "async def run_test(page: Page) -> dict:\n"
+        "async def run_test(safe) -> dict:\n"
         "    steps_result = []\n"
         "    start_time = datetime.now()\n"
         "    try:\n"
-        '        await page.goto("https://example.com")\n'
-        '        await page.locator("h1").click()\n'
-        '        await expect(page.locator("h1")).to_contain_text("Example")\n'
+        '        await safe.goto("https://example.com")\n'
+        '        await safe.click("h1")\n'
+        '        await safe.assert_text("h1", "Example")\n'
         '        steps_result.append({"step": 1, "status": "passed"})\n'
         "    except Exception as e:\n"
         '        return {"success": False, "message": str(e), "steps": steps_result}\n'
@@ -868,7 +872,7 @@ class TestRetryExecution:
         def mock_exec(code, ns):
             ns["run_test"] = mock_run_test
 
-        mocker.patch("builtins.exec", side_effect=mock_exec)
+        mocker.patch("app.services.heal_service.exec", side_effect=mock_exec)
 
         page = AsyncMock()
         step = ExecutionStep(
@@ -897,7 +901,7 @@ class TestRetryExecution:
         def mock_exec(code, ns):
             ns["run_test"] = mock_run_test
 
-        mocker.patch("builtins.exec", side_effect=mock_exec)
+        mocker.patch("app.services.heal_service.exec", side_effect=mock_exec)
 
         # patch asyncio.wait_for 抛出 TimeoutError，同时关闭传入的 run_test(page) 协程，
         # 避免协程从未被 await 触发 RuntimeWarning
@@ -933,7 +937,7 @@ class TestRetryExecution:
         def mock_exec(code, ns):
             ns["run_test"] = mock_run_test
 
-        mocker.patch("builtins.exec", side_effect=mock_exec)
+        mocker.patch("app.services.heal_service.exec", side_effect=mock_exec)
 
         page = AsyncMock()
         step = ExecutionStep(
@@ -958,7 +962,7 @@ class TestRetryExecution:
         def mock_exec(code, ns):
             pass  # 不注入 run_test
 
-        mocker.patch("builtins.exec", side_effect=mock_exec)
+        mocker.patch("app.services.heal_service.exec", side_effect=mock_exec)
 
         page = AsyncMock()
         step = ExecutionStep(
@@ -979,7 +983,7 @@ class TestRetryExecution:
         mocker.patch("app.services.playwright_service._MonitorHooks")
         mocker.patch("app.services.playwright_service._build_namespace", return_value={})
 
-        mocker.patch("builtins.exec", side_effect=SyntaxError("bad code"))
+        mocker.patch("app.services.heal_service.exec", side_effect=SyntaxError("bad code"))
 
         page = AsyncMock()
         step = ExecutionStep(
@@ -999,15 +1003,14 @@ class TestRetryExecution:
 # ═══════════════════════════════════════════════
 
 HEALED_CODE = (
-    "from playwright.async_api import Page, expect\n"
     "import asyncio\n"
     "from datetime import datetime\n\n"
-    "async def run_test(page: Page) -> dict:\n"
+    "async def run_test(safe) -> dict:\n"
     "    steps_result = []\n"
     "    start_time = datetime.now()\n"
     "    try:\n"
-    '        await page.goto("https://example.com")\n'
-    '        await page.locator("#btn").click()\n'
+    '        await safe.goto("https://example.com")\n'
+    '        await safe.click("#btn")\n'
     '        steps_result.append({"step": 1, "status": "passed"})\n'
     "    except Exception as e:\n"
     '        return {"success": False, "message": str(e), "steps": steps_result}\n'
@@ -2059,9 +2062,10 @@ class TestCallHealAIPlatform:
         assert "async" not in result
 
     def test_mock_response_web(self):
-        """Mock 模式 Web 响应 → 异步 run_test(page)"""
+        """Mock 模式 Web 响应 → 异步 run_test(safe)"""
         result = HealService._mock_heal_response(platform="web")
-        assert "async def run_test(page" in result
+        assert "async def run_test(safe" in result
+        assert "safe.goto" in result
 
     def test_android_system_message(self, heal_svc, mock_settings, mocker):
         """Android 分支使用 Appium 专家 system 消息"""
@@ -2119,7 +2123,7 @@ class TestRetryExecutionAndroid:
         def mock_exec(code, ns):
             ns["run_test"] = mock_run_test
 
-        mocker.patch("builtins.exec", side_effect=mock_exec)
+        mocker.patch("app.services.heal_service.exec", side_effect=mock_exec)
 
         step = ExecutionStep(
             execution_id=1, case_id=1, step_index=1,
@@ -2146,7 +2150,7 @@ class TestRetryExecutionSync:
         def mock_exec(code, ns):
             ns["run_test"] = lambda driver: {"success": True}
 
-        mocker.patch("builtins.exec", side_effect=mock_exec)
+        mocker.patch("app.services.heal_service.exec", side_effect=mock_exec)
 
         step = ExecutionStep(
             execution_id=1, case_id=1, step_index=1,
@@ -2171,7 +2175,7 @@ class TestRetryExecutionSync:
         def mock_exec(code, ns):
             ns["run_test"] = lambda driver: {"success": False}
 
-        mocker.patch("builtins.exec", side_effect=mock_exec)
+        mocker.patch("app.services.heal_service.exec", side_effect=mock_exec)
 
         step = ExecutionStep(
             execution_id=1, case_id=1, step_index=1,
@@ -2195,7 +2199,7 @@ class TestRetryExecutionSync:
                 raise RuntimeError("boom")
             ns["run_test"] = run_test
 
-        mocker.patch("builtins.exec", side_effect=mock_exec)
+        mocker.patch("app.services.heal_service.exec", side_effect=mock_exec)
 
         step = ExecutionStep(
             execution_id=1, case_id=1, step_index=1,
@@ -2221,7 +2225,7 @@ class TestRetryExecutionSync:
         def mock_exec(code, ns):
             ns["run_test"] = lambda driver: {"success": True}
 
-        mocker.patch("builtins.exec", side_effect=mock_exec)
+        mocker.patch("app.services.heal_service.exec", side_effect=mock_exec)
 
         step = ExecutionStep(
             execution_id=1, case_id=1, step_index=1,

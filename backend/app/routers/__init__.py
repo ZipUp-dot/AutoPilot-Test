@@ -5,6 +5,7 @@ from .generate import router as generate_router
 from .heal import router as heal_router
 from .executions import router as executions_router
 from .reports import router as reports_router
+from .files import router as files_router
 
 __all__ = [
     "projects_router",
@@ -14,4 +15,5 @@ __all__ = [
     "heal_router",
     "executions_router",
     "reports_router",
+    "files_router",
 ]

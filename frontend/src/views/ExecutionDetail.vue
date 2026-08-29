@@ -301,7 +301,7 @@ const statusFilter = ref('all')
 const expandedRow = ref(null)
 const latestScreenshot = ref(null)
 
-const FINAL_STATUSES = ['completed', 'stopped', 'failed']
+const FINAL_STATUSES = ['completed', 'stopped', 'failed', 'interrupted']
 
 const isCompleted = computed(() => detail.value.status === 'completed')
 const isRunning = computed(() => detail.value.status === 'running' || detail.value.status === 'healing')

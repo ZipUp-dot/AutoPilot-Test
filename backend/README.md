@@ -38,8 +38,11 @@ backend/
 │   ├── exceptions.py            # 全局异常处理器
 │   ├── schemas.py               # Pydantic 响应模型（含 platform + config_json）
 │   ├── db/
-│   │   ├── database.py          # SQLAlchemy 引擎 + Session 工厂
-│   │   └── schema.sql           # 数据库建表脚本
+│   │   ├── database.py          # SQLAlchemy 引擎 + Session 工厂（init + 幂等迁移保留）
+│   │   └── schema.sql           # 数据库建表脚本（MySQL/SQLite 双兼容）
+│   ├── alembic/                 # Alembic 统一迁移（MySQL/SQLite，SQLite render_as_batch）
+│   │   ├── env.py               # 迁移环境：URL 解析 + 方言适配
+│   │   └── versions/            # 迁移脚本（0001_initial_schema）
 │   ├── models/                  # ORM 模型（9 张表）
 │   │   ├── project.py           # 项目表（含 platform + config_json）
 │   │   ├── element.py           # 页面元素表（含 platform + selector_type + metadata）
@@ -255,6 +258,14 @@ cd backend
 
 # 方式二：手动执行 SQL 脚本
 mysql -u root -p autopilot < app/db/schema.sql
+
+# 方式三：Alembic 统一迁移（MySQL / SQLite 双方言，版本化管理 schema）
+# 数据库 URL 自动读取 backend/.env 的 DATABASE_URL；也可用环境变量 AUTOPILOT_ALEMBIC_URL 覆盖
+alembic upgrade head      # 建表 / 升级到最新版本（表已存在时平滑跳过）
+alembic downgrade base    # 回滚到空库
+alembic current / history # 查看当前版本 / 历史
+alembic revision --autogenerate -m "描述"  # 基于 ORM models 生成新迁移
+# 注意：SQLite 方言自动启用 render_as_batch=True（Alembic 通过重建表模拟列变更）
 ```
 
 ### 7. 启动服务
@@ -391,7 +402,9 @@ pytest -m "not integration"           # 跳过集成测试（快速验证）
 pytest --cov=app --cov-report=html    # 生成 HTML 覆盖率报告（htmlcov/）
 
 # ── 数据库 ──
-mysql -u root -p autopilot < app/db/schema.sql   # 手动建表
+mysql -u root -p autopilot < app/db/schema.sql   # 手动建表（schema.sql 保留，向后兼容）
+alembic upgrade head                              # Alembic 统一迁移建表/升级（推荐）
+alembic downgrade base                            # 回滚到空库
 mysql -u root -p -e "SHOW TABLES FROM autopilot"  # 查看表
 
 # ── 依赖管理 ──
@@ -473,7 +486,9 @@ projects (1)
 - `execution_steps.exception_type` — 异常类型（NoSuchElementException 等）
 - `heal_records.attempts` — 自愈尝试记录（JSON 数组）
 
-完整建表语句见 [app/db/schema.sql](app/db/schema.sql)。
+完整建表语句见 [app/db/schema.sql](app/db/schema.sql)；**schema 版本化迁移统一走 Alembic**
+（[alembic/](alembic) 目录，MySQL / SQLite 双方言，SQLite 使用 render_as_batch=True）。
+`alembic upgrade head` 对已有表平滑跳过，不破坏既有数据。
 
 ---
 
@@ -671,7 +686,7 @@ pending → running → healing → completed
 **自愈成本防护（V1.2）**：
 - **入口健康检查**：目标环境不可达时直接跳过自愈，不调用 AI
 - **快速失败**：同一 step 同类错误连续失败达 `HEAL_MAX_RETRY_SAME_ERROR` 次后跳过自愈，防止死循环
-- **AI 调用熔断**：全局滑动窗口限流器（`OPENAI_MAX_CALLS_PER_MIN`/分钟），超限跳过调用，防止无底线烧 Token
+- **AI 调用限流**：全局滑动窗口限流器（`AI_RATE_LIMIT`/分钟）+ 并发上限（`AI_MAX_CONCURRENCY`），超限跳过调用，防止无底线烧 Token
 
 **Android 异常分类**：
 - `NoSuchElementException` → ElementNotFoundError
@@ -801,12 +816,15 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
-| `SECRET_KEY` | `change-me-in-production` | 应用密钥（生产环境务必修改） |
+| `SECRET_KEY` | `change-me-in-production` | 应用密钥。**生产环境（ENV/APP_ENV=production）缺失或为默认值时拒绝启动** |
+| `ENV` | `development` | 运行环境：development / production / test（兼容旧名 `APP_ENV`） |
 | `DATABASE_URL` | `mysql+pymysql://root:password@localhost:3306/autopilot` | 数据库连接 |
 | `OPENAI_API_KEY` | `""` | AI API Key（空则 Mock 模式） |
 | `OPENAI_BASE_URL` | `https://api.deepseek.com/v1` | API 地址（默认 DeepSeek，可换 OpenAI/通义千问/智谱等兼容接口） |
 | `OPENAI_MODEL` | `deepseek-chat` | 默认模型（视觉能力可选 qwen-vl-max / glm-4v） |
-| `OPENAI_MAX_CALLS_PER_MIN` | `30` | AI 调用熔断：每分钟最多调用次数（防无底线烧 Token） |
+| `OPENAI_MAX_CALLS_PER_MIN` | `30` | AI 调用熔断：每分钟最多调用次数（防无底线烧 Token，旧名，推荐用 AI_RATE_LIMIT） |
+| `AI_RATE_LIMIT` | `30` | AI 速率上限：每分钟最多调用次数（熔断） |
+| `AI_MAX_CONCURRENCY` | `3` | AI 并发上限：同一时刻最多在途请求数（按实际 API 配额设 3/5/10；批量任务经有界队列 + Semaphore 限流） |
 | `HEAL_MAX_RETRY_SAME_ERROR` | `3` | 同一 step 同类错误连续失败阈值，达到后跳过自愈 |
 | `PRE_EXECUTION_CHECK` | `true` | 执行前目标环境健康检查（目标不可达时提前拦截） |
 | `PLAYWRIGHT_TIMEOUT` | `30000` | 页面加载超时（ms） |

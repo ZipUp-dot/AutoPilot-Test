@@ -10,6 +10,7 @@ from app.models.project import Project
 from app.models.test_case import TestCase
 from app.models.element import PageElement
 from app.exceptions import NotFoundException, ValidationException
+from app.utils.url_policy import validate_target_url
 
 
 @dataclass
@@ -38,6 +39,12 @@ class ProjectService:
             raise ValidationException(f"不支持的浏览器类型: {browser_type}，可选 chromium/firefox/webkit")
         if platform not in ("web", "android"):
             raise ValidationException(f"不支持的平台类型: {platform}，可选 web/android")
+
+        # SSRF 入口校验：仅 Web 平台校验（Android target_url 语义不同）
+        if platform == "web":
+            error = validate_target_url(target_url, config_json=config_json)
+            if error:
+                raise ValidationException(f"target_url 校验失败: {error}")
 
         project = Project(
             name=name,
@@ -86,6 +93,16 @@ class ProjectService:
         project = self.get_or_404(project_id)
         # platform 创建后只读，禁止修改
         kwargs.pop("platform", None)
+
+        # SSRF 入口校验：仅 Web 平台校验 target_url 变更
+        if "target_url" in kwargs and kwargs["target_url"] is not None and project.platform == "web":
+            new_config = kwargs.get("config_json") or (
+                json.loads(project.config_json) if project.config_json else None
+            )
+            error = validate_target_url(kwargs["target_url"], config_json=new_config)
+            if error:
+                raise ValidationException(f"target_url 校验失败: {error}")
+
         if "browser_type" in kwargs and kwargs["browser_type"] is not None:
             bt = kwargs["browser_type"].lower()
             if bt not in ("chromium", "firefox", "webkit"):

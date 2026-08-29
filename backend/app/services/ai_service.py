@@ -20,12 +20,13 @@ from app.models.generated_code import GeneratedCode
 from app.models.element import PageElement
 from app.models.project import Project
 from app.exceptions import AIException, SecurityException
-from app.utils.ai_rate_limiter import AIRateLimiter
+from app.utils.ai_rate_limiter import get_limiter
 
 logger = logging.getLogger("autopilot.ai")
 
-# 共享 AI 限流器（与自愈共用同一个窗口，防止无底线调用烧 Token）
-ai_rate_limiter = AIRateLimiter(max_calls_per_min=settings.OPENAI_MAX_CALLS_PER_MIN)
+# 共享 AI 限流器（代码生成 / Vision / 自愈共用同一窗口）：
+# 并发上限（Semaphore） + 速率熔断（滑动窗口），防无底线调用烧 Token
+ai_rate_limiter = get_limiter()
 
 # ── 危险导入黑名单 ──
 BANNED_IMPORTS = frozenset({
@@ -428,52 +429,59 @@ def _call_openai(prompt: str, model: str, retries: int = 3, target_url: str = ""
     if not settings.OPENAI_API_KEY:
         return _mock_code(target_url, steps_json, platform=platform)
 
-    # 熔断：超出每分钟调用上限则跳过（防止批量/异常流程无底线调用 AI）
+    # 速率熔断：超出每分钟调用上限则跳过（防止批量/异常流程无底线调用 AI）
     if not ai_rate_limiter.acquire():
         raise AIException(
-            f"AI 调用熔断：每分钟最多 {settings.OPENAI_MAX_CALLS_PER_MIN} 次，请稍后重试"
+            f"AI 调用熔断：每分钟最多 {settings.AI_RATE_LIMIT} 次，请稍后重试"
         )
+    # 并发控制：同一时刻最多 AI_MAX_CONCURRENCY 个 AI 调用在途（排队等待）
+    if not ai_rate_limiter.acquire_slot():
+        raise AIException("AI 并发调用已满（排队超时），请稍后重试")
 
     last_error = None
-    for attempt in range(retries):
-        try:
-            with httpx.Client(timeout=60.0) as client:
-                response = client.post(
-                    f"{settings.OPENAI_BASE_URL}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "你是一名精通 Playwright Python 异步 API 的自动化测试专家。只输出 Python 代码，不含解释。",
-                            },
-                            {"role": "user", "content": prompt},
-                        ],
-                        "temperature": 0.1,
-                        "max_tokens": 4096,
-                    },
-                )
-                response.raise_for_status()
-                body = response.json()
-                content = body["choices"][0]["message"]["content"]
-                logger.info(
-                    "AI 调用成功, model=%s, tokens=%s",
-                    model,
-                    body.get("usage", {}).get("total_tokens", "?"),
-                )
-                return content
-        except Exception as e:
-            last_error = e
-            if attempt < retries - 1:
-                wait = 2 ** attempt  # 1s, 2s, 4s
-                logger.warning("AI 调用失败(第%d次), %ds后重试: %s", attempt + 1, wait, e)
-                time.sleep(wait)
+    try:
+        for attempt in range(retries):
+            try:
+                with httpx.Client(timeout=60.0) as client:
+                    response = client.post(
+                        f"{settings.OPENAI_BASE_URL}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": model,
+                            "messages": [
+                                {
+                                    "role": "system",
+                                    "content": "你是一名精通 Playwright Python 异步 API 的自动化测试专家。只输出 Python 代码，不含解释。",
+                                },
+                                {"role": "user", "content": prompt},
+                            ],
+                            "temperature": 0.1,
+                            "max_tokens": 4096,
+                        },
+                    )
+                    response.raise_for_status()
+                    body = response.json()
+                    content = body["choices"][0]["message"]["content"]
+                    logger.info(
+                        "AI 调用成功, model=%s, tokens=%s",
+                        model,
+                        body.get("usage", {}).get("total_tokens", "?"),
+                    )
+                    return content
+            except Exception as e:
+                last_error = e
+                if attempt < retries - 1:
+                    wait = 2 ** attempt  # 1s, 2s, 4s
+                    logger.warning("AI 调用失败(第%d次), %ds后重试: %s", attempt + 1, wait, e)
+                    time.sleep(wait)
 
-    raise AIException(f"AI 服务调用失败(已重试{retries}次): {last_error}")
+        raise AIException(f"AI 服务调用失败(已重试{retries}次): {last_error}")
+    finally:
+        # 无论成功失败都释放并发槽位，避免 Semaphore 耗尽导致后续任务卡死
+        ai_rate_limiter.release_slot()
 
 
 def _call_openai_vision(prompt: str, image_bytes: bytes, model: str = None,
@@ -493,9 +501,12 @@ def _call_openai_vision(prompt: str, image_bytes: bytes, model: str = None,
         logger.warning("OPENAI_API_KEY 未配置，Vision 分析不可用")
         return ""
 
-    # 熔断：与代码生成共用同一限流窗口
+    # 熔断 + 并发控制：与代码生成共用同一限流窗口与并发槽
     if not ai_rate_limiter.acquire():
-        logger.warning("Vision 调用熔断：每分钟最多 %d 次，跳过本次分析", settings.OPENAI_MAX_CALLS_PER_MIN)
+        logger.warning("Vision 调用熔断：每分钟最多 %d 次，跳过本次分析", settings.AI_RATE_LIMIT)
+        return ""
+    if not ai_rate_limiter.acquire_slot():
+        logger.warning("Vision 并发调用已满（排队超时），跳过本次分析")
         return ""
 
     model = model or settings.OPENAI_MODEL
@@ -503,49 +514,52 @@ def _call_openai_vision(prompt: str, image_bytes: bytes, model: str = None,
     data_url = f"data:image/png;base64,{image_b64}"
 
     last_error = None
-    for attempt in range(retries):
-        try:
-            with httpx.Client(timeout=60.0) as client:
-                response = client.post(
-                    f"{settings.OPENAI_BASE_URL}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "你是一个网页自动化分析专家。分析截图中的页面状态，判断是否需要前置操作。只返回 JSON 格式结果。",
-                            },
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": prompt},
-                                    {"type": "image_url", "image_url": {"url": data_url}},
-                                ],
-                            },
-                        ],
-                        "temperature": 0.1,
-                        "max_tokens": 1024,
-                    },
-                )
-                response.raise_for_status()
-                body = response.json()
-                content = body["choices"][0]["message"]["content"]
-                logger.info(
-                    "Vision 调用成功, model=%s, tokens=%s",
-                    model,
-                    body.get("usage", {}).get("total_tokens", "?"),
-                )
-                return content
-        except Exception as e:
-            last_error = e
-            if attempt < retries - 1:
-                wait = 2 ** attempt
-                logger.warning("Vision 调用失败(第%d次), %ds后重试: %s", attempt + 1, wait, e)
-                time.sleep(wait)
+    try:
+        for attempt in range(retries):
+            try:
+                with httpx.Client(timeout=60.0) as client:
+                    response = client.post(
+                        f"{settings.OPENAI_BASE_URL}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": model,
+                            "messages": [
+                                {
+                                    "role": "system",
+                                    "content": "你是一个网页自动化分析专家。分析截图中的页面状态，判断是否需要前置操作。只返回 JSON 格式结果。",
+                                },
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {"type": "text", "text": prompt},
+                                        {"type": "image_url", "image_url": {"url": data_url}},
+                                    ],
+                                },
+                            ],
+                            "temperature": 0.1,
+                            "max_tokens": 1024,
+                        },
+                    )
+                    response.raise_for_status()
+                    body = response.json()
+                    content = body["choices"][0]["message"]["content"]
+                    logger.info(
+                        "Vision 调用成功, model=%s, tokens=%s",
+                        model,
+                        body.get("usage", {}).get("total_tokens", "?"),
+                    )
+                    return content
+            except Exception as e:
+                last_error = e
+                if attempt < retries - 1:
+                    wait = 2 ** attempt
+                    logger.warning("Vision 调用失败(第%d次), %ds后重试: %s", attempt + 1, wait, e)
+                    time.sleep(wait)
+    finally:
+        ai_rate_limiter.release_slot()
 
     logger.error("Vision 调用失败(已重试%d次): %s", retries, last_error)
     return ""
@@ -663,9 +677,7 @@ def _mock_web_code(target_url: str = "", steps_json: str = "") -> str:
         _value = '{value}'
         print(f'[执行] 步骤{sn}: 填充 {{_target}} = {{_value}}')
         try:
-            el = page.locator(_target)
-            await el.wait_for(state="visible", timeout=5000)
-            await el.fill(_value)
+            await safe.fill(_target, _value)
             steps_result.append({{"step": {sn}, "status": "passed", "action": "fill", "target": _target, "value": _value}})
         except Exception as e:
             print(f'[警告] 步骤{sn} 填充失败: {{e}}')
@@ -682,9 +694,7 @@ def _mock_web_code(target_url: str = "", steps_json: str = "") -> str:
         _target = '{target}'
         print(f'[执行] 步骤{sn}: 点击 {{_target}}')
         try:
-            el = page.locator(_target)
-            await el.wait_for(state="visible", timeout=5000)
-            await el.click()
+            await safe.click(_target)
             steps_result.append({{"step": {sn}, "status": "passed", "action": "click", "target": _target}})
         except Exception as e:
             print(f'[警告] 步骤{sn} 点击失败: {{e}}')
@@ -702,9 +712,7 @@ def _mock_web_code(target_url: str = "", steps_json: str = "") -> str:
         _value = '{value}'
         print(f'[执行] 步骤{sn}: 选择 {{_target}} = {{_value}}')
         try:
-            el = page.locator(_target)
-            await el.wait_for(state="visible", timeout=5000)
-            await el.select_option(_value)
+            await safe.select(_target, _value)
             steps_result.append({{"step": {sn}, "status": "passed", "action": "select", "target": _target}})
         except Exception as e:
             print(f'[警告] 步骤{sn} 选择失败: {{e}}')
@@ -719,13 +727,13 @@ def _mock_web_code(target_url: str = "", steps_json: str = "") -> str:
             wait_ms = int(value) if value and value.isdigit() else 1000
             step_lines.append(f'''        # {desc}
         print(f'[执行] 步骤{sn}: 等待 {wait_ms}ms')
-        await page.wait_for_timeout({wait_ms})
+        await safe.wait({wait_ms})
         steps_result.append({{"step": {sn}, "status": "passed", "action": "wait"}})
 ''')
         elif action == "screenshot":
             step_lines.append(f'''        # {desc}
         print(f'[执行] 步骤{sn}: 截图')
-        await page.screenshot(path="reports/screenshots/step_{sn}.png", full_page=True)
+        await safe.screenshot(path="reports/screenshots/step_{sn}.png")
         steps_result.append({{"step": {sn}, "status": "passed", "action": "screenshot"}})
 ''')
         else:
@@ -737,20 +745,19 @@ def _mock_web_code(target_url: str = "", steps_json: str = "") -> str:
     steps_code = "\n".join(step_lines) if step_lines else '''        print("[执行] Mock 测试 - 无测试步骤")
         steps_result.append({"step": 1, "status": "passed", "action": "navigate"})'''
 
-    return f'''from playwright.async_api import Page, expect
-import asyncio
+    return f'''import asyncio
 import json
 from datetime import datetime
 
 
-async def run_test(page: Page) -> dict:
+async def run_test(safe) -> dict:
     """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
     steps_result = []
     start_time = datetime.now()
     try:
         print("[执行] Mock 测试 - 导航到 {url}")
-        await page.goto('{url}')
-        await page.wait_for_load_state("networkidle")
+        await safe.goto('{url}')
+        await safe.wait(500)
 
 {steps_code}
     except Exception as e:

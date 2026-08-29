@@ -17,33 +17,30 @@
 【代码规范】
 1. 使用 Playwright 异步 API（async/await）
 2. 代码必须是一个完整的 async def 函数，函数名为 run_test
-3. 函数签名：async def run_test(page: Page) -> dict:
+3. 函数签名：async def run_test(safe) -> dict:
 4. 返回值必须是 dict：{{ "success": bool, "message": str, "steps": list }}
-5. 每个操作步骤必须包含：截图（page.screenshot）、日志（print）、耗时记录
+5. 每个操作步骤必须包含：截图（safe.screenshot）、日志（print）、耗时记录
 6. 使用 try/except 包裹每个步骤，失败时立即返回错误信息：
    {{ "success": false, "message": "步骤 N 失败: 原因", "steps": [...] }}
 7. 优先使用页面元素上下文中提供的选择器（selector 字段）
 8. 如果步骤中的 target 是中文描述，必须在元素列表中匹配最合适的元素
-9. 所有 fill 操作前必须确保元素可见（await element.wait_for(state="visible")）
-10. click 操作后必须等待导航或网络空闲（视情况使用 page.wait_for_load_state）
-11. 文件开头必须导入：
-    from playwright.async_api import Page, expect
-    import asyncio
-    from datetime import datetime
+9. 所有操作通过参数 safe 调用受控 API，禁止直接操作浏览器原生对象
+10. click 操作后必须等待导航或网络空闲（视情况使用 safe.wait 或等待操作）
+11. 不要 import playwright 相关模块，safe 已由系统提供
 
 【可用 Action 映射】
-navigate → page.goto(url)
-fill → page.locator(selector).fill(value)
-click → page.locator(selector).click()
-select → page.locator(selector).select_option(value)
-hover → page.locator(selector).hover()
-assert_text → expect(page.locator(selector)).to_contain_text(value)
-assert_visible → expect(page.locator(selector)).to_be_visible()
-screenshot → page.screenshot(path=...)
-wait → page.wait_for_timeout(ms)
+navigate → await safe.goto(url)
+fill → await safe.fill(selector, value)
+click → await safe.click(selector)
+select → await safe.select(selector, value)
+hover → await safe.hover(selector)
+assert_text → await safe.assert_text(selector, value)
+assert_visible → await safe.assert_visible(selector)
+screenshot → await safe.screenshot(path=...)
+wait → await safe.wait(毫秒数)
 
 【操作步骤参考模板】
-async def run_test(page: Page) -> dict:
+async def run_test(safe) -> dict:
     steps_result = []
     start_time = datetime.now()
 
@@ -51,9 +48,9 @@ async def run_test(page: Page) -> dict:
         # ---- 前置条件: {pre_condition} ----
         print(f"[执行] 开始测试: {case_name}")
         screenshot_path = f"reports/screenshots/{{case_name}}_before.png"
-        await page.screenshot(path=screenshot_path, full_page=True)
+        await safe.screenshot(path=screenshot_path)
         print(f"[截图] 初始页面已保存: {{screenshot_path}}")
-        await page.wait_for_load_state("networkidle")
+        await safe.wait(500)
     except Exception as e:
         return {{"success": false, "message": f"前置条件失败: {{e}}", "steps": []}}
 

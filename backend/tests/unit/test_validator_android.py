@@ -11,8 +11,8 @@ ANDROID_VALID_CODE = """def run_test(driver):
 """
 
 # ── Web 有效代码 ──
-WEB_VALID_CODE = """from playwright.async_api import Page
-async def run_test(page: Page) -> dict:
+WEB_VALID_CODE = """import asyncio
+async def run_test(safe) -> dict:
     return {"success": True, "steps": []}
 """
 
@@ -22,9 +22,9 @@ ANDROID_INVALID_CODE = """def run_test(driver):
 """
 
 # ── Web 无效代码（缺少 return） ──
-WEB_INVALID_CODE = """from playwright.async_api import Page
-async def run_test(page: Page) -> dict:
-    await page.goto("https://example.com")
+WEB_INVALID_CODE = """import asyncio
+async def run_test(safe) -> dict:
+    await safe.goto("https://example.com")
 """
 
 # ── Unsafe 代码 ──
@@ -48,8 +48,8 @@ INTERMEDIATE_ASSIGN_CODE = """def run_test(driver):
 """
 
 # ── 混合 unsync def run_test ──
-NO_ASYNC_DEF_CODE = """def run_test(page):
-    page.goto("https://example.com")
+NO_ASYNC_DEF_CODE = """def run_test(safe):
+    safe.goto("https://example.com")
     return {"success": True, "steps": []}
 """
 
@@ -159,9 +159,9 @@ class TestValidatorSyncAsyncContract:
 
     def test_web_async_valid(self):
         """Web 异步合约 → 校验通过"""
-        code = """from playwright.async_api import Page
-async def run_test(page: Page) -> dict:
-    await page.goto("https://example.com")
+        code = """import asyncio
+async def run_test(safe) -> dict:
+    await safe.goto("https://example.com")
     return {"success": True, "steps": []}
 """
         result = CodeValidator.validate(code, platform="web")
@@ -174,8 +174,8 @@ async def run_test(page: Page) -> dict:
 
     def test_web_sync_without_async(self):
         """Web 代码用 sync def → 校验不通过"""
-        code = """def run_test(page):
-    page.goto("https://example.com")
+        code = """def run_test(safe):
+    safe.goto("https://example.com")
     return {"success": True, "steps": []}
 """
         result = CodeValidator.validate(code, platform="web")
@@ -217,9 +217,9 @@ class TestValidatorCodeStyle:
 
     def test_web_chain_call_not_restricted(self):
         """Web 代码不受 Android 链式调用约束"""
-        code = """from playwright.async_api import Page
-async def run_test(page: Page) -> dict:
-    await page.locator("#btn").click()
+        code = """import asyncio
+async def run_test(safe) -> dict:
+    await safe.click("#btn")
     return {"success": True, "steps": []}
 """
         result = CodeValidator.validate(code, platform="web")

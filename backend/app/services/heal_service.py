@@ -35,12 +35,12 @@ from app.models.execution_step import ExecutionStep
 from app.models.generated_code import GeneratedCode
 from app.models.heal_record import HealRecord
 from app.exceptions import SecurityException
-from app.utils.ai_rate_limiter import AIRateLimiter
+from app.utils.ai_rate_limiter import get_limiter
 
 logger = logging.getLogger("autopilot.heal")
 
-# 共享 AI 限流器（与代码生成共用同一个窗口）
-ai_rate_limiter = AIRateLimiter(max_calls_per_min=settings.OPENAI_MAX_CALLS_PER_MIN)
+# 共享 AI 限流器（与代码生成 / Vision 共用同一窗口：并发 + 速率）
+ai_rate_limiter = get_limiter()
 
 # 快速失败缓存：key = "{step_id}_{error_type}"，value = 连续失败次数
 # 同一 step 的同类错误连续失败达到阈值后，跳过后续自愈（不再调用 AI）
@@ -349,10 +349,20 @@ class HealService:
 
             # Web：尝试访问项目目标 URL
             from app.models.project import Project
+            from app.utils.url_policy import validate_target_url
             project = self._db.query(Project).filter(Project.id == project_id).first()
             target_url = (project.target_url or "").strip() if project else ""
             if not target_url:
                 return True  # 无目标 URL 则不拦截
+
+            # SSRF 入口校验：非法目标 URL 视为环境不可达，跳过自愈
+            try:
+                config_json = json.loads(project.config_json) if project and project.config_json else None
+            except (TypeError, ValueError):
+                config_json = None
+            if validate_target_url(target_url, config_json=config_json):
+                logger.error("目标 URL 校验失败，跳过自愈: %s", target_url)
+                return False
 
             await page.goto(target_url, wait_until="domcontentloaded", timeout=8000)
             return True
@@ -606,8 +616,8 @@ class HealService:
     def _call_heal_ai(self, prompt: str, platform: str = "web") -> str:
         """调用 OpenAI API 生成修复代码（temperature=0.3, timeout=60s）
 
-        受全局限流器约束：每分钟超过 OPENAI_MAX_CALLS_PER_MIN 次时熔断，
-        抛出异常由调用方捕获（跳过本次自愈，不调用 AI）。
+        受全局限流器约束：并发（Semaphore） + 每分钟速率（AI_RATE_LIMIT），
+        超限抛出异常由调用方捕获（跳过本次自愈，不调用 AI）。
         """
         # Mock 模式不消耗限流额度
         if not settings.OPENAI_API_KEY:
@@ -616,42 +626,48 @@ class HealService:
         # 熔断：超出每分钟调用上限则跳过
         if not ai_rate_limiter.acquire():
             raise Exception(
-                f"AI API 调用熔断：每分钟最多 {settings.OPENAI_MAX_CALLS_PER_MIN} 次，请稍后重试"
+                f"AI API 调用熔断：每分钟最多 {settings.AI_RATE_LIMIT} 次，请稍后重试"
             )
+        # 并发控制：与代码生成共用同一并发槽
+        if not ai_rate_limiter.acquire_slot():
+            raise Exception("AI 并发调用已满（排队超时），请稍后重试")
 
         if platform == "android":
             system_msg = "你是 Appium Android 测试修复专家。只返回完整的 def run_test(driver) Python 代码，不含 markdown 标记和解释。"
         else:
-            system_msg = "你是 Playwright 测试修复专家。只返回完整的 async def run_test(page) Python 代码，不含 markdown 标记和解释。"
+            system_msg = "你是 Playwright 测试修复专家。只返回完整的 async def run_test(safe) Python 代码，使用 safe.goto / safe.click 等受控 API，不含 markdown 标记和解释。"
 
         last_error = None
-        for attempt in range(3):
-            try:
-                with httpx.Client(timeout=60.0) as client:
-                    response = client.post(
-                        f"{settings.OPENAI_BASE_URL}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": settings.OPENAI_MODEL,
-                            "messages": [
-                                {"role": "system", "content": system_msg},
-                                {"role": "user", "content": prompt},
-                            ],
-                            "temperature": 0.3,
-                            "max_tokens": 4096,
-                        },
-                    )
-                    response.raise_for_status()
-                    body = response.json()
-                    return body["choices"][0]["message"]["content"]
-            except Exception as e:
-                last_error = e
-                if attempt < 2:
-                    time.sleep(2 ** attempt)
-        raise Exception(f"AI 调用失败(已重试3次): {last_error}")
+        try:
+            for attempt in range(3):
+                try:
+                    with httpx.Client(timeout=60.0) as client:
+                        response = client.post(
+                            f"{settings.OPENAI_BASE_URL}/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                                "Content-Type": "application/json",
+                            },
+                            json={
+                                "model": settings.OPENAI_MODEL,
+                                "messages": [
+                                    {"role": "system", "content": system_msg},
+                                    {"role": "user", "content": prompt},
+                                ],
+                                "temperature": 0.3,
+                                "max_tokens": 4096,
+                            },
+                        )
+                        response.raise_for_status()
+                        body = response.json()
+                        return body["choices"][0]["message"]["content"]
+                except Exception as e:
+                    last_error = e
+                    if attempt < 2:
+                        time.sleep(2 ** attempt)
+            raise Exception(f"AI 调用失败(已重试3次): {last_error}")
+        finally:
+            ai_rate_limiter.release_slot()
 
     @staticmethod
     def _mock_heal_response(platform: str = "web") -> str:
@@ -671,20 +687,18 @@ class HealService:
     duration = (datetime.now() - start_time).total_seconds()
     return {"success": True, "message": f"自愈通过, {duration:.1f}s", "steps": steps_result}
 '''
-        return '''from playwright.async_api import Page, expect
-import asyncio
+        return '''import asyncio
 from datetime import datetime
 
 
-async def run_test(page: Page) -> dict:
+async def run_test(safe) -> dict:
     """Mock 自愈代码 — 请配置 OPENAI_API_KEY"""
     steps_result = []
     start_time = datetime.now()
     try:
         print("[自愈] Mock — 请配置 OPENAI_API_KEY")
-        await page.goto("https://example.com")
-        await page.wait_for_load_state("networkidle")
-        await page.wait_for_timeout(1000)
+        await safe.goto("https://example.com")
+        await safe.wait(1000)
         steps_result.append({"step": 1, "status": "passed", "action": "healed"})
     except Exception as e:
         return {"success": False, "message": str(e), "steps": steps_result}
@@ -743,6 +757,7 @@ async def run_test(page: Page) -> dict:
             return self._retry_execution_sync(page, code, step, execution_id, case_id)
 
         from app.utils.code_injector import CodeInjector
+        from app.utils.safe_playwright import SafePlaywright
         from app.services.playwright_service import _build_namespace, _MonitorHooks
 
         # AST 注入监控钩子
@@ -752,7 +767,8 @@ async def run_test(page: Page) -> dict:
             logger.warning("自愈代码注入失败，使用原始代码")
 
         hooks = _MonitorHooks(self._db, execution_id, case_id, page)
-        namespace = _build_namespace(page, hooks)
+        safe = SafePlaywright(page)
+        namespace = _build_namespace(safe, hooks)
 
         try:
             exec(code, namespace)
@@ -766,7 +782,7 @@ async def run_test(page: Page) -> dict:
             return False
 
         try:
-            result = await asyncio.wait_for(run_test(page), timeout=120.0)
+            result = await asyncio.wait_for(run_test(safe), timeout=120.0)
             success = result.get("success", False) if isinstance(result, dict) else False
             if success:
                 step.status = "success"

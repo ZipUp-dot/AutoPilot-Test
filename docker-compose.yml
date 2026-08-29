@@ -95,6 +95,9 @@ services:
       CORS_ORIGINS: >-
         ["http://localhost:8080","http://127.0.0.1:8080","http://localhost:80","http://frontend:80"]
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      # 运行环境 + 文件访问内部令牌（生产环境必填，后端启动时强制校验）
+      ENV: production
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
       # 绕过沙箱限制（Docker 环境也需要）
       TOOLHOST_SANDBOX_DISABLED: "true"
     ports:
@@ -119,6 +122,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # 与 backend 的 INTERNAL_API_TOKEN 保持一致，构建时注入 nginx 反代鉴权头
+        INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
     container_name: autopilot-frontend
     restart: unless-stopped
     depends_on:

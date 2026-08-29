@@ -11,11 +11,13 @@ import { computed } from 'vue'
 const props = defineProps({ status: { type: String, default: 'running' } })
 
 const STATUS_MAP = {
+  queued:    { type: 'info',    label: '排队中' },
   running:   { type: '',      label: '运行中' },
   healing:   { type: 'warning', label: '自愈中' },
   completed: { type: 'success', label: '已完成' },
   stopped:   { type: 'info',    label: '已停止' },
   failed:    { type: 'danger',  label: '失败' },
+  interrupted: { type: 'warning', label: '已中断' },
   success:   { type: 'success', label: '成功' },
 }
 

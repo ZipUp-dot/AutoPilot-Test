@@ -29,6 +29,12 @@ BANNED_MODULES = frozenset({
 BANNED_BUILTINS = frozenset({
     "eval", "exec", "open", "compile", "__import__",
     "getattr", "setattr", "delattr", "globals", "locals",
+    "vars", "dir",  # 反射枚举属性
+})
+
+# ── 禁止引用的内置名称（object / type 等反射入口）──
+FORBIDDEN_NAMES = frozenset({
+    "object", "type",
 })
 
 # ── Android 链式调用：driver.find_element 结尾的方法名 ──
@@ -72,6 +78,16 @@ class CodeValidator:
 
         # 3. 检查危险内置函数
         error = _check_builtins(tree)
+        if error:
+            return error
+
+        # 3.5 检查危险属性访问（私有属性 / 魔法属性 / 原生 page）
+        error = _check_forbidden_attrs(tree)
+        if error:
+            return error
+
+        # 3.6 检查禁止引用的名称（object / type 反射入口）
+        error = _check_forbidden_names(tree)
         if error:
             return error
 
@@ -121,6 +137,52 @@ def _check_builtins(tree: ast.AST) -> Optional[str]:
     return None
 
 
+def _check_forbidden_attrs(tree: ast.AST) -> Optional[str]:
+    """检查危险属性访问
+
+    拦截：
+      - 反射入口属性访问：object.__getattribute__ / type(safe).__dict__ 等
+        （通过 object / type 获取基础对象能力绕过 Safe API）
+      - 私有属性访问：safe._page / driver._x 等（任何以下划线开头的属性）
+      - 魔法属性访问：safe.__class__ / safe.__dict__ / safe.__getattribute__ 等
+      - 原生 page 透传：safe.goto 等 Safe API 之外的属性访问（AI 代码只允许调用
+        SafePlaywright 白名单方法；原生 page 属性会被 SafePlaywright.__getattribute__
+        拒绝，这里在 AST 层做第一道防线）
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            attr = node.attr
+            # object.__xxx__ / type(...).__xxx__ 反射入口
+            if isinstance(node.value, ast.Name) and node.value.id in FORBIDDEN_NAMES:
+                return (
+                    f"禁止通过反射访问: {node.value.id}.{attr} (行 {node.lineno})。"
+                    f"不允许通过 {node.value.id} 获取原始对象能力绕过 Safe API。"
+                )
+            # 任何私有/魔法属性（_page / __class__ / __dict__ / __getattribute__ ...）
+            if attr.startswith("_"):
+                return f"禁止访问私有/魔法属性: {attr} (行 {node.lineno})"
+            # 原生 page 对象上的属性访问：page.goto / page.locator 等直接绕过 Safe API
+            if isinstance(node.value, ast.Name) and node.value.id == "page":
+                return (
+                    f"禁止直接访问原生 page 对象: page.{attr} (行 {node.lineno})。"
+                    f"AI 代码只能通过 SafePlaywright 提供的受控 API（safe.goto / safe.click 等）操作浏览器。"
+                )
+    return None
+
+
+def _check_forbidden_names(tree: ast.AST) -> Optional[str]:
+    """检查禁止引用的内置名称
+
+    拦截 object / type 两个反射入口：
+      - object：object.__getattribute__ / object() 等获取基础对象能力
+      - type：type(x).__dict__ / type(x)() 等反射获取类信息并绕过 Safe API
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in FORBIDDEN_NAMES:
+            return f"禁止使用名称: {node.id} (行 {node.lineno})"
+    return None
+
+
 # ═══════════════════════════════════════════════
 # Web 契约
 # ═══════════════════════════════════════════════
@@ -139,7 +201,7 @@ def _check_web_contract(tree: ast.AST) -> Optional[str]:
     # 参数数量：必须为 1
     args = run_test_node.args.args
     if len(args) != 1:
-        return f"Web run_test 必须接收 1 个参数 (page)，当前为 {len(args)} 个参数"
+        return f"Web run_test 必须接收 1 个参数 (safe)，当前为 {len(args)} 个参数"
 
     return None
 

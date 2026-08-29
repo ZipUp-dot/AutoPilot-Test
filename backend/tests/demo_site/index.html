@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>AutoPilot Demo</title>
+  <style>
+    body { font-family: "Microsoft YaHei", Arial, sans-serif; margin: 40px auto; max-width: 480px; }
+    h1 { color: #2c3e50; }
+    form { display: flex; flex-direction: column; gap: 12px; }
+    input, select, button { padding: 8px; font-size: 14px; }
+    button { background: #3498db; color: #fff; border: none; cursor: pointer; }
+    a { color: #3498db; }
+    #message { font-weight: bold; color: #27ae60; }
+  </style>
+</head>
+<body>
+  <!-- AutoPilot 黄金路径本地演示站点（tests/demo_site） -->
+  <h1 id="app-title">AutoPilot Demo 登录</h1>
+
+  <form id="login-form">
+    <input type="text" id="username" name="username" placeholder="用户名">
+    <input type="password" id="password" name="password" placeholder="密码">
+    <select id="role">
+      <option value="admin">管理员</option>
+      <option value="user">普通用户</option>
+    </select>
+    <button type="submit" id="login-btn">登录</button>
+  </form>
+
+  <p id="message"></p>
+  <a id="help-link" href="#help">帮助</a>
+
+  <script>
+    document.getElementById('login-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var u = document.getElementById('username').value;
+      var r = document.getElementById('role').value;
+      document.getElementById('message').textContent = '欢迎, ' + u + '（' + r + '）';
+    });
+  </script>
+</body>
+</html>

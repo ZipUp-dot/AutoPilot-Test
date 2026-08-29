@@ -20,6 +20,7 @@ from app.models.execution_step import ExecutionStep
 from app.models.generated_code import GeneratedCode
 from app.utils.code_validator import CodeValidator
 from app.utils.code_injector import CodeInjector
+from app.utils.safe_playwright import SafePlaywright
 from app.exceptions import SecurityException
 
 logger = logging.getLogger("autopilot.playwright")
@@ -28,13 +29,13 @@ logger = logging.getLogger("autopilot.playwright")
 ALLOWED_BUILTINS = frozenset({
     "len", "str", "range", "int", "float", "bool",
     "list", "dict", "tuple", "set", "print", "isinstance",
-    "type", "enumerate", "zip", "map", "filter", "sorted",
+    "enumerate", "zip", "map", "filter", "sorted",
     "min", "max", "sum", "abs", "round", "any", "all",
     "True", "False", "None", "Exception", "ValueError", "TypeError",
     "__import__",  # import 语句必需
 })
 
-from app.services.execution_state import set_stop_flag, clear_stop_flag, is_stopped
+from app.services.execution_state import set_stop_flag, clear_stop_flag, is_stopped, generate_worker_id
 
 
 class PlaywrightService:
@@ -45,7 +46,7 @@ class PlaywrightService:
       2. 逐条执行用例：
          a. 获取最新代码 → 安全校验 → AST 注入监控
          b. 构建受限命名空间（白名单 builtins）
-         c. 在沙箱中异步执行 run_test(page)
+         c. 在受限命名空间中异步执行 run_test(safe)（SafePlaywright 受控 API）
          d. 监控钩子自动记录步骤状态/截图/耗时
       3. 全部执行完 → 更新 status='healing' → 后台自愈
     """
@@ -76,8 +77,11 @@ class PlaywrightService:
             batch_name=batch_name,
             total_cases=len(case_ids),
             execution_mode=mode,
-            status="running",
+            status="queued",  # 排队中：后台线程真正启动后转 running
             start_time=datetime.utcnow(),
+            heartbeat_at=datetime.utcnow(),
+            worker_id=generate_worker_id(),
+            progress=0,
         )
         self._db.add(execution)
         self._db.flush()
@@ -142,22 +146,43 @@ class PlaywrightService:
         video_dir = self._ensure_dir(f"{settings.VIDEO_DIR}/{execution_id}") if not headless else None
 
         try:
+            # 查询项目目标 URL 并构建执行期 SSRF 策略（入口校验兜底）
+            from app.models.project import Project
+            from app.utils.url_policy import validate_target_url, UrlPolicy, install_network_policy
+            project = self._db.query(Project).filter(Project.id == project_id).first()
+            target_url = project.target_url if project and project.target_url else "https://example.com"
+            config_json = None
+            if project and project.config_json:
+                try:
+                    config_json = json.loads(project.config_json)
+                except (TypeError, ValueError):
+                    config_json = None
+            error = validate_target_url(target_url, config_json=config_json)
+            if error:
+                raise SecurityException(f"执行目标 URL 校验失败: {error}")
+            policy = UrlPolicy(target_url, config_json=config_json)
+
+            # 状态机：queued → running（持久化心跳与进度）
+            self._update_execution_status(execution_id, "running")
+            self._update_execution(execution_id, 0, 0)
+
             async with async_playwright() as pw:
                 browser = await pw.chromium.launch(headless=headless)
-                context = await browser.new_context(
-                    viewport={"width": 1920, "height": 1080},
-                    record_video_dir=video_dir,
-                    record_video_size={"width": 1920, "height": 1080},
-                ) if video_dir else await browser.new_context(
-                    viewport={"width": 1920, "height": 1080},
-                )
+                context_options: dict[str, Any] = {
+                    "viewport": {"width": 1920, "height": 1080},
+                    # 阻止 Service Worker：SW 控制的请求可绕过 route 拦截，形成盲区
+                    "service_workers": "block",
+                }
+                if video_dir:
+                    context_options["record_video_dir"] = video_dir
+                    context_options["record_video_size"] = {"width": 1920, "height": 1080}
+                context = await browser.new_context(**context_options)
+                # BrowserContext 级网络拦截：HTTP/HTTPS/WebSocket + 重定向/iframe/popup/资源
+                await install_network_policy(context, policy)
                 page = await context.new_page()
                 page.set_default_timeout(settings.PLAYWRIGHT_TIMEOUT)
 
                 # 导航到项目目标 URL
-                from app.models.project import Project
-                project = self._db.query(Project).filter(Project.id == project_id).first()
-                target_url = project.target_url if project and project.target_url else "https://example.com"
                 try:
                     await page.goto(target_url, wait_until="networkidle")
                     logger.info("已导航到目标 URL: %s", target_url)
@@ -183,6 +208,9 @@ class PlaywrightService:
                     except Exception:
                         failed += 1
                         logger.exception("用例执行异常: case_id=%s", case_id)
+
+                    # 逐用例持久化进度 + 心跳（Docker 重启后可恢复状态）
+                    self._update_execution(execution_id, passed, failed)
 
                 # 先更新执行统计（在关闭浏览器之前，避免异常丢失）
                 self._update_execution(execution_id, passed, failed)
@@ -239,7 +267,8 @@ class PlaywrightService:
 
         # 5. 构建沙箱 + 执行
         hooks = _MonitorHooks(self._db, execution_id, case_id, page)
-        namespace = _build_namespace(page, hooks)
+        safe = SafePlaywright(page)
+        namespace = _build_namespace(safe, hooks)
 
         try:
             exec(code, namespace)
@@ -256,7 +285,7 @@ class PlaywrightService:
 
         try:
             result = await asyncio.wait_for(
-                run_test(page), timeout=120.0
+                run_test(safe), timeout=120.0
             )
             success = result.get("success", False) if isinstance(result, dict) else False
             if not success:
@@ -316,12 +345,15 @@ class PlaywrightService:
         self._db.commit()
 
     def _update_execution(self, execution_id: int, passed: int, failed: int) -> None:
-        """更新执行记录"""
+        """更新执行记录：统计 + 进度 + 心跳"""
         try:
             exec_row = self._db.query(Execution).filter(Execution.id == execution_id).first()
             if exec_row:
                 exec_row.passed_cases = passed
                 exec_row.failed_cases = failed
+                total = exec_row.total_cases or 0
+                exec_row.progress = round((passed + failed) / total * 100) if total > 0 else 0
+                exec_row.heartbeat_at = datetime.utcnow()
                 self._db.commit()
         except Exception:
             logger.exception("更新执行统计失败: execution_id=%s", execution_id)
@@ -332,7 +364,7 @@ class PlaywrightService:
             exec_row = self._db.query(Execution).filter(Execution.id == execution_id).first()
             if exec_row:
                 exec_row.status = status
-                if status in ("completed", "failed", "stopped"):
+                if status in ("completed", "failed", "stopped", "interrupted"):
                     exec_row.end_time = datetime.utcnow()
                 self._db.commit()
         except Exception:
@@ -384,20 +416,29 @@ class PlaywrightService:
                 # 获取目标 URL
                 project = db.query(Project).filter(Project.id == project_id).first()
                 target_url = project.target_url if project else "https://example.com"
+                try:
+                    config_json = json.loads(project.config_json) if project and project.config_json else None
+                except (TypeError, ValueError):
+                    config_json = None
 
                 # 启动浏览器
                 async def _heal_async():
                     from playwright.async_api import async_playwright
+                    from app.utils.url_policy import UrlPolicy, install_network_policy
 
                     heal_service = HealService(db)
                     healed = 0
                     still_failed = 0
 
+                    policy = UrlPolicy(target_url, config_json=config_json)
+
                     async with async_playwright() as pw:
                         browser = await pw.chromium.launch(headless=True)
                         context = await browser.new_context(
                             viewport={"width": 1920, "height": 1080},
+                            service_workers="block",
                         )
+                        await install_network_policy(context, policy)
                         page = await context.new_page()
                         page.set_default_timeout(settings.PLAYWRIGHT_TIMEOUT)
 
@@ -592,10 +633,11 @@ class _MonitorHooks:
 # 沙箱命名空间构建
 # ═══════════════════════════════════════════════
 
-def _build_namespace(page, hooks: _MonitorHooks) -> dict:
+def _build_namespace(safe: SafePlaywright, hooks: _MonitorHooks) -> dict:
     """构建受限执行命名空间
 
-    仅注入白名单中的内置函数 + Playwright 必要模块。
+    仅注入白名单中的内置函数 + SafePlaywright 实例。
+    不注入原生 page / browser / context / os / subprocess 等危险对象。
     """
     import builtins as _builtins_module
 
@@ -613,7 +655,7 @@ def _build_namespace(page, hooks: _MonitorHooks) -> dict:
 
     return {
         "__builtins__": safe_builtins,
-        "page": page,
+        "safe": safe,
         "json": json,
         "time": time,
         "asyncio": asyncio,

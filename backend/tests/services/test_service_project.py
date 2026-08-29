@@ -46,6 +46,51 @@ class TestProjectServiceCreate:
                 browser_type="ie6",
             )
 
+    def test_create_ssrf_banned_target_url_rejected(self, db_session):
+        """SSRF 防护：元数据/受限地址作为 target_url → 拒绝创建"""
+        service = ProjectService(db_session)
+        with pytest.raises(ValidationException, match="target_url 校验失败"):
+            service.create(
+                name="SSRF",
+                target_url="http://169.254.169.254/latest/meta-data",
+            )
+
+    def test_create_ssrf_non_http_scheme_rejected(self, db_session):
+        service = ProjectService(db_session)
+        with pytest.raises(ValidationException, match="target_url 校验失败"):
+            service.create(
+                name="SSRF",
+                target_url="file:///etc/passwd",
+            )
+
+    def test_create_ssrf_non_default_port_rejected(self, db_session):
+        service = ProjectService(db_session)
+        with pytest.raises(ValidationException, match="target_url 校验失败"):
+            service.create(
+                name="SSRF",
+                target_url="https://example.com:8080",
+            )
+
+    def test_create_ssrf_port_allowed_via_config(self, db_session):
+        """config_json.allowed_ports 放行内网测试端口"""
+        service = ProjectService(db_session)
+        project = service.create(
+            name="Internal",
+            target_url="https://example.com:8080",
+            config_json={"allowed_ports": [8080]},
+        )
+        assert project.target_url == "https://example.com:8080"
+
+    def test_create_ssrf_android_not_checked(self, db_session):
+        """Android 平台不校验 target_url（语义不同）"""
+        service = ProjectService(db_session)
+        project = service.create(
+            name="Android App",
+            target_url="http://169.254.169.254",
+            platform="android",
+        )
+        assert project.platform == "android"
+
 
 class TestProjectServiceGetOr404:
     def test_get_existing_project(self, db_session):
@@ -141,6 +186,25 @@ class TestProjectServiceUpdate:
         updated2 = service.update(project.id, headless=True)
         assert updated2.headless == 1
         assert isinstance(updated2.headless, int)
+
+    def test_update_ssrf_banned_target_url_rejected(self, db_session):
+        """更新 target_url 到受限地址 → 拒绝"""
+        project = Project(name="P", target_url="https://a.com")
+        db_session.add(project)
+        db_session.commit()
+
+        service = ProjectService(db_session)
+        with pytest.raises(ValidationException, match="target_url 校验失败"):
+            service.update(project.id, target_url="http://0.0.0.0:80")
+
+    def test_update_ssrf_valid_target_url_passes(self, db_session):
+        project = Project(name="P", target_url="https://a.com")
+        db_session.add(project)
+        db_session.commit()
+
+        service = ProjectService(db_session)
+        updated = service.update(project.id, target_url="https://new.com")
+        assert updated.target_url == "https://new.com"
 
 
 class TestProjectServiceDelete:

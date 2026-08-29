@@ -87,10 +87,13 @@ CREATE TABLE IF NOT EXISTS executions (
     total_cases INT DEFAULT 0,
     passed_cases INT DEFAULT 0,
     failed_cases INT DEFAULT 0,
-    status VARCHAR(20) DEFAULT 'running',         -- running / healing / completed / stopped / failed
+    status VARCHAR(20) DEFAULT 'queued',             -- queued / running / healing / completed / stopped / failed / interrupted
     start_time DATETIME,
     end_time DATETIME,
     execution_mode VARCHAR(20) DEFAULT 'headless',
+    progress INT DEFAULT 0,                          -- 0-100 完成百分比
+    worker_id VARCHAR(100),                          -- 执行 worker 标识（hostname:pid）
+    heartbeat_at DATETIME,                           -- 最近一次心跳时间
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -41,8 +41,12 @@ class TestCreateExecution:
         assert exec_obj.project_id == sample_project.id
         assert exec_obj.batch_name == "Test Batch"
         assert exec_obj.total_cases == 1
-        assert exec_obj.status == "running"
+        assert exec_obj.status == "queued"  # 创建后排队中，线程启动后转 running
         assert exec_obj.execution_mode == "headless"
+        # 阶段 4：worker 标识与心跳在创建时即持久化
+        assert exec_obj.worker_id
+        assert exec_obj.heartbeat_at is not None
+        assert exec_obj.progress == 0
 
     def test_create_execution_creates_steps(self, db_session, sample_project, sample_test_case):
         """场景2: create_execution() 为每个步骤创建 ExecutionStep 记录"""
@@ -506,17 +510,19 @@ class TestBuildNamespace:
     """命名空间构建测试"""
 
     def test_build_namespace_contains_key_modules(self):
-        """场景12: _build_namespace() -> 包含 page, json, asyncio, monitor hooks, datetime"""
+        """场景12: _build_namespace() -> 包含 safe, json, asyncio, monitor hooks, datetime"""
         import asyncio
         from datetime import datetime
         from unittest.mock import AsyncMock
+        from app.utils.safe_playwright import SafePlaywright
 
         mock_page = AsyncMock()
         mock_hooks = MagicMock()
 
-        ns = _build_namespace(mock_page, mock_hooks)
+        ns = _build_namespace(SafePlaywright(mock_page), mock_hooks)
 
-        assert ns["page"] is mock_page
+        assert isinstance(ns["safe"], SafePlaywright)
+        assert "page" not in ns
         assert ns["json"] is json
         assert ns["asyncio"] is asyncio
         assert ns["datetime"] is datetime
@@ -826,6 +832,54 @@ class TestExecuteCase:
 
 class TestExecuteAsync:
     """批量异步执行测试"""
+
+    @pytest.mark.asyncio
+    async def test_execute_async_installs_ssrf_network_policy(self, db_session, sample_project, sample_test_case, sample_generated_code, mocker):
+        """SSRF 防护：context 创建阻止 Service Worker 并安装网络拦截"""
+        mock_page = mocker.AsyncMock()
+        mock_page.set_default_timeout = mocker.MagicMock(return_value=None)
+        mock_context = mocker.AsyncMock()
+        mock_context.new_page.return_value = mock_page
+        mock_browser = mocker.AsyncMock()
+        mock_browser.new_context.return_value = mock_context
+        mock_pw = mocker.AsyncMock()
+        mock_pw.chromium.launch.return_value = mock_browser
+        mocker.patch(
+            "playwright.async_api.async_playwright",
+            return_value=mocker.AsyncMock(
+                __aenter__=mocker.AsyncMock(return_value=mock_pw),
+                __aexit__=mocker.AsyncMock(return_value=False),
+            ),
+        )
+        mock_install = mocker.patch(
+            "app.utils.url_policy.install_network_policy",
+            new=mocker.AsyncMock(),
+        )
+        mocker.patch.object(PlaywrightService, "_execute_case", return_value=True)
+        mocker.patch.object(PlaywrightService, "_start_healing")
+
+        from app.models.execution import Execution
+        from datetime import datetime as dt
+        exec_obj = Execution(
+            project_id=sample_project.id,
+            total_cases=1,
+            status="running",
+            start_time=dt.utcnow(),
+        )
+        db_session.add(exec_obj)
+        db_session.commit()
+        db_session.refresh(exec_obj)
+
+        svc = PlaywrightService(db_session)
+        await svc._execute_async(sample_project.id, [sample_test_case.id], exec_obj.id, "headless")
+
+        # Service Worker 阻止，避免网络拦截盲区
+        kwargs = mock_browser.new_context.call_args.kwargs
+        assert kwargs.get("service_workers") == "block"
+        # 网络策略已安装到 context
+        mock_install.assert_awaited_once()
+        installed_context = mock_install.await_args.args[0]
+        assert installed_context is mock_context
 
     @pytest.mark.asyncio
     async def test_execute_async_all_pass(self, db_session, sample_project, sample_test_case, sample_generated_code, mocker):

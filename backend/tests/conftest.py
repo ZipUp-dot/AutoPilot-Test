@@ -36,6 +36,9 @@ for subdir, env_var in env_var_map.items():
 # 创建静态文件测试内容
 (pathlib.Path(os.path.join(_test_base_dir, "uploads")) / "test.txt").write_text("hello")
 (pathlib.Path(os.path.join(_test_base_dir, "reports")) / "test.html").write_text("<html>report</html>")
+# 合法报告文件（受控文件访问：reports 路径必须为 execution_{id}_report.html）。
+# 用 999999 避免与测试真实生成的报告（execution_1_report.html 等）冲突覆盖。
+(pathlib.Path(os.path.join(_test_base_dir, "reports")) / "execution_999999_report.html").write_text("<html>execution 999999 report</html>")
 
 import pytest
 from sqlalchemy import create_engine, StaticPool

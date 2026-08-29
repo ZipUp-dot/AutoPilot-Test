@@ -157,3 +157,141 @@ class TestCheckBuiltins:
     def test_delattr_returns_error(self):
         tree = ast.parse("delattr(obj, 'x')")
         assert _check_builtins(tree) is not None
+
+
+class TestSafePlaywrightValidation:
+    """SafePlaywright 安全校验 — 禁止绕过 Safe API 获取原生 page"""
+
+    # ── 合法 Safe API 代码 ──
+    def test_legitimate_safe_api_code_passes(self):
+        code = '''async def run_test(safe) -> dict:
+    await safe.goto("https://example.com")
+    await safe.click("#btn")
+    await safe.fill("#user", "admin")
+    await safe.assert_text(".msg", "Hello")
+    await safe.screenshot(path="a.png")
+    await safe.wait(1000)
+    return {"success": True, "steps": []}
+'''
+        assert CodeValidator.validate(code) is None
+
+    def test_legitimate_playwright_code_passes(self):
+        """合法 Playwright 测试代码（仅 import 类型，不操作原生对象）"""
+        code = '''from playwright.async_api import Page
+async def run_test(page: Page) -> dict:
+    return {"success": True, "steps": []}
+'''
+        assert CodeValidator.validate(code) is None
+
+    # ── 直接访问原生 page ──
+    def test_direct_page_goto_blocked(self):
+        code = '''async def run_test(safe) -> dict:
+    await page.goto("https://example.com")
+    return {"success": True, "steps": []}
+'''
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "page.goto" in result
+
+    def test_direct_page_locator_blocked(self):
+        code = '''async def run_test(safe) -> dict:
+    await page.locator("#btn").click()
+    return {"success": True, "steps": []}
+'''
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "page.locator" in result
+
+    # ── 私有属性访问 ──
+    def test_private_attr_blocked(self):
+        code = '''async def run_test(safe) -> dict:
+    await safe._page.goto("https://example.com")
+    return {"success": True, "steps": []}
+'''
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "_page" in result
+
+    # ── 魔法属性访问 ──
+    def test_dunder_class_blocked(self):
+        code = '''async def run_test(safe) -> dict:
+    obj = safe.__class__
+    return {"success": True, "steps": []}
+'''
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "__class__" in result
+
+    def test_dunder_dict_blocked(self):
+        code = '''async def run_test(safe) -> dict:
+    obj = safe.__dict__
+    return {"success": True, "steps": []}
+'''
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "__dict__" in result
+
+    def test_dunder_getattribute_blocked(self):
+        code = '''async def run_test(safe) -> dict:
+    obj = safe.__getattribute__("_page")
+    return {"success": True, "steps": []}
+'''
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "__getattribute__" in result
+
+    # ── 反射绕过 ──
+    def test_type_reflection_blocked(self):
+        code = '''async def run_test(safe) -> dict:
+    cls = type(safe)
+    return {"success": True, "steps": []}
+'''
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "type" in result
+
+    def test_object_reflection_blocked(self):
+        code = '''async def run_test(safe) -> dict:
+    obj = object.__getattribute__
+    return {"success": True, "steps": []}
+'''
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "object" in result
+
+    def test_vars_reflection_blocked(self):
+        code = '''async def run_test(safe) -> dict:
+    obj = vars(safe)
+    return {"success": True, "steps": []}
+'''
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "vars" in result
+
+    def test_dir_reflection_blocked(self):
+        code = '''async def run_test(safe) -> dict:
+    obj = dir(safe)
+    return {"success": True, "steps": []}
+'''
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "dir" in result
+
+    # ── 危险 import / builtin 仍拦截 ──
+    def test_dangerous_import_still_blocked(self):
+        code = '''import os
+async def run_test(safe) -> dict:
+    return {"success": True, "steps": []}
+'''
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "os" in result
+
+    def test_dangerous_builtin_still_blocked(self):
+        code = '''async def run_test(safe) -> dict:
+    eval("1+1")
+    return {"success": True, "steps": []}
+'''
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "eval" in result

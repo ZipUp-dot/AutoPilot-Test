@@ -253,3 +253,42 @@ class TestSettingsEdgeCases:
     def test_secret_key_default(self):
         s = Settings()
         assert s.SECRET_KEY == "change-me-in-production"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 生产环境安全校验（阶段 10）：APP_ENV=production 时 SECRET_KEY 必须显式配置
+# ═══════════════════════════════════════════════════════════════════
+
+class TestProductionSecretKey:
+    """生产环境拒绝启动校验：SECRET_KEY 缺失或等于默认值"""
+
+    def test_app_env_alias_sets_env(self, monkeypatch):
+        """APP_ENV 别名可识别生产环境（兼容旧名 ENV）"""
+        monkeypatch.setenv("APP_ENV", "production")
+        assert Settings().ENV == "production"
+
+    def test_legacy_env_alias_still_works(self, monkeypatch):
+        """旧名 ENV 仍可识别"""
+        monkeypatch.setenv("ENV", "production")
+        assert Settings().ENV == "production"
+
+    def test_production_rejects_default_secret_key(self, monkeypatch):
+        """APP_ENV=production + SECRET_KEY=默认值 → 拒绝启动（SystemExit）"""
+        import app.config as config_module
+
+        monkeypatch.setenv("APP_ENV", "production")
+        monkeypatch.setenv("INTERNAL_API_TOKEN", "some-token")
+        monkeypatch.delenv("SECRET_KEY", raising=False)  # 回到默认值
+        with pytest.raises(SystemExit):
+            config_module.load_settings()
+
+    def test_production_accepts_explicit_secret_key(self, monkeypatch):
+        """APP_ENV=production + 显式 SECRET_KEY → 正常启动"""
+        import app.config as config_module
+
+        monkeypatch.setenv("APP_ENV", "production")
+        monkeypatch.setenv("INTERNAL_API_TOKEN", "some-token")
+        monkeypatch.setenv("SECRET_KEY", "explicit-production-secret")
+        s = config_module.load_settings()
+        assert s.ENV == "production"
+        assert s.SECRET_KEY == "explicit-production-secret"

@@ -249,11 +249,11 @@ class TestGeneratedCodeModel:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# 5. Execution 默认 status="running" + datetime
+# 5. Execution 默认 status="queued" + datetime
 # ═══════════════════════════════════════════════════════════════════
 
 class TestExecutionModel:
-    def test_default_status_running(self, db_session):
+    def test_default_status_queued(self, db_session):
         project = Project(name="Exec Project", target_url="https://example.com")
         db_session.add(project)
         db_session.commit()
@@ -266,7 +266,7 @@ class TestExecutionModel:
         db_session.commit()
         db_session.refresh(execution)
 
-        assert execution.status == "running"
+        assert execution.status == "queued"
         assert execution.total_cases == 0
         assert execution.passed_cases == 0
         assert execution.failed_cases == 0

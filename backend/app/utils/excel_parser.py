@@ -9,6 +9,12 @@ from typing import Any, Optional
 
 logger = logging.getLogger("autopilot.excel")
 
+# ── 输入限制（阶段 10：防止超大 Excel / 超长字符串造成资源耗尽）──
+# 与 routers/cases.py 的文件大小限制（10MB）配合，形成双层防护
+MAX_EXCEL_ROWS = 5000        # 最大数据行数（含表头）
+MAX_EXCEL_SHEETS = 10        # 最大 Sheet 数量
+MAX_CELL_LENGTH = 4000       # 单单元格最大字符数（超长截断）
+
 # ── 标准列名 → 别名映射 ──
 COLUMN_ALIASES: dict[str, list[str]] = {
     "case_no":       ["用例编号", "编号", "caseno", "no", "id", "序号", "case id"],
@@ -85,15 +91,41 @@ class ExcelParser:
         Returns:
             ParseResult with parsed cases and error details
         """
-        ws = _read_sheet(file_content, filename)
+        try:
+            ws = _read_sheet(file_content, filename)
+        except ValueError as e:
+            # 阶段 10：Sheet 数量等输入限制 → 返回明确错误而非 500
+            result = ParseResult()
+            result.failed = 1
+            result.errors.append({"row": 0, "reason": str(e)})
+            return result
         if not ws:
             result = ParseResult()
             result.failed = 1
             result.errors.append({"row": 0, "reason": "无法读取工作表"})
             return result
 
+        # 阶段 10：行数限制（读前预检，避免超大 Excel 全量读入内存）
+        max_row = getattr(ws, "max_row", None)
+        if max_row is not None and max_row > MAX_EXCEL_ROWS:
+            result = ParseResult()
+            result.failed = 1
+            result.errors.append({
+                "row": 0,
+                "reason": f"Excel 行数超过限制（最多 {MAX_EXCEL_ROWS} 行，含表头）",
+            })
+            return result
+
         # 读 header
         rows = list(ws.iter_rows(values_only=True))
+        if len(rows) > MAX_EXCEL_ROWS:
+            result = ParseResult()
+            result.failed = 1
+            result.errors.append({
+                "row": 0,
+                "reason": f"Excel 行数超过限制（最多 {MAX_EXCEL_ROWS} 行，含表头）",
+            })
+            return result
         if len(rows) < 2:
             result = ParseResult()
             result.failed = 1
@@ -484,6 +516,9 @@ def _read_sheet(file_content: bytes, filename: str = ""):
     try:
         from openpyxl import load_workbook
         wb = load_workbook(io.BytesIO(file_content), read_only=True)
+        # 阶段 10：Sheet 数量限制（防止多 Sheet 超大文件资源耗尽）
+        if len(wb.sheetnames) > MAX_EXCEL_SHEETS:
+            raise ValueError(f"Excel Sheet 数量超过限制（最多 {MAX_EXCEL_SHEETS} 个）")
         return wb.active
     except Exception:
         # 尝试 xlrd for .xls
@@ -491,9 +526,13 @@ def _read_sheet(file_content: bytes, filename: str = ""):
             try:
                 import xlrd
                 wb = xlrd.open_workbook(file_contents=file_content)
+                if isinstance(wb.nsheets, int) and wb.nsheets > MAX_EXCEL_SHEETS:
+                    raise ValueError(f"Excel Sheet 数量超过限制（最多 {MAX_EXCEL_SHEETS} 个）")
                 return _xlrd_to_rows(wb.sheet_by_index(0))
             except ImportError:
                 raise RuntimeError("解析 .xls 需要安装 xlrd: pip install xlrd")
+            except ValueError:
+                raise  # Sheet 数量超限等业务限制，向上传播
             except Exception:
                 pass
         raise
@@ -506,6 +545,8 @@ def _xlrd_to_rows(sheet) -> list:
         rows.append([sheet.cell_value(r, c) for c in range(sheet.ncols)])
     # 包装成类似 openpyxl 的 iter_rows 行为
     class _FakeWS:
+        max_row = sheet.nrows
+
         @staticmethod
         def iter_rows(values_only=False):
             return rows
@@ -513,15 +554,19 @@ def _xlrd_to_rows(sheet) -> list:
 
 
 def _cell(row, col_idx: int | None) -> str:
-    """安全取单元格值"""
+    """安全取单元格值（阶段 10：超长字符串截断，防止资源耗尽）"""
     if col_idx is None or col_idx >= len(row):
         return ""
     v = row[col_idx]
     if v is None:
         return ""
     if isinstance(v, float) and v == int(v):
-        return str(int(v))
-    return str(v).strip()
+        s = str(int(v))
+    else:
+        s = str(v).strip()
+    if len(s) > MAX_CELL_LENGTH:
+        s = s[:MAX_CELL_LENGTH]
+    return s
 
 
 # ═══════════════════════════════════════════════

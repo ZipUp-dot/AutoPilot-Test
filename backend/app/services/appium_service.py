@@ -43,7 +43,7 @@ ALLOWED_BUILTINS = frozenset({
     "__import__",
 })
 
-from app.services.execution_state import set_stop_flag, clear_stop_flag, is_stopped
+from app.services.execution_state import set_stop_flag, clear_stop_flag, is_stopped, generate_worker_id
 
 
 class AppiumService:
@@ -85,8 +85,11 @@ class AppiumService:
             batch_name=batch_name,
             total_cases=len(case_ids),
             execution_mode=mode,
-            status="running",
+            status="queued",  # 排队中：后台线程真正启动后转 running
             start_time=datetime.utcnow(),
+            heartbeat_at=datetime.utcnow(),
+            worker_id=generate_worker_id(),
+            progress=0,
         )
         self._db.add(execution)
         self._db.flush()
@@ -170,6 +173,10 @@ class AppiumService:
 
         appium_url = config.get("appium_server_url", settings.APPIUM_URL)
 
+        # 状态机：queued → running（持久化心跳与进度）
+        self._update_execution_status(execution_id, "running")
+        self._update_execution(execution_id, 0, 0)
+
         try:
             driver = appium_webdriver.Remote(appium_url, desired_caps)
             driver.implicitly_wait(settings.APPIUM_TIMEOUT / 1000.0)
@@ -193,6 +200,9 @@ class AppiumService:
                 except Exception:
                     failed += 1
                     logger.exception("Appium 用例执行异常: case_id=%s", case_id)
+
+                # 逐用例持久化进度 + 心跳（Docker 重启后可恢复状态）
+                self._update_execution(execution_id, passed, failed)
 
             # 更新执行统计
             self._update_execution(execution_id, passed, failed)
@@ -319,12 +329,15 @@ class AppiumService:
         self._db.commit()
 
     def _update_execution(self, execution_id: int, passed: int, failed: int) -> None:
-        """更新执行记录"""
+        """更新执行记录：统计 + 进度 + 心跳"""
         try:
             exec_row = self._db.query(Execution).filter(Execution.id == execution_id).first()
             if exec_row:
                 exec_row.passed_cases = passed
                 exec_row.failed_cases = failed
+                total = exec_row.total_cases or 0
+                exec_row.progress = round((passed + failed) / total * 100) if total > 0 else 0
+                exec_row.heartbeat_at = datetime.utcnow()
                 self._db.commit()
         except Exception:
             logger.exception("Appium 更新执行统计失败: execution_id=%s", execution_id)
@@ -335,7 +348,7 @@ class AppiumService:
             exec_row = self._db.query(Execution).filter(Execution.id == execution_id).first()
             if exec_row:
                 exec_row.status = status
-                if status in ("completed", "failed", "stopped"):
+                if status in ("completed", "failed", "stopped", "interrupted"):
                     exec_row.end_time = datetime.utcnow()
                 self._db.commit()
         except Exception:

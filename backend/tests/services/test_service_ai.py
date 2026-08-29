@@ -468,7 +468,7 @@ class TestCallOpenAI:
         # OPENAI_API_KEY 在测试环境中已设为空字符串
         result = _call_openai("test prompt", "gpt-4o", target_url="https://example.com", steps_json="[]")
         assert "async def run_test" in result
-        assert "page.goto" in result
+        assert "safe.goto" in result
 
     def test_call_openai_retry_success(self, mock_settings, mocker):
         """_call_openai() 前2次失败 → 第3次成功"""
@@ -1011,11 +1011,11 @@ class TestMockCode:
     """Mock 代码结构测试"""
 
     def test_mock_code_structure(self):
-        """场景23: Mock 模式代码结构 -> 包含 async def run_test, page.goto"""
+        """场景23: Mock 模式代码结构 -> 包含 async def run_test(safe), safe.goto"""
         code = _mock_code(target_url="https://example.com", steps_json="[]")
         assert "async def run_test" in code
-        assert "page.goto" in code
-        assert "from playwright.async_api import Page" in code
+        assert "safe.goto" in code
+        assert "page.goto" not in code
         assert '"success"' in code
 
     def test_mock_code_with_steps(self):
@@ -1045,12 +1045,12 @@ class TestMockCode:
         assert "无 selector" in code
 
     def test_mock_code_wait_action(self):
-        """_mock_code() wait 动作 -> 生成 wait_for_timeout 代码"""
+        """_mock_code() wait 动作 -> 生成 safe.wait 代码"""
         steps = json.dumps([
             {"step_number": 1, "action": "wait", "target": "", "value": "2000", "description": "等待"},
         ])
         code = _mock_code(target_url="https://example.com", steps_json=steps)
-        assert "wait_for_timeout" in code
+        assert "safe.wait" in code
         assert "2000" in code
 
     def test_mock_code_screenshot_action(self):
@@ -1073,7 +1073,7 @@ class TestMockCode:
         """_mock_code() 无效 JSON -> 静默回退，生成空步骤代码"""
         code = _mock_code(target_url="https://example.com", steps_json="not valid json {{{")
         assert "async def run_test" in code
-        assert "page.goto" in code
+        assert "safe.goto" in code
 
     def test_mock_code_fill_without_target(self):
         """_mock_code() fill 无 target -> 生成跳过代码"""
@@ -1084,12 +1084,12 @@ class TestMockCode:
         assert "无 selector" in code
 
     def test_mock_code_select_with_target(self):
-        """_mock_code() select 有 target -> 生成 select_option 代码"""
+        """_mock_code() select 有 target -> 生成 safe.select 代码"""
         steps = json.dumps([
             {"step_number": 1, "action": "select", "target": "#dropdown", "value": "option1", "description": "选择"},
         ])
         code = _mock_code(target_url="https://example.com", steps_json=steps)
-        assert "select_option" in code
+        assert "safe.select" in code
         assert "#dropdown" in code
 
 

@@ -48,6 +48,10 @@ def _run_migrations() -> None:
         ("page_elements", "metadata", "TEXT"),
         ("execution_steps", "exception_type", "VARCHAR(100)"),
         ("heal_records", "attempts", "TEXT"),
+        # 阶段 4：Execution 状态持久化与重启恢复
+        ("executions", "progress", "INT DEFAULT 0"),
+        ("executions", "worker_id", "VARCHAR(100)"),
+        ("executions", "heartbeat_at", "DATETIME"),
     ]
 
     for table, column, col_def in migrations:

@@ -1,0 +1,13 @@
+# ============================================================
+# AutoPilot 后端 — 开发/测试依赖
+# 安装：pip install -r requirements.txt -r requirements-dev.txt
+# ============================================================
+# 测试框架
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-mock==3.15.1
+# 覆盖率
+pytest-cov==7.1.0
+coverage==7.15.4
+# 数据库迁移（统一 Alembic 机制，MySQL / SQLite 双方言）
+alembic==1.19.1

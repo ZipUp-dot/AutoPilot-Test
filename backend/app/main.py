@@ -9,7 +9,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -31,6 +30,7 @@ from app.routers import (
     heal_router,
     executions_router,
     reports_router,
+    files_router,
 )
 
 # ── 日志 ──
@@ -50,6 +50,22 @@ async def lifespan(app: FastAPI):
     logger.info("正在初始化数据库...")
     db_init()
     logger.info("数据库初始化完成")
+
+    # 服务重启恢复：queued / 心跳超时的 running / healing 遗留任务 → interrupted
+    # （异常隔离：DB 不可用等不阻塞应用启动）
+    try:
+        from app.db.database import SessionLocal
+        from app.services.execution_state import recover_orphan_executions
+        db = SessionLocal()
+        try:
+            recovered = recover_orphan_executions(db)
+            if recovered:
+                logger.info("恢复 %s 个遗留执行记录为 interrupted", recovered)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning("遗留执行状态恢复跳过（不影响启动）: %s", str(e)[:200])
+
     # 清理过期报告
     from app.services.report_service import ReportService
     deleted = ReportService.cleanup_old_reports(max_days=30)
@@ -81,9 +97,10 @@ app.add_middleware(
 app.add_middleware(TimingMiddleware)
 app.add_middleware(LoggingMiddleware)
 
-# ── 静态文件挂载 ──
-app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
-app.mount("/reports", StaticFiles(directory=settings.REPORT_DIR, html=True), name="reports")
+# ── 文件访问 ──
+# /uploads、/reports 不再直接挂载 StaticFiles，改用受控路由
+# （INTERNAL_API_TOKEN 鉴权 + 路径安全校验 + 流式返回，见 app/routers/files.py）
+app.include_router(files_router)
 
 # ── 异常处理器 ──
 app.add_exception_handler(AppException, app_exception_handler)

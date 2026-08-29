@@ -194,32 +194,40 @@ docker compose up -d
 ### 本地开发
 
 ```bash
+# 一键初始化（Windows 用 PowerShell 执行 \scripts\setup.ps1）
+./scripts/setup.sh
+# 等价于：
+#   python -m venv backend/.venv
+#   pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+#   playwright install chromium        # 安装与 playwright==1.56.0 对应的浏览器 revision
+#   (cd frontend && npm ci)            # 前端按 lockfile 精确安装
+
 # 后端（注意：禁止 --reload，避免沙箱拦截 Playwright）
 cd backend
-pip install -r requirements.txt
-playwright install chromium
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # 前端
 cd frontend
-npm install
 npm run dev   # http://localhost:5173
 ```
+
+> 生产依赖见 `backend/requirements.txt`；测试依赖（pytest 等）见 `backend/requirements-dev.txt`。
+> 前端依赖由 `package-lock.json` 精确锁定，Docker 与 setup 脚本均使用 `npm ci`。
 
 ### 运行测试
 
 ```bash
 cd backend
-pytest                              # 运行全部测试（含覆盖率）
-pytest tests/unit/                  # 仅单元测试
-pytest tests/services/              # 仅服务层测试
-pytest tests/routers/               # 仅路由层测试
-pytest tests/integration/           # 仅端到端集成测试
+.venv/bin/python -m pytest           # 运行全部测试（含覆盖率）
+.venv/bin/python -m pytest tests/unit/          # 仅单元测试
+.venv/bin/python -m pytest tests/services/      # 仅服务层测试
+.venv/bin/python -m pytest tests/routers/       # 仅路由层测试
+.venv/bin/python -m pytest tests/integration/   # 仅端到端集成测试
 ```
 
 测试套件采用**四层架构**（unit / services / routers / integration），全部运行于 SQLite 内存数据库、零外部依赖：
 - LLM API、Playwright、Appium、文件系统均通过 Mock 隔离
-- 当前 **983 passed, 1 skipped**，语句覆盖率 **92%**
+- 当前 **1070 passed, 1 skipped**，语句覆盖率 **92%**
 - 完整说明见 [tests/README_TEST.md](backend/tests/README_TEST.md)
 
 > 详细技术文档、API 接口、数据库设计请参阅：

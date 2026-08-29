@@ -91,11 +91,23 @@ class ElementService:
         url = (project.target_url.rstrip("/") + "/" + project.test_path.lstrip("/")).rstrip("/")
         browser_type = project.browser_type or "chromium"
 
+        # SSRF 执行期策略：target 同源 + 项目 allowlist
+        try:
+            config_json = json.loads(project.config_json) if project.config_json else None
+        except (TypeError, ValueError):
+            config_json = None
+        from app.utils.url_policy import UrlPolicy
+        policy = UrlPolicy(project.target_url, config_json=config_json)
+
         logger.info("开始抓取 %s [browser=%s]", url, browser_type)
 
         start_ts = time.perf_counter()
         try:
-            elements = await self._extract_elements(url, browser_type, timeout_ms=settings.PLAYWRIGHT_TIMEOUT)
+            elements = await self._extract_elements(
+                url, browser_type,
+                timeout_ms=settings.PLAYWRIGHT_TIMEOUT,
+                policy=policy,
+            )
         except PlaywrightException:
             raise
         except Exception as e:
@@ -181,7 +193,7 @@ class ElementService:
     # ═══════════════════════════════════════════════
 
     async def _extract_elements(self, url: str, browser_type: str,
-                                 timeout_ms: int = 30000) -> list[CrawledElement]:
+                                 timeout_ms: int = 30000, policy=None) -> list[CrawledElement]:
         """异步启动 Playwright，提取页面元素并生成选择器"""
         # 绕过 IDE 沙箱对 Playwright 子进程的拦截
         os.environ["TOOLHOST_SANDBOX_DISABLED"] = "true"
@@ -203,7 +215,11 @@ class ElementService:
                 )
                 context = await browser.new_context(
                     viewport={"width": 1920, "height": 1080},
+                    service_workers="block",
                 )
+                if policy is not None:
+                    from app.utils.url_policy import install_network_policy
+                    await install_network_policy(context, policy)
                 page = await context.new_page()
             except Exception as e:
                 msg = str(e) or repr(e) or type(e).__name__

@@ -138,7 +138,7 @@ class TestOrchestrator:
                     from app.models.execution import Execution
                     from datetime import datetime as dt
                     exec_row = db_session.query(Execution).filter(Execution.id == execution_id).first()
-                    if exec_row and exec_row.status == "running":
+                    if exec_row and exec_row.status in ("queued", "running", "healing"):
                         exec_row.status = "failed"
                         exec_row.end_time = dt.utcnow()
                         db_session.commit()
@@ -283,6 +283,17 @@ class TestOrchestrator:
                 if not url:
                     return None  # 无目标 URL，跳过检查
 
+                # SSRF 入口校验：非法/越权目标 URL 直接拒绝执行
+                import json
+                from app.utils.url_policy import validate_target_url
+                try:
+                    config_json = json.loads(project.config_json) if project.config_json else None
+                except (TypeError, ValueError):
+                    config_json = None
+                url_error = validate_target_url(url, config_json=config_json)
+                if url_error:
+                    return f"目标 URL 校验失败: {url_error}"
+
             try:
                 async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
                     resp = await client.get(url)
@@ -331,7 +342,7 @@ class TestOrchestrator:
                     except Exception as e:
                         logger.error("编排器: 报告生成失败 execution_id=%s: %s", execution_id, e)
                     break
-                elif status in ("stopped", "failed"):
+                elif status in ("stopped", "failed", "interrupted"):
                     logger.info("编排器: execution_id=%s 状态=%s，跳过报告生成", execution_id, status)
                     break
         except asyncio.CancelledError:

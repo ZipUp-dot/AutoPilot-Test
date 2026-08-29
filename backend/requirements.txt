@@ -1,13 +1,17 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.0
-sqlalchemy==2.0.35
+# ============================================================
+# AutoPilot 后端 — 生产依赖
+# 版本与当前开发/测试环境（已验证 1070 passed）严格对齐
+# ============================================================
+fastapi==0.115.12
+uvicorn[standard]==0.34.1
+sqlalchemy==2.0.40
 pymysql==1.1.1
-pydantic==2.9.0
-pydantic-settings==2.5.0
-python-multipart==0.0.12
+pydantic==2.11.3
+pydantic-settings==2.12.0
+python-multipart==0.0.32
 aiofiles==24.1.0
-jinja2==3.1.4
+jinja2==3.1.6
 openpyxl==3.1.5
-playwright==1.47.0
+playwright==1.56.0
 appium-python-client==4.1.0
-httpx==0.27.0
+httpx==0.28.1

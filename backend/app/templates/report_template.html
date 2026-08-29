@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- 内容安全策略：仅允许内联样式/脚本与同源图片；禁止外联资源/iframe 嵌入/表单提交，
+     防止报告内不可信动态内容（用例名/错误/日志等）外传或执行任意脚本 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
 <title>AutoPilot 测试报告 — {{ batch_name }}</title>
 <style>
 /* ===== Base & Reset ===== */
