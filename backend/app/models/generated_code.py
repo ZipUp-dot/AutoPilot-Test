@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, func, Index
 from pydantic import BaseModel
 
 from app.db.database import Base
@@ -13,15 +13,19 @@ from app.db.database import Base
 
 class GeneratedCode(Base):
     __tablename__ = "generated_codes"
+    __table_args__ = (
+        # 与 schema.sql / alembic 0001 索引对齐（保证 autogenerate 零 diff）
+        Index("idx_gc_case_id", "case_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     case_id = Column(Integer, ForeignKey("test_cases.id", ondelete="CASCADE"), nullable=False)
-    code_content = Column(String, nullable=False)
-    code_language = Column(String, default="python")
-    generation_prompt = Column(String)
-    ai_model = Column(String)
+    code_content = Column(Text, nullable=False)
+    code_language = Column(String(20), default="python")
+    generation_prompt = Column(Text)
+    ai_model = Column(String(50))
     is_valid = Column(Integer, default=0)
-    syntax_error = Column(String)
+    syntax_error = Column(Text)
     is_healed = Column(Integer, default=0)
     created_at = Column(DateTime, default=func.now())
 

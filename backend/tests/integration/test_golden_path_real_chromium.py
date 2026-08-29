@@ -6,12 +6,17 @@
 设计约束（CI = Mock LLM + Real Chromium）:
   - CI 不调用真实 LLM（无网络波动 / 模型变化 / Token 成本 / 输出不稳定）
   - 确定性 Mock LLM 输出针对本地 Demo 页面的真实可执行代码
-  - 真实 LLM + 真实 Chromium 仅用于人工验收 / Nightly（配置 OPENAI_API_KEY 后即为真实模式）
+  - 真实 LLM + 真实 Chromium 仅用于人工验收 / Nightly：
+    设置环境变量 AUTOPILOT_GOLDEN_REAL_LLM=1 + AUTOPILOT_GOLDEN_API_KEY=sk-xxx
+    （可选 AUTOPILOT_GOLDEN_MODEL 指定模型）后运行本文件即为真实模式
   - 本地 Demo Web 站点（tests/demo_site）保证页面稳定可控、新环境可重复执行
 
 前置条件:
   - 已安装 playwright + chromium（scripts/setup.sh / scripts/setup.ps1 完成）
   - 以 backend 为工作目录运行: .venv/bin/python -m pytest tests/integration/test_golden_path_real_chromium.py
+  - 真实 LLM 模式示例:
+      $env:AUTOPILOT_GOLDEN_REAL_LLM=1; $env:AUTOPILOT_GOLDEN_API_KEY="sk-xxx"
+      .venv/bin/python -m pytest tests/integration/test_golden_path_real_chromium.py -s
 """
 
 import io
@@ -146,7 +151,19 @@ def golden_env(monkeypatch, mock_settings, demo_server):
     mock_settings("SSRF_ALLOWED_HOSTS", "127.0.0.1")
 
     # 确定性 Mock LLM（阶段 6：CI = Mock LLM + Real Chromium）
-    monkeypatch.setattr("app.services.ai_service._call_openai", _fake_call_openai)
+    # 真实 LLM 模式（人工验收 / Nightly）：设置环境变量
+    #   AUTOPILOT_GOLDEN_REAL_LLM=1
+    #   AUTOPILOT_GOLDEN_API_KEY=sk-xxx
+    # 后跳过 Mock 注入，走真实模型 + 真实 Chromium。
+    # 注意：conftest 会把 OPENAI_API_KEY 清空强制 Mock，此处显式恢复 settings，
+    #       `_call_openai` 内部以 settings.OPENAI_API_KEY 为空作为 Mock 判定。
+    if not os.environ.get("AUTOPILOT_GOLDEN_REAL_LLM"):
+        monkeypatch.setattr("app.services.ai_service._call_openai", _fake_call_openai)
+    else:
+        real_key = os.environ.get("AUTOPILOT_GOLDEN_API_KEY", "").strip()
+        assert real_key, "AUTOPILOT_GOLDEN_REAL_LLM=1 时必须同时设置 AUTOPILOT_GOLDEN_API_KEY"
+        mock_settings("OPENAI_API_KEY", real_key)
+        mock_settings("OPENAI_MODEL", os.environ.get("AUTOPILOT_GOLDEN_MODEL", "qwen3.5-flash"))
 
     def _override_db():
         sess = TestSession()

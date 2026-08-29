@@ -28,6 +28,43 @@ from sqlalchemy.engine import make_url
 _BACKEND_ROOT = Path(__file__).parents[2]  # tests/unit → backend
 
 
+@pytest.fixture(autouse=True)
+def _restore_logging_state():
+    """执行 alembic 迁移后恢复全部 logging 状态
+
+    alembic 的 env.py 会调用 fileConfig：即使 disable_existing_loggers=False，
+    root logger 的 level（→WARNING）与 handlers（→console）仍会被重置，
+    影响 pytest 进程内后续测试的日志捕获。此 fixture 在迁移前后快照/恢复
+    root 与全部 logger 的 level / disabled / propagate / handlers。
+    """
+    import logging
+
+    root = logging.getLogger()
+    saved = {
+        "root_level": root.level,
+        "root_handlers": list(root.handlers),
+        "loggers": {
+            name: {
+                "level": lg.level,
+                "disabled": lg.disabled,
+                "propagate": lg.propagate,
+                "handlers": list(lg.handlers),
+            }
+            for name, lg in logging.Logger.manager.loggerDict.items()
+            if isinstance(lg, logging.Logger)
+        },
+    }
+    yield
+    root.setLevel(saved["root_level"])
+    root.handlers = list(saved["root_handlers"])
+    for name, st in saved["loggers"].items():
+        lg = logging.getLogger(name)
+        lg.setLevel(st["level"])
+        lg.disabled = st["disabled"]
+        lg.propagate = st["propagate"]
+        lg.handlers = list(st["handlers"])
+
+
 def _alembic_config() -> Config:
     """构造 Alembic Config（script_location 用绝对路径，避免 cwd 依赖）"""
     cfg = Config(str(_BACKEND_ROOT / "alembic.ini"))

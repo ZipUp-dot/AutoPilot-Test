@@ -30,7 +30,10 @@ from app.config import settings  # noqa: E402
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False：迁移运行时不得禁用应用自身（autopilot.*）logger。
+    # 否则在 pytest 进程内执行 alembic 命令时，fileConfig 会把未配置的 logger
+    # 全部标记为 disabled，导致后续测试的日志捕获全部失效。
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # ── 解析数据库 URL ──
 _db_url = (

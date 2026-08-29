@@ -227,7 +227,7 @@ cd backend
 
 测试套件采用**四层架构**（unit / services / routers / integration），全部运行于 SQLite 内存数据库、零外部依赖：
 - LLM API、Playwright、Appium、文件系统均通过 Mock 隔离
-- 当前 **1070 passed, 1 skipped**，语句覆盖率 **92%**
+- 当前 **1109 passed, 2 skipped**，语句覆盖率 **92%**
 - 完整说明见 [tests/README_TEST.md](backend/tests/README_TEST.md)
 
 > 详细技术文档、API 接口、数据库设计请参阅：
@@ -254,7 +254,7 @@ cd backend
 | **当前版本** | V1.2（开发中） |
 | **文档版本** | V3.2 |
 | **最后更新** | 2026-08-24 |
-| **后端测试** | 983 passed / 1 skipped（覆盖率 92%） |
+| **后端测试** | 1109 passed / 2 skipped（覆盖率 92%） |
 | **维护者** | ethan-peng（Mr-6Lawrence） |
 | **Gitee** | https://gitee.com/Mr-6Lawrence/auto-pilot-test |
 | **GitHub** | https://github.com/ZipUp-dot/AutoPilot-Test |

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, func, Index
 from pydantic import BaseModel, Field
 
 from app.db.database import Base
@@ -13,23 +13,28 @@ from app.db.database import Base
 
 class PageElement(Base):
     __tablename__ = "page_elements"
+    __table_args__ = (
+        # 与 schema.sql / alembic 0001 索引对齐（保证 autogenerate 零 diff）
+        Index("idx_pe_project_id", "project_id"),
+        Index("idx_pe_element_type", "element_type"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
-    element_type = Column(String, nullable=False)
-    tag_name = Column(String)
-    element_id = Column(String)
-    name = Column(String)
-    class_name = Column(String)
-    selector = Column(String, nullable=False)
-    text_content = Column(String)
-    placeholder = Column(String)
+    element_type = Column(String(50), nullable=False)
+    tag_name = Column(String(50))
+    element_id = Column(String(255))
+    name = Column(String(255))
+    class_name = Column(String(500))
+    selector = Column(String(500), nullable=False)
+    text_content = Column(String(500))
+    placeholder = Column(String(255))
     is_visible = Column(Integer, default=1)
-    bounding_box = Column(String)
-    attributes = Column(String)
-    platform = Column(String, default="web", nullable=False)
-    selector_type = Column(String, nullable=True)
-    element_metadata = Column("metadata", String, nullable=True)
+    bounding_box = Column(Text)
+    attributes = Column(Text)
+    platform = Column(String(10), default="web", nullable=False)
+    selector_type = Column(String(20), nullable=True)
+    element_metadata = Column("metadata", Text, nullable=True)
     created_at = Column(DateTime, default=func.now())
 
 

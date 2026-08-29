@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, func, Index
 from pydantic import BaseModel, Field
 
 from app.db.database import Base
@@ -14,18 +14,23 @@ from app.models.test_step import TestStep
 
 class TestCase(Base):
     __tablename__ = "test_cases"
+    __table_args__ = (
+        # 与 schema.sql / alembic 0001 索引对齐（保证 autogenerate 零 diff）
+        Index("idx_tc_project_id", "project_id"),
+        Index("idx_tc_status", "status"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
-    case_name = Column(String, nullable=False)
-    case_no = Column(String)
-    priority = Column(String, default="P1")
-    pre_condition = Column(String)
-    steps = Column(String, nullable=False)
-    expected_result = Column(String)
-    source_excel = Column(String)
+    case_name = Column(String(255), nullable=False)
+    case_no = Column(String(50))
+    priority = Column(String(10), default="P1")
+    pre_condition = Column(Text)
+    steps = Column(Text, nullable=False)
+    expected_result = Column(Text)
+    source_excel = Column(String(255))
     excel_row = Column(Integer)
-    status = Column(String, default="pending")
+    status = Column(String(20), default="pending")
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 

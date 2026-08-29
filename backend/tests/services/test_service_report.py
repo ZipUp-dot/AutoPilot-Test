@@ -61,6 +61,47 @@ class TestGenerate:
         assert report.report_html is not None
         assert report.download_url is not None
 
+    def test_generate_concurrent_calls_serialized_by_lock(self):
+        """并发调用 generate() 被进程内锁串行化，防 UNIQUE 竞态
+
+        编排器后台自动生成与手动 POST /reports/generate 并发时，
+        同一 execution_id 只会有一个线程真正执行生成逻辑（其余阻塞在 _REPORT_LOCK），
+        从而避免"查询-插入"竞态导致 execution_reports UNIQUE 冲突。
+        """
+        import threading
+        import time
+
+        svc = ReportService(None)  # _generate 被替换，不访问 DB
+        entered = []
+        gate = threading.Event()
+
+        def slow_generate(execution_id):
+            entered.append(threading.get_ident())
+            gate.wait(5)
+            return {"report_id": 1, "download_url": "/reports/execution_1_report.html"}
+
+        svc._generate = slow_generate
+        results = []
+
+        def worker():
+            results.append(svc.generate(123))
+
+        threads = [threading.Thread(target=worker) for _ in range(5)]
+        for t in threads:
+            t.start()
+        # 等待第一个线程进入临界区，并给其余线程抵达锁的时间
+        for _ in range(100):
+            if entered:
+                break
+            time.sleep(0.01)
+        time.sleep(0.3)
+        assert len(entered) == 1  # 互斥：仅一个线程进入 _generate，其余阻塞在 _REPORT_LOCK
+
+        gate.set()
+        for t in threads:
+            t.join(timeout=10)
+        assert len(results) == 5
+
 
 # ═══════════════════════════════════════════════
 # _determine_status()

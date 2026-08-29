@@ -41,7 +41,7 @@ for subdir, env_var in env_var_map.items():
 (pathlib.Path(os.path.join(_test_base_dir, "reports")) / "execution_999999_report.html").write_text("<html>execution 999999 report</html>")
 
 import pytest
-from sqlalchemy import create_engine, StaticPool
+from sqlalchemy import create_engine, StaticPool, text
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.testclient import TestClient
 
@@ -97,6 +97,14 @@ def db_session():
     yield session
     session.close()
     transaction.rollback()
+    # 重置连接级 PRAGMA：TEST_ENGINE 为 StaticPool 单连接共享，
+    # test_models 中 PRAGMA foreign_keys = ON 会持久生效并泄漏到后续测试
+    #（例如 test_execution_recovery 插入 executions 时外键检查被意外启用）。
+    # rollback 后连接空闲，PRAGMA 生效；失败静默（SQLite 方言差异兜底）。
+    try:
+        connection.execute(text("PRAGMA foreign_keys = OFF"))
+    except Exception:
+        pass
     connection.close()
 
 

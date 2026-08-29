@@ -16,17 +16,17 @@ class Execution(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
-    batch_name = Column(String)
+    batch_name = Column(String(255))
     total_cases = Column(Integer, default=0)
     passed_cases = Column(Integer, default=0)
     failed_cases = Column(Integer, default=0)
-    status = Column(String, default="queued")
+    status = Column(String(20), default="queued")
     start_time = Column(DateTime)
     end_time = Column(DateTime)
-    execution_mode = Column(String, default="headless")
+    execution_mode = Column(String(20), default="headless")
     # 执行期持久化字段：Docker 重启后依赖数据库恢复状态
     progress = Column(Integer, default=0)            # 0-100 完成百分比
-    worker_id = Column(String)                       # 执行 worker 标识（hostname:pid）
+    worker_id = Column(String(100))                  # 执行 worker 标识（hostname:pid）
     heartbeat_at = Column(DateTime)                  # 最近一次心跳时间
     created_at = Column(DateTime, default=func.now())
 

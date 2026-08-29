@@ -806,9 +806,55 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 
 - CORS 白名单（仅允许前端域名）
 - 代码安全审计（禁止 `eval` / `exec` / `__import__` / `os.system` 等）
-- AST 语法校验（拦截非法代码）
-- Excel 文件类型 + 大小校验
+- AST 语法校验 + 危险属性拦截（`_check_forbidden_attrs` 拦截 `safe._page` / `safe.__class__` / `safe.__dict__` 等全部下划线前缀属性，以及 `object.*` / `type.*` 反射入口与原生 `page.*` 访问）
+- SafePlaywright 运行时隔离（`__slots__` + `__getattribute__` 白名单；`__class__` 仅放行无能力的假类供 Playwright 栈分析，AI 层 AST 仍禁止）
+- SSRF 双层防护（入口 `validate_target_url` 仅允许 http/https、拦截云元数据/链路本地地址 + 执行期 BrowserContext 网络策略 `context.route` / `route_web_socket` / `service_workers="block"`；内网环境经 `SSRF_ALLOWED_HOSTS` / `SSRF_ALLOWED_PORTS` 或项目 `config_json` allowlist 放行，不整体封禁私网段）
+- 文件访问控制（`/uploads`、`/reports` 不再挂载 StaticFiles，改由受控路由：`INTERNAL_API_TOKEN` Bearer 校验 → 路径规范化边界校验 → 资源 ID 白名单校验 → StreamingResponse；响应头含 CSP + `X-Content-Type-Options: nosniff`）
+- Excel 输入资源限制（文件 ≤ 10MB、行数 ≤ 5000、Sheet ≤ 10、单元格长度 ≤ 4000）
+- HTML / 报告 XSS 防护（Jinja2 autoescape 开启；`report_json` 中 `</` 转义防 `</script>` 闭合；模板 CSP meta `default-src 'none'`；报告文件响应头 CSP）
+- SECRET_KEY 生产校验（ENV=production 时缺失/默认值拒绝启动）
+- AI 限流与并发控制（`AI_RATE_LIMIT` 滑动窗口熔断 + `AI_MAX_CONCURRENCY` BoundedSemaphore 有界并发）
+- 日志脱敏（访问日志仅记录 method / path / status / ip，不记录 Authorization / Cookie / query 等敏感内容）
 - SQLAlchemy 参数化查询（防 SQL 注入）
+
+### 部署边界与已知限制
+
+> 以下为当前实现的安全边界与部署注意事项，部署前请逐条确认。
+
+1. **文件访问共享 Token（过渡方案）**：当前 `INTERNAL_API_TOKEN` 为**全站共享的单一静态令牌**，由 nginx 反代在构建/代理层附加 `Authorization: Bearer` 头，前端不接触 token。已知限制：
+   - Token 无时效、无轮换机制，泄露面为整个部署；生产环境务必使用强随机值（`python -c "import secrets; print(secrets.token_urlsafe(32))"`）并妥善保管。
+   - 该方案是「无用户管理/RBAC」前提下的过渡设计；后续版本计划升级为细粒度签名（JWT）或基于 nginx 的 IP 白名单 + 内网隔离，以消除共享静态令牌风险。
+2. **开发环境无 Token 放行**：未配置 `INTERNAL_API_TOKEN` 时（仅限非生产），`/uploads`、`/reports` 接口**放行并打 WARN 日志**，避免本地开发被鉴权阻塞。生产环境（ENV=production）未配置 Token 时启动直接失败，不存在此风险。
+3. **AI 并发控制的部署边界**：`AI_RATE_LIMIT` 与 `AI_MAX_CONCURRENCY` 均为**进程内**限制（内存共享）。单副本部署完全生效；**多副本（多 worker / 多容器）部署时各进程独立计数，总并发 = 副本数 × 配置值**。如需严格的全局限流，应在网关层（如 Nginx/Apigw）或消息队列层做外部限流，或使用共享存储（Redis）实现分布式计数（本版本未引入 Redis）。
+4. **Alembic 与启动迁移的关系**：应用启动仍走 `main.py` 生命周期中的 `db_init()`（`schema.sql` + `_run_migrations` 幂等迁移），保证「开箱即用」；Alembic（`backend/alembic/`，初始版本 `0001_initial_schema.py`）是**独立于运行时的版本化管理通道**，用于显式升级/降级与 schema 演进管理。二者并存且结构对齐；Alembic URL 优先级为 `AUTOPILOT_ALEMBIC_URL` > `alembic.ini` > `settings.DATABASE_URL`。数据库结构变更时，请同步修改 ORM 模型、`schema.sql`、`0001_initial_schema.py` 三处，并运行迁移测试校验一致性。
+5. **报告 CSP 现状**：报告模板已启用严格 CSP（`default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`）。`'unsafe-inline'` 为离线内联报告的**必要**条件；`connect-src 'none'` + `form-action 'none'` + `frame-ancestors 'none'` 已阻断 XSS 外传、表单提交与点击劫持。配合 Jinja2 autoescape 与 `</` 转义，无需进一步收紧。
+6. **Docker 实机验证**：Dockerfile 已固定 `playwright==1.56.0` 对应 Chromium（`playwright install chromium --with-deps`），后端启动无 `--reload`；docker-compose 已注入 `ENV=production`、`INTERNAL_API_TOKEN`、`SECRET_KEY`、`TOOLHOST_SANDBOX_DISABLED=true` 及健康检查。**实机构建/联调未在本仓库开发环境执行，属 `未验证 / 环境缺失`**；首次部署请按「快速开始 → Docker 部署」执行并核对：后端健康检查通过、Chromium 可启动、报告/截图文件可访问。
+
+### 剩余风险登记表
+
+> 所有已知风险显式分类：`✅ 已修复 / 已覆盖`、`⏳ 环境缺失 / 未验证`、`📌 已接受 / 设计边界`。任何新发现的未登记风险必须补充到此表。
+
+| 风险项 | 类别 | 状态 | 处置与说明 |
+|--------|------|------|-----------|
+| execution_reports 并发创建竞态 | 已修复 | ✅ | `_REPORT_LOCK` 进程内互斥锁 + 并发互斥测试（`TestGenerate::test_generate_concurrent_calls_serialized_by_lock`） |
+| Alembic autogenerate：String 无长度（MySQL VARCHAR requires length） | 已修复 | ✅ | 全部 ORM String 列补长度、大字段改 Text；`0001_initial_schema.py` 同步 |
+| ORM 索引与 schema.sql/0001 不一致 | 已修复 | ✅ | 4 模型补 `Index`（idx_pe_*/idx_tc_*/idx_gc_*/idx_es_*）；autogenerate 已零 diff（diff-check 仅 `pass`） |
+| 测试隔离：alembic fileConfig 重置 root logger / 禁用 autopilot.* logger | 已修复 | ✅ | env.py `disable_existing_loggers=False` + alembic 测试模块 `_restore_logging_state` 快照恢复 |
+| 测试隔离：`PRAGMA foreign_keys = ON` 泄漏到后续测试 | 已修复 | ✅ | conftest `db_session` teardown 重置 `PRAGMA foreign_keys = OFF` |
+| 日志脱敏（Authorization/Cookie/query 落日志） | 已覆盖 | ✅ | LoggingMiddleware 仅记 method/path/status/ip；`test_logging_middleware_does_not_leak_sensitive_data` 锁定 |
+| SafePlaywright `__class__` / 私有属性逃逸 | 已覆盖 | ✅ | AST 层拦截 `_` 前缀属性 + 运行时假类放行仅 `__name__`；双层防线 + 测试 |
+| SSRF（入口 + 执行期双重防护） | 已覆盖 | ✅ | `validate_target_url` + BrowserContext 网络策略；内网 allowlist 放行 |
+| 报告 XSS / HTML 注入 | 已覆盖 | ✅ | Jinja2 autoescape + `</` 转义 + 严格 CSP + 文件响应头 |
+| Excel 资源限制（大小/行数/Sheet/单元格） | 已覆盖 | ✅ | 10MB / 5000 行 / 10 Sheet / 4000 字符，含测试 |
+| SECRET_KEY / INTERNAL_API_TOKEN 生产校验 | 已覆盖 | ✅ | ENV=production 缺失/默认值拒绝启动 |
+| Docker 实机构建与联调 | 环境缺失 | ⏳ | Dockerfile/compose 已就绪（playwright 1.56、healthcheck、token 注入）；需 Docker 环境实跑验证，当前 `未验证` |
+| Real LLM + Real Chromium 全链路 | 环境缺失 | ⏳ | `AUTOPILOT_GOLDEN_REAL_LLM=1` + `AUTOPILOT_GOLDEN_API_KEY` 开关已就绪；需真实 API Key 实测，当前 `未验证` |
+| MySQL 实机 Alembic 迁移 | 环境缺失 | ⏳ | 有 MySQL offline SQL 校验 + 临时库测试（凭据可用时自动跑）；本机无 MySQL 实例，实机 `未验证` |
+| 前端生产 build / 静态资源 | 环境缺失 | ⏳ | 需要 `npm ci` 环境；历史已验证过 build，本轮前端无代码改动 |
+| 共享静态 INTERNAL_API_TOKEN | 已接受 | 📌 | 过渡方案：无时效/无轮换；生产用强随机值；V2 升级 JWT / IP 白名单 |
+| 多副本 AI 限流独立计数 | 已接受 | 📌 | 进程内限制；多副本需网关层 / Redis 全局限流（本版本未引入 Redis） |
+| 无用户管理 / RBAC | 已接受 | 📌 | 产品范围明确不实现；单实例部署 + 内网隔离为主要缓解 |
+| MySQL `TINYINT` vs ORM `Integer` | 已接受 | 📌 | schema.sql 用 TINYINT、ORM 用 Integer，功能等价（值域一致）；启动路径走 schema.sql |
 
 ---
 
@@ -818,6 +864,7 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 |----------|--------|------|
 | `SECRET_KEY` | `change-me-in-production` | 应用密钥。**生产环境（ENV/APP_ENV=production）缺失或为默认值时拒绝启动** |
 | `ENV` | `development` | 运行环境：development / production / test（兼容旧名 `APP_ENV`） |
+| `INTERNAL_API_TOKEN` | `""` | 内部 API 令牌：保护 `/uploads`、`/reports` 文件访问接口（Authorization: Bearer）。**生产环境必填**，缺失时拒绝启动；开发/测试未配置时文件接口放行并告警 |
 | `DATABASE_URL` | `mysql+pymysql://root:password@localhost:3306/autopilot` | 数据库连接 |
 | `OPENAI_API_KEY` | `""` | AI API Key（空则 Mock 模式） |
 | `OPENAI_BASE_URL` | `https://api.deepseek.com/v1` | API 地址（默认 DeepSeek，可换 OpenAI/通义千问/智谱等兼容接口） |
@@ -825,8 +872,11 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 | `OPENAI_MAX_CALLS_PER_MIN` | `30` | AI 调用熔断：每分钟最多调用次数（防无底线烧 Token，旧名，推荐用 AI_RATE_LIMIT） |
 | `AI_RATE_LIMIT` | `30` | AI 速率上限：每分钟最多调用次数（熔断） |
 | `AI_MAX_CONCURRENCY` | `3` | AI 并发上限：同一时刻最多在途请求数（按实际 API 配额设 3/5/10；批量任务经有界队列 + Semaphore 限流） |
+| `SSRF_ALLOWED_HOSTS` | `""` | SSRF 全局 allowlist：执行期除 target 同源外允许访问的 host（逗号分隔，支持子域后缀 `.corp.internal`；项目级也可用 `config_json["allowed_hosts"]`） |
+| `SSRF_ALLOWED_PORTS` | `""` | SSRF 全局 allowlist 端口：除 80/443 外允许访问的端口（逗号分隔，内网测试服务如 8080；项目级也可用 `config_json["allowed_ports"]`） |
 | `HEAL_MAX_RETRY_SAME_ERROR` | `3` | 同一 step 同类错误连续失败阈值，达到后跳过自愈 |
 | `PRE_EXECUTION_CHECK` | `true` | 执行前目标环境健康检查（目标不可达时提前拦截） |
+| `EXECUTION_HEARTBEAT_TIMEOUT` | `180` | 执行心跳超时（秒）：服务重启后 running/healing 任务心跳超时视为孤儿并标记 interrupted |
 | `PLAYWRIGHT_TIMEOUT` | `30000` | 页面加载超时（ms） |
 | `PLAYWRIGHT_HEADLESS` | `true` | 无头模式 |
 | `MAX_HEAL_RETRY` | `3` | 自愈最大重试次数 |

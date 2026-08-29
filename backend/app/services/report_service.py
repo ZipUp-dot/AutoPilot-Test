@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
@@ -36,6 +37,10 @@ from app.models.report import Report
 from app.models.test_case import TestCase
 
 logger = logging.getLogger("autopilot.report")
+
+# 报告生成进程内互斥锁：编排器后台自动生成与手动 POST /reports/generate 并发时，
+# 防止同一 execution_id 同时走"查询-插入"导致 execution_reports UNIQUE 冲突。
+_REPORT_LOCK = threading.Lock()
 
 # ── Jinja2 环境 ──
 # autoescape 开启：模板中所有 {{ }} 输出的不可信动态内容（用例名/错误/日志/代码等）
@@ -58,11 +63,16 @@ class ReportService:
     # ═══════════════════════════════════════════════
 
     def generate(self, execution_id: int) -> dict:
-        """生成 HTML 报告
+        """生成 HTML 报告（进程内互斥，防并发重复创建 UNIQUE 冲突）
 
         Returns:
             { "report_id": 1, "download_url": "..." }
         """
+        with _REPORT_LOCK:
+            return self._generate(execution_id)
+
+    def _generate(self, execution_id: int) -> dict:
+        """生成 HTML 报告（锁内执行）"""
         t0 = time.time()
 
         # 1. 检查是否已有报告

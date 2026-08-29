@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, func, Index
 from pydantic import BaseModel
 
 from app.db.database import Base
@@ -13,20 +13,25 @@ from app.db.database import Base
 
 class ExecutionStep(Base):
     __tablename__ = "execution_steps"
+    __table_args__ = (
+        # 与 schema.sql / alembic 0001 索引对齐（保证 autogenerate 零 diff）
+        Index("idx_es_execution_id", "execution_id"),
+        Index("idx_es_case_id", "case_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     execution_id = Column(Integer, ForeignKey("executions.id", ondelete="CASCADE"), nullable=False)
     case_id = Column(Integer, ForeignKey("test_cases.id", ondelete="CASCADE"), nullable=False)
     step_index = Column(Integer, nullable=False)
-    action = Column(String)
-    target_selector = Column(String)
-    input_value = Column(String)
-    status = Column(String, default="pending")
-    screenshot_before = Column(String)
-    screenshot_after = Column(String)
-    log_output = Column(String)
-    error_message = Column(String)
-    exception_type = Column(String)
+    action = Column(String(50))
+    target_selector = Column(String(500))
+    input_value = Column(Text)
+    status = Column(String(20), default="pending")
+    screenshot_before = Column(String(500))
+    screenshot_after = Column(String(500))
+    log_output = Column(Text)
+    error_message = Column(Text)
+    exception_type = Column(String(100))
     duration_ms = Column(Integer)
     created_at = Column(DateTime, default=func.now())
 

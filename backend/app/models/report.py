@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, func
 from pydantic import BaseModel, Field
 
 from app.db.database import Base
@@ -16,9 +16,9 @@ class Report(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     execution_id = Column(Integer, ForeignKey("executions.id", ondelete="CASCADE"), unique=True, nullable=False)
-    report_html = Column(String)
-    report_summary = Column(String)
-    download_url = Column(String)
+    report_html = Column(Text)
+    report_summary = Column(Text)
+    download_url = Column(String(500))
     created_at = Column(DateTime, default=func.now())
 
 
