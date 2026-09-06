@@ -287,7 +287,8 @@ async function fetchAllData() {
     for (const project of projects) {
       try {
         const res = await executionApi.list(project.id)
-        const executions = res.data || []
+        // 拦截器返回 body {code,data:{items,total}}，执行列表在 data.items
+        const executions = res.data?.items || []
 
         for (const exec of executions) {
           if (exec.status !== 'completed') continue
@@ -308,10 +309,10 @@ async function fetchAllData() {
             batchName: exec.batch_name || exec.name || `执行 #${exec.id}`,
             createdAt: exec.created_at || exec.start_time,
             totalCases: exec.total_cases ?? 0,
-            passed: exec.passed ?? 0,
-            failed: exec.failed ?? 0,
+            passed: exec.passed_cases ?? 0,
+            failed: exec.failed_cases ?? 0,
             passRate: exec.total_cases
-              ? (((exec.passed ?? 0) / exec.total_cases) * 100).toFixed(1)
+              ? (((exec.passed_cases ?? 0) / exec.total_cases) * 100).toFixed(1)
               : '0.0',
             downloadUrl: reportInfo?.download_url || null,
           })

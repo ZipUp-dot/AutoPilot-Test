@@ -182,42 +182,19 @@ def list_project_executions(project_id: int, db: Session = Depends(get_db)):
 
 
 # ═══════════════════════════════════════════════
-# 执行详情
+# 公共聚合（详情/状态共用，保证统计与用例列表同一数据源）
 # ═══════════════════════════════════════════════
 
-@router.get(
-    "/executions/{execution_id}",
-    response_model=ApiResponse,
-    summary="获取执行详情（含步骤列表）",
-)
-def get_execution_detail(execution_id: int, project_id: int = None, db: Session = Depends(get_db)):
-    """获取执行批次的完整详情"""
-    execution = db.query(Execution).filter(Execution.id == execution_id).first()
-    if not execution:
-        raise NotFoundException(f"执行批次 {execution_id} 不存在")
-
-    if project_id is not None and execution.project_id != project_id:
-        raise NotFoundException(f"执行批次 {execution_id} 不存在")
-
-    steps = (
-        db.query(ExecutionStep)
-        .filter(ExecutionStep.execution_id == execution_id)
-        .order_by(ExecutionStep.case_id, ExecutionStep.step_index)
-        .all()
-    )
-
-    # 按 case_id 聚合成 case_results
+def _build_case_results(db: Session, steps: list[ExecutionStep]) -> list[dict]:
+    """按 case_id 把步骤聚合成用例级结果（与用例列表展示一致）"""
     from collections import OrderedDict
 
-    case_groups = OrderedDict()
+    case_groups: "OrderedDict[int, list[ExecutionStep]]" = OrderedDict()
     case_ids = set()
     for s in steps:
         case_ids.add(s.case_id)
-        if s.case_id not in case_groups:
-            case_groups[s.case_id] = []
-        case_groups[s.case_id].append(s)
+        case_groups.setdefault(s.case_id, []).append(s)
 
-    # 批量查询用例名
     case_name_map = {}
     if case_ids:
         cases = db.query(TestCase).filter(TestCase.id.in_(case_ids)).all()
@@ -264,14 +241,61 @@ def get_execution_detail(execution_id: int, project_id: int = None, db: Session 
                 for cs in csteps
             ],
         })
+    return case_results
+
+
+def _compute_case_stats(case_results: list[dict]) -> dict:
+    """基于用例级结果聚合通过/失败/跳过/总耗时（口径与用例列表一致）"""
+    passed = sum(1 for c in case_results if c["status"] == "success")
+    failed = sum(1 for c in case_results if c["status"] == "failed")
+    skipped = sum(1 for c in case_results if c["status"] == "skipped")
+    total_duration = sum(c["duration"] for c in case_results)
+    return {
+        "passed_cases": passed,
+        "failed_cases": failed,
+        "skipped": skipped,
+        "total_cases": passed + failed + skipped,
+        "total_duration": total_duration,
+    }
+
+
+# ═══════════════════════════════════════════════
+# 执行详情
+# ═══════════════════════════════════════════════
+
+@router.get(
+    "/executions/{execution_id}",
+    response_model=ApiResponse,
+    summary="获取执行详情（含步骤列表）",
+)
+def get_execution_detail(execution_id: int, project_id: int = None, db: Session = Depends(get_db)):
+    """获取执行批次的完整详情"""
+    execution = db.query(Execution).filter(Execution.id == execution_id).first()
+    if not execution:
+        raise NotFoundException(f"执行批次 {execution_id} 不存在")
+
+    if project_id is not None and execution.project_id != project_id:
+        raise NotFoundException(f"执行批次 {execution_id} 不存在")
+
+    steps = (
+        db.query(ExecutionStep)
+        .filter(ExecutionStep.execution_id == execution_id)
+        .order_by(ExecutionStep.case_id, ExecutionStep.step_index)
+        .all()
+    )
+
+    case_results = _build_case_results(db, steps)
+    stats = _compute_case_stats(case_results)
 
     return ApiResponse(data={
         "id": execution.id,
         "project_id": execution.project_id,
         "batch_name": execution.batch_name,
-        "total_cases": execution.total_cases,
-        "passed_cases": execution.passed_cases,
-        "failed_cases": execution.failed_cases,
+        "total_cases": stats["total_cases"],
+        "passed_cases": stats["passed_cases"],
+        "failed_cases": stats["failed_cases"],
+        "skipped": stats["skipped"],
+        "total_duration": stats["total_duration"],
         "status": execution.status,
         "start_time": str(execution.start_time) if execution.start_time else None,
         "end_time": str(execution.end_time) if execution.end_time else None,
@@ -331,6 +355,11 @@ def get_execution_status(execution_id: int, project_id: int = None, db: Session 
     done = sum(1 for s in steps if s.status in ("success", "failed", "skipped"))
     pct = round(done / total * 100) if total > 0 else 0
 
+    # 与详情接口同一数据源，返回实时聚合的用例结果与统计，
+    # 使前端轮询时统计卡片与用例列表保持同一口径。
+    case_results = _build_case_results(db, steps)
+    stats = _compute_case_stats(case_results)
+
     # 获取当前正在执行的用例名
     current_case = None
     for s in steps:
@@ -353,9 +382,12 @@ def get_execution_status(execution_id: int, project_id: int = None, db: Session 
     return ApiResponse(data={
         "execution_id": execution_id,
         "status": execution.status,
-        "total_cases": execution.total_cases,
-        "passed_cases": execution.passed_cases,
-        "failed_cases": execution.failed_cases,
+        "total_cases": stats["total_cases"],
+        "passed_cases": stats["passed_cases"],
+        "failed_cases": stats["failed_cases"],
+        "skipped": stats["skipped"],
+        "total_duration": stats["total_duration"],
+        "case_results": case_results,
         "total_steps": total,
         "completed_steps": done,
         "progress": f"{done}/{total}",

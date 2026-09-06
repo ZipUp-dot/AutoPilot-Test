@@ -82,11 +82,20 @@ class ReportService:
             .first()
         )
         if existing and existing.report_html:
-            logger.info("报告已存在: execution_id=%s", execution_id)
-            return {
-                "report_id": existing.id,
-                "download_url": existing.download_url,
-            }
+            # 记录已存在且 HTML 文件在磁盘上存在 → 直接复用，不重复渲染。
+            # 若 download_url 指向的文件已被清理/人工删除，则不返回，继续向下重渲染，
+            # 让文件自动恢复（_save_html_file 重写文件、_save_db 为 upsert 更新同一行）。
+            file_exists = False
+            if existing.download_url:
+                file_exists = (
+                    Path(settings.REPORT_DIR) / Path(existing.download_url).name
+                ).exists()
+            if file_exists:
+                logger.info("报告已存在: execution_id=%s", execution_id)
+                return {
+                    "report_id": existing.id,
+                    "download_url": existing.download_url,
+                }
 
         # 2. 查询执行批次
         execution = (

@@ -9,7 +9,7 @@
     </div>
 
     <div class="stat-cards">
-      <el-card shadow="hover" class="stat-item"><div class="stat-num" style="color:#409eff">{{ stats.projects }}</div><div class="stat-label">项目总数</div></el-card>
+      <el-card shadow="hover" class="stat-item"><div class="stat-num" style="color:#409eff">{{ stats.projects }}</div><div class="stat-label">已执行项目</div></el-card>
       <el-card shadow="hover" class="stat-item"><div class="stat-num" style="color:#67c23a">{{ stats.cases }}</div><div class="stat-label">用例总数</div></el-card>
       <el-card shadow="hover" class="stat-item"><div class="stat-num" style="color:#e6a23c">{{ stats.executions }}</div><div class="stat-label">执行次数</div></el-card>
       <el-card shadow="hover" class="stat-item"><div class="stat-num" style="color:#f56c6c">{{ stats.avgRate }}%</div><div class="stat-label">平均通过率</div></el-card>
@@ -45,35 +45,45 @@ const recentExecutions = ref([])
 onMounted(async () => {
   try {
     await projectStore.fetchProjects()
-    stats.value.projects = projectStore.projects.length
 
-    let totalCases = 0, totalExec = 0, ratesSum = 0, ratesCount = 0
+    let executedProjects = 0, totalCases = 0, totalExec = 0, totalPassed = 0, totalCasesAll = 0
     const allExecs = []
+    // 已结束且有结果的执行状态（completed/failed/stopped/interrupted）。
+    // queued/running/healing 尚未产出结果，不参与通过率统计。
+    const FINISHED = new Set(['completed', 'failed', 'stopped', 'interrupted'])
 
     for (const p of projectStore.projects) {
       try {
         const casesRes = await caseApi.list(p.id, 1, 1)
-        const caseTotal = casesRes.data?.total || 0
-        totalCases += caseTotal
+        totalCases += casesRes.data?.total || 0
 
         const execRes = await executionApi.list(p.id)
         const execs = execRes.data?.items || []
         allExecs.push(...execs.map(e => ({ ...e, project_name: p.name })))
         totalExec += execs.length
 
+        // 项目总数 = 有执行记录的项目数（与下方「最近执行记录」对齐）
+        if (execs.length > 0) executedProjects++
+
         execs.forEach(e => {
-          if (e.total_cases > 0 && e.status === 'completed') {
-            ratesSum += (e.passed_cases / e.total_cases) * 100
-            ratesCount++
+          // 平均通过率 = 已结束执行通过的用例合计 / 已结束执行总用例合计，
+          // 与下方「通过 x/y」各列合计一致（含 interrupted/failed，不再只算 completed）。
+          if (FINISHED.has(e.status) && e.total_cases > 0) {
+            totalPassed += e.passed_cases
+            totalCasesAll += e.total_cases
           }
         })
       } catch (e) { /* skip */ }
     }
 
+    stats.value.projects = executedProjects
     stats.value.cases = totalCases
     stats.value.executions = totalExec
-    stats.value.avgRate = ratesCount > 0 ? Math.round(ratesSum / ratesCount) : 0
-    recentExecutions.value = allExecs.slice(0, 10)
+    stats.value.avgRate = totalCasesAll > 0 ? Math.round((totalPassed / totalCasesAll) * 100) : 0
+    // 跨项目按开始时间倒序，保证「最近执行记录」确实是最近的在前
+    recentExecutions.value = allExecs
+      .sort((a, b) => (b.start_time || '').localeCompare(a.start_time || ''))
+      .slice(0, 10)
   } catch (e) { /* ignore */ }
 })
 </script>

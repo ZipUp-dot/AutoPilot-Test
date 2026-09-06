@@ -51,19 +51,19 @@
       <div class="stat-cards">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-label">总用例数</div>
-          <div class="stat-value">{{ detail.total_cases ?? 0 }}</div>
+          <div class="stat-value">{{ stats.total }}</div>
         </el-card>
         <el-card shadow="hover" class="stat-card stat-passed">
           <div class="stat-label">通过</div>
-          <div class="stat-value">{{ detail.passed_cases ?? 0 }}</div>
+          <div class="stat-value">{{ stats.passed }}</div>
         </el-card>
         <el-card shadow="hover" class="stat-card stat-failed">
           <div class="stat-label">失败</div>
-          <div class="stat-value">{{ detail.failed_cases ?? 0 }}</div>
+          <div class="stat-value">{{ stats.failed }}</div>
         </el-card>
         <el-card shadow="hover" class="stat-card stat-skipped">
           <div class="stat-label">跳过</div>
-          <div class="stat-value">{{ detail.skipped ?? 0 }}</div>
+          <div class="stat-value">{{ stats.skipped }}</div>
         </el-card>
         <el-card shadow="hover" class="stat-card">
           <div class="stat-label">通过率</div>
@@ -306,16 +306,29 @@ const FINAL_STATUSES = ['completed', 'stopped', 'failed', 'interrupted']
 const isCompleted = computed(() => detail.value.status === 'completed')
 const isRunning = computed(() => detail.value.status === 'running' || detail.value.status === 'healing')
 
+// 统计卡片统一以用例列表（case_results）为数据源，保证与列表完全一致
+const stats = computed(() => {
+  const list = caseResults.value
+  let passed = 0, failed = 0, skipped = 0, duration = 0
+  for (const r of list) {
+    if (r.status === 'success') passed++
+    else if (r.status === 'failed') failed++
+    else if (r.status === 'skipped') skipped++
+    duration += r.duration || 0
+  }
+  return { total: passed + failed + skipped, passed, failed, skipped, duration }
+})
+
 const passRate = computed(() => {
-  const total = detail.value.total_cases || 0
+  const total = stats.value.total
   if (total === 0) return 0
-  return Math.round((detail.value.passed_cases || 0) / total * 100)
+  return Math.round(stats.value.passed / total * 100)
 })
 
 const passRateText = computed(() => {
-  const total = detail.value.total_cases || 0
+  const total = stats.value.total
   if (total === 0) return '0.0%'
-  return ((detail.value.passed_cases || 0) / total * 100).toFixed(1) + '%'
+  return ((stats.value.passed / total) * 100).toFixed(1) + '%'
 })
 
 const passRateColor = computed(() => {
@@ -325,7 +338,9 @@ const passRateColor = computed(() => {
 })
 
 const totalDuration = computed(() => {
-  return formatDuration(detail.value.total_duration ?? detail.value.duration)
+  // 所有用例均未执行/无耗时时显示 0s，而不是 '-'
+  if (!stats.value.duration) return '0s'
+  return formatDuration(stats.value.duration)
 })
 
 const caseResults = computed(() => {
