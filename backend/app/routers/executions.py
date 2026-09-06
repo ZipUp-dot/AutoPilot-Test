@@ -129,7 +129,8 @@ def list_project_executions(project_id: int, db: Session = Depends(get_db)):
     # （自愈过程中 Execution 表的缓存统计不会实时更新，需以步骤状态为准）
     from collections import defaultdict
     exec_ids = [e.id for e in executions]
-    case_statuses: dict[int, dict[int, list[str]]] = defaultdict(lambda: defaultdict(list))
+    # value: {case_id: [(created_at, step_id, status), ...]}，保留时间与顺序信息用于取最新记录
+    case_statuses: dict[int, dict[int, list]] = defaultdict(lambda: defaultdict(list))
     if exec_ids:
         steps = (
             db.query(ExecutionStep)
@@ -137,19 +138,22 @@ def list_project_executions(project_id: int, db: Session = Depends(get_db)):
             .all()
         )
         for s in steps:
-            case_statuses[s.execution_id][s.case_id].append(s.status)
+            case_statuses[s.execution_id][s.case_id].append(
+                (s.created_at or datetime.min, s.id, s.status)
+            )
 
     items = []
     for e in executions:
-        # 实时聚合：用例通过 = 所有步骤 success；用例失败 = 存在 failed 步骤
+        # 实时聚合：用例最终状态 = 该用例最新一条执行记录的状态（created_at 最新、ID 最大兜底）
         cstatus_map = case_statuses.get(e.id, {})
         passed = 0
         failed = 0
         if cstatus_map:
-            for sts in cstatus_map.values():
-                if "failed" in sts:
+            for records in cstatus_map.values():
+                latest_status = max(records, key=lambda r: (r[0], r[1]))[2]
+                if latest_status == "failed":
                     failed += 1
-                elif all(st == "success" for st in sts):
+                elif latest_status == "success":
                     passed += 1
         else:
             # 无步骤记录（刚创建等）回退到缓存统计
@@ -202,19 +206,20 @@ def _build_case_results(db: Session, steps: list[ExecutionStep]) -> list[dict]:
 
     case_results = []
     for cid, csteps in case_groups.items():
-        statuses = {cs.status for cs in csteps}
-        if "failed" in statuses:
-            case_status = "failed"
-        elif "success" in statuses and all(cs.status == "success" for cs in csteps):
-            case_status = "success"
-        elif "running" in statuses:
-            case_status = "running"
-        elif "pending" in statuses:
-            case_status = "pending"
-        elif "skipped" in statuses:
-            case_status = "skipped"
-        else:
-            case_status = "unknown"
+        # 最终状态 = 该用例「最新一次执行记录」的状态（created_at 最新，ID 最大兜底），
+        # 而不是“曾经失败过即失败”。同一用例可能因自愈/重试出现多次执行记录，
+        # 取最新一条的 status 作为主列表状态，与“重试历史”中最新的那条一致。
+        latest = max(
+            csteps,
+            key=lambda cs: (cs.created_at or datetime.min, cs.id),
+        )
+        # 未识别的步骤状态兜底为 unknown，避免前端状态标签失配
+        _status = latest.status or ""
+        case_status = (
+            _status
+            if _status in ("success", "failed", "running", "pending", "skipped")
+            else "unknown"
+        )
 
         case_results.append({
             "case_id": cid,

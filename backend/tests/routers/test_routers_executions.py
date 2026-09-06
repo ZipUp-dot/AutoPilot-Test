@@ -176,8 +176,8 @@ def test_list_executions_progress_zero_when_total_zero(client, db_session, sampl
     assert item["progress"] == 0
 
 
-def test_list_executions_healing_mixed_steps_counts_failed(client, db_session, sample_project, sample_test_case):
-    """healing 状态：用例经历 failed → success（自愈成功）仍按 failed 统计"""
+def test_list_executions_healing_mixed_steps_latest_record_wins(client, db_session, sample_project, sample_test_case):
+    """healing 状态：用例经历 failed → success（自愈成功），最终状态取最新记录 → 计入 passed，而非 failed"""
     exec_obj = _create_execution_with_steps(
         db_session, sample_project,
         steps_by_case={sample_test_case.id: ["failed", "success"]},
@@ -189,8 +189,9 @@ def test_list_executions_healing_mixed_steps_counts_failed(client, db_session, s
     resp = client.get(f"/api/v1/projects/{sample_project.id}/executions")
     assert resp.status_code == 200
     item = _find_item(resp.json(), exec_obj.id)
-    # 实现约定：存在 failed 步骤的用例计入 failed（自愈过程统计以步骤为准）
-    assert item["failed_cases"] == 1
+    # 最终状态 = 最新一条执行记录状态（success 覆盖之前的 failed）
+    assert item["passed_cases"] == 1
+    assert item["failed_cases"] == 0
     assert item["status"] == "healing"
     assert item["progress"] == 100
 
