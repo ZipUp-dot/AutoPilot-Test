@@ -114,7 +114,7 @@ AutoPilot/
 │   │   ├── prompts/                # AI Prompt 模板（代码生成/自愈/页面分析 共 5 个）
 │   │   ├── templates/              # HTML 报告模板
 │   │   └── middlewares/            # 请求日志 + 响应计时
-│   ├── tests/                      # pytest 四层测试套件（1451 测试 / 1449 passed，覆盖率 90%）
+│   ├── tests/                      # pytest 四层测试套件（1454 测试 / 1452 passed，覆盖率 90%）
 │   │   ├── conftest.py             # 共享 Fixture（SQLite 内存库 + 全 Mock）
 │   │   ├── factories.py            # 工厂类
 │   │   ├── unit/                   # 单元测试
@@ -183,7 +183,7 @@ AutoPilot 的终态语义只从**冻结的事实表**读取，禁止运行期重
 | :--- | :--- | :--- |
 | **V1.0** | ✅ MVP 已发布 | 跑通"抓取 → 导入 → 生成 → 执行 → 容错重试 → 报告"全链路（Web 端） |
 | **V1.1** | ✅ Core 已完成 | 新增 Android 支持（AppiumService、元素抓取、AI 生成、执行、自愈、监控）、Orchestrator 平台分发、Heal History、Report 增强、Project/PageElement 平台隔离 |
-| **V1.2** | 🔧 开发中 | AI 感知页面抓取（goto 失败自动截图分析并执行前置操作）、自愈成本防护（入口健康检查 / 同类错误快速失败 / AI 调用限流熔断）、执行前环境健康检查、执行列表实时聚合、测试覆盖率 90%（1451 测试 / 1449 passed） |
+| **V1.2** | 🔧 开发中 | AI 感知页面抓取（goto 失败自动截图分析并执行前置操作）、自愈成本防护（入口健康检查 / 同类错误快速失败 / AI 调用限流熔断）、执行前环境健康检查、执行列表实时聚合、测试覆盖率 90%（1454 测试 / 1452 passed） |
 
 
 ## 十、快速开始
@@ -254,16 +254,16 @@ cd backend
 
 测试套件采用**四层架构**（unit / services / routers / integration），全部运行于 SQLite 内存数据库、零外部依赖：
 - LLM API、Playwright、Appium、文件系统均通过 Mock 隔离
-- 当前 **1449 passed, 2 skipped**（collected 1451），语句覆盖率 **91%**（含分支总覆盖率 **90%**）
+- 当前 **1452 passed, 2 skipped**（collected 1454），语句覆盖率 **91%**（含分支总覆盖率 **90%**）
 - 完整说明见 [tests/README_TEST.md](backend/tests/README_TEST.md)
 
-> **测试数字同源约束**：上述数字来自 **Release R_P2-rc @ commit `7862736`** 的**同一次** `cd backend && python -m pytest` 全量执行，原始输出为 [backend/test_output.txt](backend/test_output.txt)；README 只引用该文件，**不存在多处分别填写**。
+> **测试数字同源约束**：上述数字来自 **Release R_P2-rc @ commit `8bfba07`** 的**同一次** `cd backend && python -m pytest` 全量执行，原始输出为 [backend/test_output.txt](backend/test_output.txt)；README 只引用该文件，**不存在多处分别填写**。
 
 ### Release 验收（四项量化指标实测）
 
 四项指标（首生成有效率 / 最终执行成功率 / 单条用例端到端耗时 / Excel 批量导入）的实测数字、口径说明、与立项书 3.2 的差距分析详见 **[docs/ACCEPTANCE_REPORT.md](docs/ACCEPTANCE_REPORT.md)**。
 
-| 指标 | 实测（R_P2-rc @ `7862736`） |
+| 指标 | 实测（R_P2-rc @ `8bfba07`） |
 | :--- | :--- |
 | 首生成有效率（工程代理指标） | 99/99 = 100.0%（cohort 覆盖 99/120；另有 21 例因单 Case 生成预算耗尽被剔除） |
 | 最终执行成功率（Case 级） | 68/99 = **68.7%（未达到 85%）** |
@@ -296,7 +296,7 @@ cd backend
 | **当前版本** | V1.2（开发中） |
 | **文档版本** | V3.2 |
 | **最后更新** | 2026-09-26 |
-| **后端测试** | 1449 passed / 2 skipped（语句覆盖率 91%，含分支 90%）—— Release R_P2-rc @ commit `7862736` |
+| **后端测试** | 1452 passed / 2 skipped（语句覆盖率 91%，含分支 90%）—— Release R_P2-rc @ commit `8bfba07` |
 | **维护者** | ethan-peng（Mr-6Lawrence） |
 | **Gitee** | https://gitee.com/Mr-6Lawrence/auto-pilot-test |
 | **GitHub** | https://github.com/ZipUp-dot/AutoPilot-Test |

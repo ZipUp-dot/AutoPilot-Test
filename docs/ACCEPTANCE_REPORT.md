@@ -1,7 +1,7 @@
 # AutoPilot 验收报告（P2：立项书 3.2 四项量化指标实测）
 
 > 计量日期：2026-09-26
-> 被测版本：**Release R_P2-rc @ commit `b12b784`**（`v1.0-mvp-27-gb12b784`）
+> 被测版本：**Release R_P2-rc @ commit `8bfba07`**（`v1.0-mvp-28-g8bfba07`）
 > 计量单位：**Case（禁止按 Execution 批次平均）**
 > 数据来源：真实端到端运行（真实 Excel / 真实 LLM / 真实 Playwright / 真实 DB），**无 Mock、无演示数据填充**
 
@@ -28,9 +28,9 @@
 
 | 项 | 值 |
 | :--- | :--- |
-| Git HEAD commit | `b12b784bef83a946aa918c6243c8e0344f37ab23`（`git describe` = `v1.0-mvp-27-gb12b784`，提交信息 `fix(arch): v9.8.1 Frozen Spec 修复实施（P0-1~P1-3 + P2）`） |
+| Git HEAD commit | `8bfba07b8fc680e883b34c04ab2a7a7b1d196f7c`（`git describe` = `v1.0-mvp-28-g8bfba07`，提交信息 `fix(arch): v9.8.1 Frozen Spec 修复实施（P0-1~P1-3 + P2）`） |
 | Release tag | **无**（commit 已落地但未打 tag；建议 owner 打 tag，如 `R_P2`，README 再改引该 tag） |
-| 工作区状态 | 代码全部在 `b12b784` 内；仅 `backend/test_output.txt` 为本次验收命令重新生成的产物（待提交） |
+| 工作区状态 | 代码、`backend/test_output.txt`、本文档及验收脚本均已落在 `8bfba07` 内（`git ls-files` 可验证）；当前工作区仅有本次"测试数字 / commit 锚点同步"的未提交文档改动（`README.md`、`backend/README.md`、`backend/requirements.txt`、本文档） |
 | 后端依赖（requirements 锁定） | `fastapi==0.115.12` · `uvicorn[standard]==0.34.1` · `sqlalchemy==2.0.40` · `alembic==1.19.1` · `pydantic==2.11.3` · `playwright==1.56.0` · `openpyxl==3.1.5` · `httpx==0.28.1` |
 | **运行时实际 Playwright** | **1.62.0**（模块加载自 user site-packages，**遮蔽** 全局 site-packages 的 1.56.0）——⚠️ 与 requirements 钉版不一致，见 §8 风险 R1 |
 | Playwright 浏览器 | `chromium` revision **1234**（`chromium_headless_shell-1234`；包内 `browsers.json` 期望值） |
@@ -40,7 +40,7 @@
 | pytest 命令 | `cd backend && python -m pytest`（`pytest.ini` 内置 `--cov=app --cov-branch`） |
 | 原始记录 | `backend/test_output.txt`（上述命令单次全量执行的直接产物）、`backend/data/p2_acceptance/metrics.json` |
 
-> **边界说明**：四项指标的端到端实测执行于 commit `7862736` 的工作树（当时 P0/P1/P2 尚未提交）；该工作树内容随后由 owner 提交为 `b12b784`。两者之间的代码差异**仅为 Legacy Bridge 的字符串族类型归一化修复**（`app/db/legacy_baseline.py`：MySQL `LONGTEXT`/`JSON` 与基线 `varchar`/`text` 视为同一大类型；属启动期预检，**不参与执行链路**）+ 对应单测 + 文档。回归结果已按 `b12b784` 复跑（§7）。
+> **边界说明**：四项指标的端到端实测，是在 `7862736`（P0/P1/P2 改动**当时尚未提交**）之上的**工作树**上执行的，并非在 `7862736` 这一提交的代码上执行。该工作树内容随后由 owner 一次性提交，**当前 HEAD 为 `8bfba07`**（提交信息与 `b12b784` 相同，历史经 amend/rebase 重写，`git describe` = `v1.0-mvp-28-g8bfba07`）。实测之后工作树仅发生过**一处源码变更**：Legacy Bridge 的字符串族类型归一化（`app/db/legacy_baseline.py`：MySQL `LONGTEXT`/`JSON` 与基线 `varchar`/`text` 视为同一大类型），其余为对应单测与文档/验收脚本。该模块**仅被 `app/db/database.py` 的启动期预检引用**（全仓 `grep` 已确认无其他业务引用），不参与执行链路，故四项指标数值不受影响。回归结果已按 `8bfba07` 复跑（§7）。
 
 ### 2.1 同源约束（测试数字）
 
@@ -230,14 +230,17 @@ E2E P95 = **31.70s ≤ 60s** → **该口径下达标**；first-pass P95 = 6.65s
 
 ---
 
-## 7. 全量回归结果（Release R_P2-rc @ commit 7862736）
+## 7. 全量回归结果（Release R_P2-rc @ commit `8bfba07`）
 
 | 项 | 命令 | 结果 |
 | :--- | :--- | :--- |
-| 后端全量测试 | `cd backend && python -m pytest` | ✅ **1449 passed, 2 skipped**（1449+2 = 1451 collected；679 warnings；耗时 68.62s） |
-| 语句覆盖率 | 同上（`--cov=app --cov-branch`） | **91%（7362 语句 / 635 未覆盖）**；含分支总覆盖率 **90%** |
+| 后端全量测试 | `cd backend && python -m pytest` | ✅ **1452 passed, 2 skipped**（collected 1454；675 warnings；耗时 74.58s） |
+| 语句覆盖率 | 同上（`--cov=app --cov-branch`） | **91%（7363 语句 / 634 未覆盖）**；含分支总覆盖率 **90%** |
 | 前端构建 | `cd frontend && npm run build` | ✅ **built in 11.03s**，exit 0（仅 chunk > 500kB 体积告警，非失败） |
+| Legacy Bridge 修复验证 | 新增 3 个单测（MySQL 方言字符串族 + 反向保护）；并对真实 MySQL 旧库做**只读**预检 | ✅ `compatibility_check ok=True`（差异清单为空）、`0002 preflight issues=0` |
 | 原始记录 | — | `backend/test_output.txt`（同一次执行产物） |
+
+> 真实 MySQL 旧库只读预检结果（数据将保留）：`projects=5`、`page_elements=169`、`test_cases=75`、`generated_codes=62`、`executions=4`、`execution_steps=219`、`execution_reports=2`、`heal_records=171`；Bridge 将 stamp `0001_initial_schema` 后 upgrade head（只应用 0002 delta）。
 
 ### 7.1 核心服务覆盖率（要求：低于 60% 需单列说明）
 
@@ -259,7 +262,7 @@ E2E P95 = **31.70s ≤ 60s** → **该口径下达标**；first-pass P95 = 6.65s
 | # | 风险 | 影响 | 建议 |
 | :-- | :--- | :--- | :--- |
 | R1 | **依赖漂移**：requirements 钉 `playwright==1.56.0`，但运行时实际加载 user site-packages 的 **1.62.0**（对应 chromium revision 1234） | 同一 commit 在不同机器可能用不同浏览器版本 → 验收数值漂移 | 清理 user site-packages 遮蔽，统一到 `pip install -r requirements.txt` 的锁定版本；在 CI 记录 `playwright --version` |
-| R2 | **release 边界未固化**：119 个文件未提交、无 tag | 无法用 tag 唯一锚定本次验收 | owner 提交 P0/P1/P2 改动并打 tag（如 `R_P2`），README 改为引用该 tag |
+| R2 | **release 边界未打 tag**：代码已提交 `8bfba07`，但无 tag | 无法用 tag 唯一锚定本次验收 | owner 打 tag（如 `R_P2`），README 改为引用该 tag |
 | R3 | **自愈预算偏低**：`AI_HEAL_BUDGET_SECONDS=120s` < 3×单次 LLM 往返 | 指标②长期不达标；30 例被升级 `execution_failed` | 按实际 LLM 延迟上调 heal 预算，或将"预算不足"与"AI 修复失败"在归因上分离 |
 | R4 | **无 per-Case 端到端时间戳事实** | 60s 指标无法按严格端到端口径验收 | 采纳 §6 方案 A，补 `case_started_at` / `case_finished_at` |
 | R5 | **生成预算剔除 17.5% Case** | 指标①失真 + 可执行 Case 缩水 | 报告同时给出"宽口径"；评估 120s 生成预算与目标站点/LLM 延迟的匹配度 |
@@ -297,6 +300,8 @@ python scripts/p2_acceptance/compute_metrics.py                          # → d
 | `backend/test_output.txt` | 全量 pytest 单次执行原始输出 |
 | `backend/scripts/p2_acceptance/*.py` | 本地目标 / Excel 生成 / 管道 / 指标 / 探针脚本 |
 
+> `backend/data/p2_acceptance/` 下的 `metrics.json` / `pipeline_state.json` / `acceptance.db` 为**本地生成物**（`git ls-files backend/data/p2_acceptance` 返回空，未纳入 git 跟踪），按本节步骤 1)–5) 可完整重建；`backend/test_output.txt` 与验收脚本已随 `8bfba07` 提交。
+
 ---
 
 ## 10. 验收自查（对应任务验收测试）
@@ -308,4 +313,4 @@ python scripts/p2_acceptance/compute_metrics.py                          # → d
 | 3 | README 与 test_output.txt 数字同源一致（审查生成方式） | ✅ 同一次 `python -m pytest` → `Tee-Object` 落盘，README 引用同一文件 |
 | 4 | 60s 口径全文一致且为 owner 已确认版本（报告不得自宣修订） | ✅ 报告仅给【建议】（§6），未自行修订口径 |
 | 5 | 单 worker 约束显著、`--workers 4` 无残留推荐 | ✅ README 顶部与 backend/README 启动章节；`--workers` 已改为禁止项 |
-| 6 | 全量回归绿（附运行记录）；Mock/演示数据不得进入验收报告 | ✅ §7（1449 passed / 前端构建 0）；本报告数据全部为真实端到端产物 |
+| 6 | 全量回归绿（附运行记录）；Mock/演示数据不得进入验收报告 | ✅ §7（1452 passed / 前端构建 0）；本报告数据全部为真实端到端产物 |

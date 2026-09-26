@@ -91,7 +91,7 @@ backend/
 │   ├── middlewares/              # 中间件
 │   │   ├── logging.py            # 请求日志（method/path/status/duration/ip）
 │   │   └── timing.py             # 响应时间头
-├── tests/                       # pytest 测试套件（4 层架构，1451 测试 / 1449 passed，覆盖率 90%）
+├── tests/                       # pytest 测试套件（4 层架构，1454 测试 / 1452 passed，覆盖率 90%）
 │   ├── conftest.py              # 共享 Fixture（SQLite 内存库 + 外部依赖 Mock）
 │   ├── factories.py             # 工厂类
 │   ├── README_TEST.md           # 测试运行说明
@@ -785,11 +785,11 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 
 | 指标 | 数值 | 目标 |
 |------|------|------|
-| 测试用例 | 1449 passed / 2 skipped（collected 1451） | 全通过 |
-| **语句覆盖率** | **91%**（7362 语句 / 635 未覆盖） | ≥ 90% ✅ |
-| **含分支总覆盖率** | **90%**（2100 分支 / 216 partial） | ≥ 80% ✅ |
+| 测试用例 | 1452 passed / 2 skipped（collected 1454） | 全通过 |
+| **语句覆盖率** | **91%**（7363 语句 / 634 未覆盖） | ≥ 90% ✅ |
+| **含分支总覆盖率** | **90%**（2098 分支 / 215 partial） | ≥ 80% ✅ |
 
-> 数字来自 **Release R_P2-rc @ commit `7862736`** 的同一次 `python -m pytest` 全量执行，原始输出见 [test_output.txt](test_output.txt)（与根 [README](../README.md) 同源）。四项量化指标实测见 [../docs/ACCEPTANCE_REPORT.md](../docs/ACCEPTANCE_REPORT.md)。
+> 数字来自 **Release R_P2-rc @ commit `8bfba07`** 的同一次 `python -m pytest` 全量执行，原始输出见 [test_output.txt](test_output.txt)（与根 [README](../README.md) 同源）。四项量化指标实测见 [../docs/ACCEPTANCE_REPORT.md](../docs/ACCEPTANCE_REPORT.md)。
 
 ### 各层覆盖情况
 
