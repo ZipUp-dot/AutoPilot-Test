@@ -1,7 +1,7 @@
 # AutoPilot 验收报告（P2：立项书 3.2 四项量化指标实测）
 
 > 计量日期：2026-09-26
-> 被测版本：**Release R_P2-rc @ commit `7862736`**（工作区含未提交改动，见 §2）
+> 被测版本：**Release R_P2-rc @ commit `b12b784`**（`v1.0-mvp-27-gb12b784`）
 > 计量单位：**Case（禁止按 Execution 批次平均）**
 > 数据来源：真实端到端运行（真实 Excel / 真实 LLM / 真实 Playwright / 真实 DB），**无 Mock、无演示数据填充**
 
@@ -28,9 +28,9 @@
 
 | 项 | 值 |
 | :--- | :--- |
-| Git HEAD commit | `7862736835451d967b63950c5b2b7f16be10d8b1`（`git describe` = `v1.0-mvp-25-g7862736`） |
-| Release tag | **无**（P0/P1/P2 改动尚未提交；建议 owner 提交后打 tag，如 `R_P2`） |
-| 未提交改动 | 119 个文件处于 dirty 状态；代码路径（`backend/app`、`backend/tests`、`backend/alembic`、`backend/pytest.ini`、`backend/requirements*.txt`、`frontend/src`）diff 指纹 = `85cbf3fb338bc1e881f34168bd7b11cc826f1eb0` |
+| Git HEAD commit | `b12b784bef83a946aa918c6243c8e0344f37ab23`（`git describe` = `v1.0-mvp-27-gb12b784`，提交信息 `fix(arch): v9.8.1 Frozen Spec 修复实施（P0-1~P1-3 + P2）`） |
+| Release tag | **无**（commit 已落地但未打 tag；建议 owner 打 tag，如 `R_P2`，README 再改引该 tag） |
+| 工作区状态 | 代码全部在 `b12b784` 内；仅 `backend/test_output.txt` 为本次验收命令重新生成的产物（待提交） |
 | 后端依赖（requirements 锁定） | `fastapi==0.115.12` · `uvicorn[standard]==0.34.1` · `sqlalchemy==2.0.40` · `alembic==1.19.1` · `pydantic==2.11.3` · `playwright==1.56.0` · `openpyxl==3.1.5` · `httpx==0.28.1` |
 | **运行时实际 Playwright** | **1.62.0**（模块加载自 user site-packages，**遮蔽** 全局 site-packages 的 1.56.0）——⚠️ 与 requirements 钉版不一致，见 §8 风险 R1 |
 | Playwright 浏览器 | `chromium` revision **1234**（`chromium_headless_shell-1234`；包内 `browsers.json` 期望值） |
@@ -39,6 +39,8 @@
 | 关键运行参数 | `AI_BATCH_BUDGET_SECONDS=5400`、`AI_CASE_BUDGET_SECONDS=120`、`AI_HEAL_BUDGET_SECONDS=120`（默认）、`AI_RATE_LIMIT=30`、`AI_MAX_CONCURRENCY=3`、`PRE_EXECUTION_CHECK=True` |
 | pytest 命令 | `cd backend && python -m pytest`（`pytest.ini` 内置 `--cov=app --cov-branch`） |
 | 原始记录 | `backend/test_output.txt`（上述命令单次全量执行的直接产物）、`backend/data/p2_acceptance/metrics.json` |
+
+> **边界说明**：四项指标的端到端实测执行于 commit `7862736` 的工作树（当时 P0/P1/P2 尚未提交）；该工作树内容随后由 owner 提交为 `b12b784`。两者之间的代码差异**仅为 Legacy Bridge 的字符串族类型归一化修复**（`app/db/legacy_baseline.py`：MySQL `LONGTEXT`/`JSON` 与基线 `varchar`/`text` 视为同一大类型；属启动期预检，**不参与执行链路**）+ 对应单测 + 文档。回归结果已按 `b12b784` 复跑（§7）。
 
 ### 2.1 同源约束（测试数字）
 
