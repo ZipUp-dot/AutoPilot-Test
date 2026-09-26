@@ -23,8 +23,26 @@ export const useExecutionStore = defineStore('execution', () => {
 
   async function fetchStatus(executionId) {
     const res = await executionApi.status(executionId)
-    executionStatus.value = res.data
-    return res.data
+    const data = res.data
+    executionStatus.value = data
+    // 将实时状态同步合并到执行列表对应行，避免行与顶部卡片数据不一致
+    if (data && executionId != null) {
+      const idx = executions.value.findIndex(e => e.id === Number(executionId))
+      if (idx !== -1) {
+        executions.value[idx] = {
+          ...executions.value[idx],
+          status: data.status,
+          progress: data.percentage,
+          passed_cases: data.passed_cases,
+          failed_cases: data.failed_cases,
+          skipped: data.skipped,
+          total_cases: data.total_cases,
+          total_duration: data.total_duration,
+          duration: data.total_duration,
+        }
+      }
+    }
+    return data
   }
 
   async function fetchDetail(executionId) {

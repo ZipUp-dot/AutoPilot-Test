@@ -129,6 +129,34 @@ def mock_settings(request):
 
 
 @pytest.fixture
+def file_db(tmp_path):
+    """文件版 SQLite 引擎 + 会话工厂（WAL + busy_timeout，跨线程可见）。
+
+    供 P0-5 多表（batch_cases/batch_records 等）真实落库的单测使用。
+    """
+    from sqlalchemy import create_engine, event
+    from sqlalchemy.orm import sessionmaker
+    from app.db.database import Base
+
+    db_path = tmp_path / "autopilot_conftest.db"
+    eng = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False, "timeout": 30},
+    )
+
+    @event.listens_for(eng, "connect")
+    def _set_pragma(dbapi_conn, _rec):
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=30000")
+        cur.close()
+
+    Base.metadata.create_all(bind=eng)
+    yield eng, sessionmaker(bind=eng, expire_on_commit=False)
+    eng.dispose()
+
+
+@pytest.fixture
 def client(db_session, request, suppress_lifespan_side_effects):
     """
     FastAPI TestClient，override get_db。
@@ -157,12 +185,17 @@ def client(db_session, request, suppress_lifespan_side_effects):
 @pytest.fixture(autouse=True)
 def clear_global_state():
     """自动清理模块级全局状态字典，防止测试间污染"""
-    from app.routers import generate as gen_module
+    from app.services import batch_generate_service as bgs_mod
     from app.services import execution_state as es_module
-    gen_module._batch_jobs.clear()
+    from app.services.batch_generate_service import InMemoryBatchPersistence
+    # 通用测试套件让共享 singleton 使用 InMemory 持久化：测试环境的 app 引擎
+    #（sqlite:///:memory: 且线程本地）不保证 batch 表可用；生产默认 DBBatchPersistence
+    # 由 test_batch_persistence.py 显式构造真实 DB（文件版 SQLite）验证。
+    bgs_mod.batch_generate_service._persistence = InMemoryBatchPersistence()
+    bgs_mod.batch_generate_service.reset()
     es_module._stop_flags.clear()
     yield
-    gen_module._batch_jobs.clear()
+    bgs_mod.batch_generate_service._persistence = InMemoryBatchPersistence()
     es_module._stop_flags.clear()
 
 
@@ -271,6 +304,12 @@ def mock_playwright_for_element_service(mocker):
     mock_page.goto.return_value = None
     mock_page.screenshot.return_value = b"fake_image"
     mock_page.query_selector_all.return_value = []
+    # P1-2：唯一性检查走 page.locator(sel).count()（Playwright-native）。
+    # page.locator 是同步方法 → MagicMock；locator.count 异步 → AsyncMock。
+    # 默认 count=0 与旧 fixture 语义一致（is_unique=False → 落到层级兜底/XPath）。
+    mock_locator = mocker.AsyncMock()
+    mock_locator.count = mocker.AsyncMock(return_value=0)
+    mock_page.locator = mocker.MagicMock(return_value=mock_locator)
 
     mock_context = mocker.AsyncMock()
     mock_context.new_page.return_value = mock_page
@@ -508,11 +547,16 @@ def sample_test_case(db_session, sample_project):
 def sample_generated_code(db_session, sample_test_case):
     """创建一个已生成代码记录"""
     from app.models.generated_code import GeneratedCode
+    from app.utils.step_canonicalizer import hash_steps
+    import json
+
     code = GeneratedCode(
         case_id=sample_test_case.id,
         code_content="async def run_test(page):\n    return {'success': True, 'steps': []}",
         code_language="python",
         is_valid=1,
+        # P0-6：代码必须绑定其生成时的 steps 哈希，Admission check(10) 依赖它
+        source_steps_hash=hash_steps(json.loads(sample_test_case.steps)),
     )
     db_session.add(code)
     db_session.commit()
@@ -541,7 +585,7 @@ def sample_execution(db_session, sample_project, sample_test_case):
     step = ExecutionStep(
         execution_id=exec_obj.id,
         case_id=sample_test_case.id,
-        step_index=1,
+        step_index=0,  # P0-11 UNIQUE(execution_id,case_id,step_index)：与测试自定义 step=1 不冲突
         action="navigate",
         status="success",
         duration_ms=100,

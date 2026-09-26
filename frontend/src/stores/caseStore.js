@@ -51,27 +51,46 @@ export const useCaseStore = defineStore('case', () => {
     // 轮询进度，每 2 秒一次
     _stopPolling()
     _pollTimer = setInterval(async () => {
+      let data = null
       try {
         const statusRes = await generateApi.getBatchStatus(projectId, batch_id)
-        const data = statusRes.data
-        generateProgress.value = {
-          completed: data.completed || 0,
-          failed: data.failed || 0,
-          total: data.total || total,
-          status: data.status,
-          progressPct: data.progress_pct || 0,
-          batchId: batch_id,
-        }
-        if (data.status === 'completed') {
-          _stopPolling()
-          await fetchCases(projectId)
-        }
+        // ApiResponse 包装：code!=0 时 data 可能为 null
+        data = statusRes && statusRes.data
       } catch {
+        data = null
+      }
+
+      // 批次丢失（如后端重启导致内存任务清空）或接口异常：
+      // 不再无限轮询卡死，回查真实数据并把进度条收起，恢复到实际状态。
+      if (!data || (data.code !== undefined && data.code !== 0)) {
         _stopPolling()
+        await finishBatchAndRefresh(projectId)
+        return
+      }
+
+      generateProgress.value = {
+        completed: data.completed || 0,
+        failed: data.failed || 0,
+        total: data.total || total,
+        status: data.status,
+        progressPct: data.progress_pct || 0,
+        batchId: batch_id,
+      }
+      if (data.status === 'completed') {
+        _stopPolling()
+        await finishBatchAndRefresh(projectId)
       }
     }, 2000)
 
     return res.data
+  }
+
+  async function finishBatchAndRefresh(projectId) {
+    // 批量结束（正常完成 / 批次丢失 / 异常）：收起进度条并按真实状态刷新用例列表
+    generateProgress.value = { completed: 0, total: 0, status: '', batchId: '' }
+    try {
+      await fetchCases(projectId)
+    } catch { /* 刷新失败不阻断 */ }
   }
 
   async function fetchCode(projectId, caseId) {

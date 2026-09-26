@@ -8,13 +8,13 @@ class TestRouterImport:
         """__all__ 中所有路由模块均可导入且包含 router 属性"""
         from app.routers import __all__ as router_names
 
-        assert len(router_names) == 8
+        assert len(router_names) == 9
         for name in router_names:
             module = __import__(f"app.routers.{name.replace('_router', '')}", fromlist=[name])
             assert hasattr(module, "router"), f"{name} 缺少 router 属性"
 
     def test_routers_init_exports_all(self):
-        """app.routers.__init__ 导出所有 7 个 router 名称"""
+        """app.routers.__init__ 导出所有 9 个 router 名称"""
         from app.routers import __all__
 
         expected = [
@@ -25,6 +25,8 @@ class TestRouterImport:
             "heal_router",
             "executions_router",
             "reports_router",
+            "files_router",
+            "metrics_router",
         ]
         for name in expected:
             assert name in __all__, f"{name} 不在 __all__ 中"
@@ -33,11 +35,13 @@ class TestRouterImport:
         """每个导出的 router 都是 APIRouter 实例"""
         from app.routers import projects_router, elements_router, cases_router
         from app.routers import generate_router, heal_router, executions_router, reports_router
+        from app.routers import files_router, metrics_router
         from fastapi import APIRouter
 
         for router in [
             projects_router, elements_router, cases_router,
             generate_router, heal_router, executions_router, reports_router,
+            files_router, metrics_router,
         ]:
             assert isinstance(router, APIRouter), f"{router} 不是 APIRouter 实例"
 
@@ -55,3 +59,4 @@ class TestRouterImport:
         assert any("/api/v1/projects/{project_id}/cases" in r for r in routes)
         assert any("/api/v1/projects/{project_id}/elements" in r for r in routes)
         assert any("/api/v1/executions/{execution_id}/reports" in r for r in routes)
+        assert any("/api/v1/metrics" in r for r in routes)

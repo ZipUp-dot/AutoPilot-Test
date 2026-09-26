@@ -13,14 +13,12 @@ class TestManualHeal:
         db_session,
         sample_project,
         sample_test_case,
-        sample_generated_code,
         mock_playwright_for_heal_router,
-        mock_llm,
         mocker,
     ):
         from app.models.execution import Execution
         from app.models.execution_step import ExecutionStep
-        from app.services.heal_service import HealResult
+        from app.services.heal_service import HealRoundResult
 
         exec_obj = Execution(
             project_id=sample_project.id,
@@ -40,15 +38,15 @@ class TestManualHeal:
         db_session.add(step)
         db_session.commit()
 
-        mock_result = HealResult(
+        mock_result = HealRoundResult(
             heal_id=1,
-            healed_code="async def run_test(page): pass",
             retry_status="success",
-            retry_count=1,
+            error_type=None,
+            healed_code="async def run_test(safe):\n    return {'success': True, 'steps': []}",
         )
 
         mocker.patch(
-            "app.services.heal_service.HealService.try_heal_manual",
+            "app.services.heal_service.HealRoundService.heal_case",
             new_callable=mocker.AsyncMock,
             return_value=mock_result,
         )
@@ -62,8 +60,47 @@ class TestManualHeal:
         assert data["code"] == 0
         assert data["data"]["heal_id"] == 1
         assert data["data"]["retry_status"] == "success"
-        assert data["data"]["retry_count"] == 1
+        assert data["data"]["error_type"] is None
         assert "healed_code" in data["data"]
+
+    def test_manual_heal_terminal_rejected(
+        self,
+        client,
+        db_session,
+        sample_project,
+        sample_test_case,
+        mocker,
+    ):
+        """验收 6：completed/stopped/failed/interrupted 四终态一律拒绝"""
+        from app.models.execution import Execution
+        from app.models.execution_step import ExecutionStep
+
+        for status in ("completed", "stopped", "failed", "interrupted"):
+            exec_obj = Execution(
+                project_id=sample_project.id,
+                total_cases=1,
+                status=status,
+                start_time=dt.utcnow(),
+                end_time=dt.utcnow(),
+            )
+            db_session.add(exec_obj)
+            db_session.flush()
+            step = ExecutionStep(
+                execution_id=exec_obj.id,
+                case_id=sample_test_case.id,
+                step_index=1,
+                action="click",
+                status="failed",
+            )
+            db_session.add(step)
+            db_session.commit()
+
+            resp = client.post(
+                f"/api/v1/executions/{exec_obj.id}/heal",
+                json={"case_id": sample_test_case.id, "step_index": 1},
+            )
+            assert resp.status_code == 422
+            assert "终态" in resp.json()["message"]
 
     def test_manual_heal_step_not_found(
         self,
@@ -72,7 +109,6 @@ class TestManualHeal:
         sample_project,
         sample_test_case,
         mock_playwright_for_heal_router,
-        mock_llm,
     ):
         from app.models.execution import Execution
 
@@ -100,7 +136,6 @@ class TestManualHeal:
         sample_project,
         sample_test_case,
         mock_playwright_for_heal_router,
-        mock_llm,
     ):
         from app.models.execution import Execution
         from app.models.execution_step import ExecutionStep

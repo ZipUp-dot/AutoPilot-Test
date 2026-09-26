@@ -22,6 +22,7 @@ COLUMN_ALIASES: dict[str, list[str]] = {
     "priority":      ["优先级", "priority", "重要程度", "level", "级别", "等级", "用例级别"],
     "pre_condition": ["前置条件", "precondition", "预置条件", "前置", "前提条件", "准备", "前提"],
     "steps":         ["操作步骤", "steps", "测试步骤", "step", "步骤描述", "步骤", "测试操作", "操作步骤描述"],
+    "step_count":    ["步骤数", "步骤数量", "stepcount", "步骤条数", "步骤总数", "step count"],
     "expected_result": ["预期结果", "expectedresult", "期望结果", "expected", "预期", "期望", "预期输出"],
 }
 
@@ -197,9 +198,19 @@ class ExcelParser:
                         result.errors.append(e)
                     continue
 
+                # 步骤数一致性校验：若模板声明了「步骤数」，须与实际解析出的步骤数一致
+                declared_count = _parse_declared_count(_cell(row, col_map.get("step_count")))
+                if declared_count is not None and declared_count != len(valid_steps):
+                    result.failed += 1
+                    result.errors.append({
+                        "row": i,
+                        "reason": f"步骤数校验失败：模板声明 {declared_count} 步，实际解析为 {len(valid_steps)} 步，请检查「步骤数」或步骤内容",
+                    })
+                    continue
+
                 case = ParsedCase(
                     case_name=case_name,
-                    case_no=_cell(row, col_map.get("case_no")),
+                    case_no=_cell(row, col_map.get("case_no")) or _extract_prefix_from_name(case_name),
                     priority=_normalize_priority(_cell(row, col_map.get("priority"))),
                     pre_condition=_cell(row, col_map.get("pre_condition")) or None,
                     steps=valid_steps,
@@ -474,6 +485,30 @@ def _validate_steps(steps: list[ParsedStep], row_num: int) -> tuple[list[ParsedS
         errors.append({"row": row_num, "reason": "步骤列表为空"})
 
     return validated, errors
+
+
+def _parse_declared_count(raw: str) -> Optional[int]:
+    """解析「步骤数」单元格为整数；空/非数字返回 None（跳过校验）"""
+    if not raw:
+        return None
+    try:
+        # 提取首个整数（容忍 "3步" / "3 步" / "3." 等写法）
+        m = re.search(r'[-+]?\d+', raw)
+        return int(m.group()) if m else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _extract_prefix_from_name(name: str) -> str:
+    """从用例名称开头提取编号前缀（如 TC01、TC20、A2），供 case_no 为空时回退。
+
+    仅匹配「字母[可选分隔符]数字」形式的开头；无则返回空串。
+    示例：'TC01-标准用户正常登录' -> 'TC01'；'标准用户正常登录' -> ''
+    """
+    if not name:
+        return ""
+    m = re.match(r'^([A-Za-z]+[_-]?\d+)', name.strip())
+    return m.group(1) if m else ""
 
 
 def _normalize_action(action: str) -> str:

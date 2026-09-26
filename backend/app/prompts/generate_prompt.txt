@@ -19,14 +19,18 @@
 2. 代码必须是一个完整的 async def 函数，函数名为 run_test
 3. 函数签名：async def run_test(safe) -> dict:
 4. 返回值必须是 dict：{{ "success": bool, "message": str, "steps": list }}
-5. 每个操作步骤必须包含：截图（safe.screenshot）、日志（print）、耗时记录
+5. 每个操作步骤必须包含日志（print）。截图与步骤耗时由后台监控器
+   （__monitor_before/__monitor_after）统一采集，AI 不得自行计算耗时；
+   如确需截图，只能调用 safe.screenshot(path=...)，且路径必须位于
+   uploads/screenshots/ 子树
 6. 使用 try/except 包裹每个步骤，失败时立即返回错误信息：
    {{ "success": false, "message": "步骤 N 失败: 原因", "steps": [...] }}
 7. 优先使用页面元素上下文中提供的选择器（selector 字段）
 8. 如果步骤中的 target 是中文描述，必须在元素列表中匹配最合适的元素
 9. 所有操作通过参数 safe 调用受控 API，禁止直接操作浏览器原生对象
 10. click 操作后必须等待导航或网络空闲（视情况使用 safe.wait 或等待操作）
-11. 不要 import playwright 相关模块，safe 已由系统提供
+11. 禁止使用任何 import 语句（import 一律被拒绝），safe 已由系统提供；
+    禁止 import json/time/datetime/asyncio 等任何模块
 
 【可用 Action 映射】
 navigate → await safe.goto(url)
@@ -36,20 +40,16 @@ select → await safe.select(selector, value)
 hover → await safe.hover(selector)
 assert_text → await safe.assert_text(selector, value)
 assert_visible → await safe.assert_visible(selector)
-screenshot → await safe.screenshot(path=...)
+screenshot → await safe.screenshot(path="uploads/screenshots/xxx.png")（路径必须位于 uploads/screenshots/ 子树）
 wait → await safe.wait(毫秒数)
 
 【操作步骤参考模板】
 async def run_test(safe) -> dict:
     steps_result = []
-    start_time = datetime.now()
 
     try:
         # ---- 前置条件: {pre_condition} ----
         print(f"[执行] 开始测试: {case_name}")
-        screenshot_path = f"reports/screenshots/{{case_name}}_before.png"
-        await safe.screenshot(path=screenshot_path)
-        print(f"[截图] 初始页面已保存: {{screenshot_path}}")
         await safe.wait(500)
     except Exception as e:
         return {{"success": false, "message": f"前置条件失败: {{e}}", "steps": []}}
@@ -57,10 +57,9 @@ async def run_test(safe) -> dict:
     # ---- 逐一执行步骤 ----
     # 你需要在以下位置生成具体的步骤代码，参照上面的【可用 Action 映射】
 
-    duration = (datetime.now() - start_time).total_seconds()
     return {{
         "success": true,
-        "message": f"测试通过，共 {{len(steps_result)}} 步，耗时 {{duration:.1f}}s",
+        "message": f"测试通过，共 {{len(steps_result)}} 步",
         "steps": steps_result
     }}
 

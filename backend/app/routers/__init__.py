@@ -6,6 +6,7 @@ from .heal import router as heal_router
 from .executions import router as executions_router
 from .reports import router as reports_router
 from .files import router as files_router
+from .metrics import router as metrics_router
 
 __all__ = [
     "projects_router",
@@ -16,4 +17,5 @@ __all__ = [
     "executions_router",
     "reports_router",
     "files_router",
+    "metrics_router",
 ]

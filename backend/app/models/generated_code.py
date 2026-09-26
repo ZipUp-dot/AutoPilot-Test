@@ -1,4 +1,10 @@
-"""生成代码 — ORM 模型 + Pydantic V2 Schema"""
+"""生成代码 — ORM 模型 + Pydantic V2 Schema
+
+Schema Delta（待任务 11 Alembic 收口，禁止动 schema.sql）：
+  - 新增 is_mock INTEGER NOT NULL DEFAULT 0：标记该代码是否为 Mock 模式生成
+  - 新增 source_steps_hash VARCHAR(64) NULL：生成时基于的 TestCase.steps 的
+    SHA-256；存量行 NULL = 来源不可证明
+"""
 
 from datetime import datetime
 from typing import Optional
@@ -19,7 +25,8 @@ class GeneratedCode(Base):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    case_id = Column(Integer, ForeignKey("test_cases.id", ondelete="CASCADE"), nullable=False)
+    # 历史保护：GeneratedCode→TestCase RESTRICT（删除用例时存在生成代码则被 DB 阻断）
+    case_id = Column(Integer, ForeignKey("test_cases.id", ondelete="RESTRICT"), nullable=False)
     code_content = Column(Text, nullable=False)
     code_language = Column(String(20), default="python")
     generation_prompt = Column(Text)
@@ -27,6 +34,8 @@ class GeneratedCode(Base):
     is_valid = Column(Integer, default=0)
     syntax_error = Column(Text)
     is_healed = Column(Integer, default=0)
+    is_mock = Column(Integer, default=0)
+    source_steps_hash = Column(String(64))
     created_at = Column(DateTime, default=func.now())
 
 

@@ -95,11 +95,13 @@ _ALL_TABLES = {
     "execution_steps",
     "execution_reports",
     "heal_records",
+    "batch_cases",
+    "batch_records",
 }
 
 
 def _assert_full_schema(url: str) -> None:
-    """断言 8 张业务表 + alembic_version 全部存在，且含关键列"""
+    """断言 10 张业务表 + alembic_version 全部存在，且含关键列 / FK / UNIQUE"""
     engine = create_engine(url)
     try:
         inspector = inspect(engine)
@@ -112,10 +114,64 @@ def _assert_full_schema(url: str) -> None:
         assert {"platform", "config_json", "created_at"}.issubset(proj_cols), proj_cols
 
         exe_cols = {c["name"] for c in inspector.get_columns("executions")}
-        assert {"progress", "worker_id", "heartbeat_at"}.issubset(exe_cols), exe_cols
+        assert {"progress", "worker_id", "heartbeat_at", "manifest_json",
+                "runtime_state_json", "stop_requested_at"}.issubset(exe_cols), exe_cols
 
         heal_cols = {c["name"] for c in inspector.get_columns("heal_records")}
-        assert "attempts" in heal_cols, "heal_records 缺少 attempts 列"
+        assert {"attempts", "execution_id", "case_id", "round_no",
+                "root_execution_step_id", "original_code_id", "healed_code_id",
+                "error_type"}.issubset(heal_cols), heal_cols
+
+        gc_cols = {c["name"] for c in inspector.get_columns("generated_codes")}
+        assert {"is_mock", "source_steps_hash"}.issubset(gc_cols), gc_cols
+
+        steps_cols = {c["name"] for c in inspector.get_columns("execution_steps")}
+        assert {"assertion", "skip_reason", "error_type"}.issubset(steps_cols), steps_cols
+
+        rpt_cols = {c["name"] for c in inspector.get_columns("execution_reports")}
+        assert {"report_type", "generation_status", "claim_token",
+                "claimed_at"}.issubset(rpt_cols), rpt_cols
+
+        bc_cols = {c["name"] for c in inspector.get_columns("batch_cases")}
+        assert {"project_id", "batch_id", "case_id", "status", "code_id",
+                "is_valid_at_attempt", "is_mock_at_attempt", "error_type",
+                "attempt_count", "latency_ms", "kpi_eligible",
+                "terminal_at"}.issubset(bc_cols), bc_cols
+
+        br_cols = {c["name"] for c in inspector.get_columns("batch_records")}
+        assert {"project_id", "batch_id", "batch_status",
+                "summary_json"}.issubset(br_cols), br_cols
+
+        # 历史保护：历史事实链 FK 一律 RESTRICT（0002 收口）
+        for table, col, ref in [
+            ("generated_codes", "case_id", "test_cases"),
+            ("executions", "project_id", "projects"),
+            ("execution_steps", "execution_id", "executions"),
+            ("execution_steps", "case_id", "test_cases"),
+            ("execution_reports", "execution_id", "executions"),
+            ("heal_records", "execution_step_id", "execution_steps"),
+            ("batch_cases", "project_id", "projects"),
+            ("batch_cases", "case_id", "test_cases"),
+            ("batch_records", "project_id", "projects"),
+        ]:
+            fks = inspector.get_foreign_keys(table)
+            hit = [fk for fk in fks
+                   if fk["constrained_columns"] == [col] and fk["referred_table"] == ref]
+            assert hit, f"{table}.{col} 缺少 FK → {ref}"
+            assert hit[0]["options"].get("ondelete") == "RESTRICT", \
+                f"{table}.{col} FK ondelete 应为 RESTRICT，实际 {hit[0]['options']}"
+
+        # UNIQUE 约束（0002 新增）——列名按字母序规范化比较
+        def _uniq(table):
+            return {tuple(sorted(u["column_names"]))
+                    for u in inspector.get_unique_constraints(table)}
+        assert ("case_id", "execution_id", "step_index") in _uniq("execution_steps")
+        assert ("case_id", "execution_id", "round_no") in _uniq("heal_records")
+        assert ("execution_id", "report_type") in _uniq("execution_reports")
+        assert ("batch_id", "case_id") in _uniq("batch_cases")
+        assert ("batch_id",) in _uniq("batch_records")
+        # execution_reports 旧单列 UNIQUE 已收敛为复合唯一
+        assert ("execution_id",) not in _uniq("execution_reports")
     finally:
         engine.dispose()
 
@@ -146,19 +202,16 @@ class TestSQLiteMigration:
         finally:
             engine.dispose()
 
-    def test_sqlite_upgrade_smooth_on_existing_schema(self, tmp_path, monkeypatch):
-        """已有库（create_all 建表）→ upgrade head 平滑跳过，不报错"""
+    def test_sqlite_upgrade_smooth_on_legacy_schema(self, tmp_path, monkeypatch):
+        """已应用 legacy baseline（0001）的库 → upgrade head 平滑加 Delta，不报错"""
         url = self._sqlite_url(tmp_path)
 
-        # 模拟已有 schema.sql / create_all 初始化过的库
-        from app.db.database import Base
-        import app.models  # noqa: F401 — 注册全部模型
+        # 先升级到 legacy baseline（0001_initial_schema），模拟已有旧结构库
+        cfg = _alembic_config()
+        monkeypatch.setenv("AUTOPILOT_ALEMBIC_URL", url)
+        command.upgrade(cfg, "0001_initial_schema")
 
-        engine = create_engine(url)
-        Base.metadata.create_all(bind=engine)
-        engine.dispose()
-
-        # 对已有表执行 upgrade head：表已存在应跳过，不抛错
+        # 对已有 legacy 表执行 upgrade head：0002 delta 幂等应用，不抛错
         _run_upgrade(url, monkeypatch)
         _assert_full_schema(url)
 

@@ -91,13 +91,27 @@ class TestSafeAPI:
 
     @pytest.mark.asyncio
     async def test_screenshot_delegates_to_page(self):
+        """截图路径剥 uploads/screenshots/ 前缀后 resolve 到 SCREENSHOT_DIR"""
+        from pathlib import Path
+        from app.config import settings
         page = AsyncMock()
         safe = _make_safe(page)
-        await safe.screenshot(path="reports/a.png")
+        await safe.screenshot(path="uploads/screenshots/a.png")
         page.screenshot.assert_awaited_once()
         kwargs = page.screenshot.await_args.kwargs
-        assert kwargs["path"] == "reports/a.png"
+        resolved = str(Path(settings.SCREENSHOT_DIR).resolve() / "a.png")
+        assert kwargs["path"] == resolved
         assert kwargs["full_page"] is True
+
+    @pytest.mark.asyncio
+    async def test_screenshot_illegal_path_rejected(self):
+        """非 uploads/screenshots/ 子树路径（如 reports/）→ SecurityError"""
+        from app.exceptions import SecurityError
+        page = AsyncMock()
+        safe = _make_safe(page)
+        for bad in ("reports/a.png", "uploads/uploads/a.png", "../etc/a.png"):
+            with pytest.raises(SecurityError):
+                await safe.screenshot(path=bad)
 
     @pytest.mark.asyncio
     async def test_screenshot_without_path(self):

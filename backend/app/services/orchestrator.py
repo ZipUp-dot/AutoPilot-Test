@@ -20,9 +20,10 @@ import logging
 from typing import Any, Optional
 
 from app.config import settings
-from app.exceptions import ValidationException
+from app.exceptions import NotFoundException, ValidationException
 from app.models.generated_code import GeneratedCode
 from app.services.execution_state import clear_stop_flag
+from app.services import batch_generate_service as _bgs
 
 logger = logging.getLogger("autopilot.orchestrator")
 
@@ -44,6 +45,8 @@ class TestOrchestrator:
         playwright_service: Any = None,
         appium_service: Any = None,
         report_service: Any = None,
+        batch_generate_service: Any = None,
+        admission_service: Any = None,
     ) -> None:
         """依赖注入初始化
 
@@ -52,11 +55,26 @@ class TestOrchestrator:
             playwright_service: PlaywrightService 实例（Web 执行）
             appium_service: AppiumService 实例（Android 执行）
             report_service: ReportService 实例
+            batch_generate_service: BatchGenerateService 实例；None 时使用进程内
+                单例 batch_generate_service（与生成页路由双入口收敛到同一实现）。
+            admission_service: ExecutionAdmissionService 实例；None 时按需自建。
         """
         self.ai_service = ai_service
         self.playwright_service = playwright_service
         self.appium_service = appium_service
         self.report_service = report_service
+        self._batch_generate_service = batch_generate_service
+        self._admission_service = admission_service
+
+    @property
+    def batch_gen(self) -> Any:
+        """返回注入的 BatchGenerateService，缺省用进程内单例（双入口统一点）"""
+        return self._batch_generate_service or _bgs.batch_generate_service
+
+    @property
+    def admission(self) -> Any:
+        """返回注入的 ExecutionAdmissionService，缺省自建（请求会话分离）"""
+        return self._admission_service
 
     def _get_executor(self, platform: str = "web") -> tuple[Any, str]:
         """根据平台类型获取对应的执行器
@@ -91,75 +109,41 @@ class TestOrchestrator:
         # Step 1: 检查用例是否已生成代码，未生成的先补生成
         cases_to_generate = await self._check_cases_need_generation(case_ids)
         generated_count = 0
+        batch_id: str | None = None
         if cases_to_generate:
-            logger.info("编排器: %s 个用例尚未生成代码，先批量生成", len(cases_to_generate))
+            logger.info("编排器: 部分用例尚未生成代码，全集合批量生成 %s 条", len(case_ids))
+            # 全集合 all-or-none：批量生成必须覆盖【全部】请求 case（非仅缺失子集），
+            # 使 Batch 集合与后续 Admission 的 case_ids 集合完全一致（禁止子集偷跑）。
             try:
-                results = self.ai_service.generate_batch(project_id, cases_to_generate)
-                generated_count = sum(1 for r in results if r.get("status") == "success")
-                logger.info("编排器: 代码生成完成 %s/%s", generated_count, len(cases_to_generate))
-            except Exception as e:
-                # 异常隔离：生成失败不阻塞执行，继续用已有代码
-                logger.warning("编排器: 代码生成失败（异常隔离），继续执行: %s", e)
+                summary = await asyncio.to_thread(
+                    self._generate_batch_sync, project_id, case_ids
+                )
+            except (NotFoundException, ValidationException):
+                raise  # 域异常（项目/用例校验等）按原类型继续向上抛
+            except Exception as e:  # noqa: BLE001
+                logger.warning("编排器: 批量生成基础设施异常，整体不创建执行: %s", e)
+                raise ValidationException(
+                    f"代码生成失败，整体不创建执行: {e}"
+                ) from e
+            if summary.get("status") != "completed" or (summary.get("failed", 0) or summary.get("skipped", 0)):
+                logger.warning("编排器: 批量生成未全部成功，整体不创建执行")
+                raise ValidationException(
+                    "代码生成未完全成功（失败/跳过 >0），整体不创建执行"
+                )
+            generated_count = summary.get("success", 0)
+            batch_id = summary.get("batch_id")
+        else:
+            logger.info("编排器: 全部用例已有代码，走 effective_code 入口")
 
         # Step 1.5: 执行前目标环境健康检查（防止目标不可达时集体失败 + 无意义自愈）
         check_error = await self._pre_execution_check(project_id, platform)
         if check_error:
             raise ValidationException(f"执行前环境检查失败: {check_error}")
 
-        # Step 2: 根据平台获取执行器
-        executor, platform_type = self._get_executor(platform)
-
-        # 创建执行记录
-        execution_id = executor.create_execution(
-            project_id, case_ids, mode, batch_name,
+        return await self._admit_and_launch(
+            project_id, case_ids, mode, batch_name, platform,
+            batch_id=batch_id, generated_count=generated_count,
         )
-
-        # 清除旧的停止标志
-        clear_stop_flag(execution_id)
-
-        # 后台线程启动执行
-        import threading
-
-        def _run():
-            from app.db.database import SessionLocal
-            db_session = SessionLocal()
-            try:
-                if platform_type == "android":
-                    from app.services.appium_service import AppiumService
-                    svc = AppiumService(db_session)
-                    svc.execute(project_id, case_ids, execution_id, mode)
-                else:
-                    from app.services.playwright_service import PlaywrightService
-                    svc = PlaywrightService(db_session)
-                    svc.execute(project_id, case_ids, execution_id, mode)
-            except Exception:
-                logger.exception("后台执行线程异常: execution_id=%s", execution_id)
-                try:
-                    from app.models.execution import Execution
-                    from datetime import datetime as dt
-                    exec_row = db_session.query(Execution).filter(Execution.id == execution_id).first()
-                    if exec_row and exec_row.status in ("queued", "running", "healing"):
-                        exec_row.status = "failed"
-                        exec_row.end_time = dt.utcnow()
-                        db_session.commit()
-                except Exception:
-                    pass
-            finally:
-                db_session.close()
-                clear_stop_flag(execution_id)
-
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
-
-        # Step 3: 启动后台协程监听执行完成 → 生成报告
-        asyncio.create_task(self._monitor_and_generate_report(execution_id))
-
-        logger.info("编排器: 流水线已启动 execution_id=%s cases=%s", execution_id, len(case_ids))
-        return {
-            "execution_id": execution_id,
-            "status": "running",
-            "generated": generated_count,
-        }
 
     # ═══════════════════════════════════════════════
     # 仅生成
@@ -197,13 +181,60 @@ class TestOrchestrator:
         if check_error:
             raise ValidationException(f"执行前环境检查失败: {check_error}")
 
-        executor, platform_type = self._get_executor(platform)
-        execution_id = executor.create_execution(
-            project_id, case_ids, mode, batch_name,
+        return await self._admit_and_launch(
+            project_id, case_ids, mode, batch_name, platform,
+            batch_id=None, generated_count=0,
         )
 
+    # ═══════════════════════════════════════════════
+    # 内部方法 — Admission 统一入口 + Pre-start Drift Guard
+    # ═══════════════════════════════════════════════
+
+    async def _admit_and_launch(
+        self,
+        project_id: int,
+        case_ids: list[int],
+        mode: str,
+        batch_name: str | None,
+        platform: str,
+        batch_id: str | None = None,
+        retry_from_execution_id: int | None = None,
+        generated_count: int = 0,
+    ) -> dict:
+        """统一 Admission → materialize → Pre-start Drift Guard → 后台线程 → 监听。
+
+        Admission 失败 → raise ValidationException（带逐 case 原因），不建 Execution。
+        Drift Guard 失败 → Execution 置 failed + 未启动 case 置 skipped，不启线程。
+        """
+        result = self.admission.admit(
+            project_id, case_ids,
+            batch_id=batch_id, retry_from_execution_id=retry_from_execution_id,
+            execution_mode=mode,
+        )
+        if not result.ok:
+            details = "; ".join(f"case {k}: {v}" for k, v in sorted(result.errors.items()))
+            raise ValidationException(f"Execution 校验失败: {details}")
+
+        execution_id = self.admission.materialize(result, batch_name=batch_name)
         clear_stop_flag(execution_id)
 
+        # Pre-start Drift Guard：Execution 已 Admission 但未启动时，发现 TestCase 已被
+        # 修改 → 拒绝启动旧 Execution（Manifest immutable + runtime_state 冻结）。
+        drifted = self._guard_pre_start_drift(execution_id, result.manifest)
+        if drifted:
+            logger.warning(
+                "编排器: Pre-start Drift Guard 拦截 execution_id=%s drifted=%s",
+                execution_id, drifted,
+            )
+            return {
+                "execution_id": execution_id,
+                "status": "failed",
+                "pre_start_drift": True,
+                "drifted_cases": drifted,
+                "generated": generated_count,
+            }
+
+        _, platform_type = self._get_executor(platform)
         import threading
 
         def _run():
@@ -221,13 +252,11 @@ class TestOrchestrator:
             except Exception:
                 logger.exception("后台执行线程异常: execution_id=%s", execution_id)
                 try:
-                    from app.models.execution import Execution
-                    from datetime import datetime as dt
-                    exec_row = db_session.query(Execution).filter(Execution.id == execution_id).first()
-                    if exec_row and exec_row.status == "running":
-                        exec_row.status = "failed"
-                        exec_row.end_time = dt.utcnow()
-                        db_session.commit()
+                    from app.services.execution_finalizer import ExecutionFinalizer
+                    from app.utils import terminal_reason as _tr
+                    ExecutionFinalizer(db_session).seal(
+                        execution_id, "failed", _tr.EXECUTION_FAILED
+                    )
                 except Exception:
                     pass
             finally:
@@ -239,11 +268,59 @@ class TestOrchestrator:
 
         asyncio.create_task(self._monitor_and_generate_report(execution_id))
 
-        logger.info("编排器: 仅执行模式启动 execution_id=%s", execution_id)
+        logger.info("编排器: 执行已启动 execution_id=%s cases=%s", execution_id, len(case_ids))
         return {
             "execution_id": execution_id,
             "status": "running",
+            "generated": generated_count,
         }
+
+    def _guard_pre_start_drift(self, execution_id: int, manifest_cases: list[dict]) -> list[int]:
+        """重算当前 TestCase hash 与 Manifest steps_hash 比对，不一致拒绝启动。
+
+        任一不一致 → 将 Execution 置 failed + 全部未启动 ExecutionStep 置
+        skipped(skip_reason=pre_start_drift, error_type=pre_start_drift)。
+        Execution Start Coverage 计 0（保留 admitted 未 started 事实）。
+
+        Returns:
+            发生漂移的 case_id 列表（空 = 全部一致，可正常启动）。
+        """
+        import json
+        from app.db.database import SessionLocal
+        from app.models.test_case import TestCase
+        from app.utils.step_canonicalizer import hash_steps
+
+        expected = {c["case_id"]: c["steps_hash"] for c in manifest_cases}
+        # 复用 Admission 会话（同一请求事务；测试环境由 get_db override 绑定测试库），
+        # 无 admission 实例（独立单测场景）时回退自建 SessionLocal。
+        db = getattr(getattr(self, "admission", None), "_db", None)
+        owns_session = db is None
+        if owns_session:
+            db = SessionLocal()
+        try:
+            drifted: list[int] = []
+            for cid, expected_hash in expected.items():
+                case = db.query(TestCase).filter(TestCase.id == cid).first()
+                actual_hash = None
+                if case and case.steps:
+                    try:
+                        actual_hash = hash_steps(json.loads(case.steps))
+                    except (TypeError, ValueError):
+                        actual_hash = None
+                if actual_hash != expected_hash:
+                    drifted.append(cid)
+            if drifted:
+                # 统一经 ExecutionFinalizer 收敛（Step 改写 + counters 重算 + 幂等）
+                from app.services.execution_finalizer import ExecutionFinalizer
+                from app.utils import terminal_reason as _tr
+                ExecutionFinalizer(db).seal(
+                    execution_id, "failed", _tr.EXECUTION_FAILED,
+                    pending_skip_reason="pre_start_drift",
+                )
+            return drifted
+        finally:
+            if owns_session:
+                db.close()
 
     # ═══════════════════════════════════════════════
     # 内部方法 — 状态监听 + 自动生成报告
@@ -274,16 +351,18 @@ class TestOrchestrator:
                 return f"项目 {project_id} 不存在"
 
             import httpx
+            from app.utils.url_builder import build_target_url
             if platform == "android":
                 url = f"{settings.APPIUM_URL}/status"
                 label = "Appium Server"
             else:
-                url = (project.target_url or "").strip()
+                url = build_target_url(project.target_url or "", project.test_path or "/")
                 label = "目标网站"
                 if not url:
                     return None  # 无目标 URL，跳过检查
 
                 # SSRF 入口校验：非法/越权目标 URL 直接拒绝执行
+                # （P1-1：pre-check 属 Admission 前上下文，读 Project 当前值）
                 import json
                 from app.utils.url_policy import validate_target_url
                 try:
@@ -308,10 +387,12 @@ class TestOrchestrator:
         return None
 
     async def _monitor_and_generate_report(self, execution_id: int) -> None:
-        """监听 execution 状态，当变为 'completed' 时生成报告
+        """监听 execution 状态，到达任一终态时生成对应 report_type 的报告
 
         每 2 秒轮询一次，最多持续 30 分钟。
-        如果状态为 'stopped' 或 'failed'，跳过报告生成。
+        四种终态都生成报告（fire-and-forget，异常仅 log）：
+          completed→full、stopped→partial、failed→diagnostic、interrupted→interrupted
+        （report_type 由 ReportService 依据 execution.status 决定，禁止 monitor 自定义）。
         """
         try:
             max_polls = 900  # 30 分钟
@@ -326,8 +407,8 @@ class TestOrchestrator:
                     continue
 
                 status = execution.get("status", "")
-                if status == "completed":
-                    logger.info("编排器: execution_id=%s 已完成，自动生成报告", execution_id)
+                if status in ("completed", "stopped", "failed", "interrupted"):
+                    logger.info("编排器: execution_id=%s 状态=%s，自动生成报告", execution_id, status)
                     try:
                         # 使用独立的 DB 会话生成报告（原会话可能已关闭）
                         from app.db.database import SessionLocal
@@ -340,10 +421,9 @@ class TestOrchestrator:
                         finally:
                             db.close()
                     except Exception as e:
+                        # 另一 owner 已在生成（generating 未超时）→ conflict，跳过即可；
+                        # 其余生成失败仅记录，由后续 monitor/手动触发重试
                         logger.error("编排器: 报告生成失败 execution_id=%s: %s", execution_id, e)
-                    break
-                elif status in ("stopped", "failed", "interrupted"):
-                    logger.info("编排器: execution_id=%s 状态=%s，跳过报告生成", execution_id, status)
                     break
         except asyncio.CancelledError:
             logger.info("编排器: 监听协程被取消 execution_id=%s", execution_id)
@@ -372,6 +452,15 @@ class TestOrchestrator:
     # ═══════════════════════════════════════════════
     # 辅助方法
     # ═══════════════════════════════════════════════
+
+    def _generate_batch_sync(self, project_id: int, case_ids: list[int]) -> dict:
+        """同步执行批量生成并等待整个 Batch 完成 Finalization（经 asyncio.to_thread 调用）。
+
+        与生成页路由统一走 BatchGenerateService 单例；返回冻结后的 terminal snapshot。
+        """
+        svc = self.batch_gen
+        batch_id = svc.create_job(project_id, case_ids)
+        return svc.wait_frozen(batch_id)
 
     async def _check_cases_need_generation(
         self, case_ids: list[int]

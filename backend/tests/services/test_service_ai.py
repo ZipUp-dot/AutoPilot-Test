@@ -10,14 +10,13 @@ from app.services.ai_service import (
     _build_prompt,
     _extract_code,
     _validate_syntax,
-    _security_check,
     _mock_code,
     _mock_android_code,
     _call_openai,
     _call_openai_vision,
     _format_elements,
 )
-from app.exceptions import AIException, SecurityException
+from app.exceptions import AIException
 from app.models.generated_code import GeneratedCode
 from app.models.element import PageElement
 
@@ -474,25 +473,31 @@ class TestCallOpenAI:
         """_call_openai() 前2次失败 → 第3次成功"""
         mock_settings("OPENAI_API_KEY", "test-key")
         import httpx
+        import asyncio
 
         call_count = [0]
+
+        mock_response = mocker.MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "async def run_test(page):\n    return {'success': True}"}}],
+            "usage": {"total_tokens": 100},
+        }
 
         def side_effect(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] < 3:
                 raise httpx.TimeoutException("Timeout")
-            resp = mocker.MagicMock()
-            resp.raise_for_status.return_value = None
-            resp.json.return_value = {
-                "choices": [{"message": {"content": "async def run_test(page):\n    return {'success': True}"}}],
-                "usage": {"total_tokens": 100},
-            }
-            return resp
+            return mock_response
 
-        mock_client = mocker.MagicMock()
-        mock_client.__enter__.return_value.post.side_effect = side_effect
-        mocker.patch("app.services.ai_service.httpx.Client", return_value=mock_client)
-        mocker.patch("app.services.ai_service.time.sleep")
+        mock_client = mocker.AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.post.side_effect = side_effect
+        mocker.patch("app.services.ai_service.httpx.AsyncClient", return_value=mock_client)
+
+        async def _noop_sleep(*a, **kw):
+            return None
+        mocker.patch.object(asyncio, "sleep", new=_noop_sleep)
 
         result = _call_openai("test prompt", "gpt-4o")
         assert "async def run_test" in result
@@ -502,11 +507,19 @@ class TestCallOpenAI:
         """_call_openai() 3次全部失败 → 抛出 AIException"""
         mock_settings("OPENAI_API_KEY", "test-key")
         import httpx
+        import asyncio
 
-        mock_client = mocker.MagicMock()
-        mock_client.__enter__.return_value.post.side_effect = httpx.TimeoutException("Timeout")
-        mocker.patch("app.services.ai_service.httpx.Client", return_value=mock_client)
-        mocker.patch("app.services.ai_service.time.sleep")
+        async def _raise_post(*args, **kwargs):
+            raise httpx.TimeoutException("Timeout")
+
+        mock_client = mocker.AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.post = _raise_post
+        mocker.patch("app.services.ai_service.httpx.AsyncClient", return_value=mock_client)
+
+        async def _noop_sleep(*a, **kw):
+            return None
+        mocker.patch.object(asyncio, "sleep", new=_noop_sleep)
 
         with pytest.raises(AIException, match="已重试3次"):
             _call_openai("test prompt", "gpt-4o")
@@ -563,9 +576,10 @@ class TestVisionCall:
             "choices": [{"message": {"content": '{"need_action": false}'}}],
             "usage": {"total_tokens": 50},
         }
-        mock_client = mocker.MagicMock()
-        mock_client.__enter__.return_value.post.return_value = resp
-        mocker.patch("app.services.ai_service.httpx.Client", return_value=mock_client)
+        mock_client = mocker.AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.post.return_value = resp
+        mocker.patch("app.services.ai_service.httpx.AsyncClient", return_value=mock_client)
 
         try:
             result = _call_openai_vision("分析页面", b"fake_png")
@@ -577,26 +591,32 @@ class TestVisionCall:
         """前2次失败 → 第3次成功"""
         mock_settings("OPENAI_API_KEY", "test-key")
         import httpx
+        import asyncio
         from app.services.ai_service import ai_rate_limiter
         ai_rate_limiter._calls.clear()
 
         call_count = [0]
 
+        resp = mocker.MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {
+            "choices": [{"message": {"content": '{"need_action": true}'}}],
+        }
+
         def side_effect(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] < 3:
                 raise httpx.TimeoutException("Timeout")
-            resp = mocker.MagicMock()
-            resp.raise_for_status.return_value = None
-            resp.json.return_value = {
-                "choices": [{"message": {"content": '{"need_action": true}'}}],
-            }
             return resp
 
-        mock_client = mocker.MagicMock()
-        mock_client.__enter__.return_value.post.side_effect = side_effect
-        mocker.patch("app.services.ai_service.httpx.Client", return_value=mock_client)
-        mocker.patch("app.services.ai_service.time.sleep")
+        mock_client = mocker.AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.post.side_effect = side_effect
+        mocker.patch("app.services.ai_service.httpx.AsyncClient", return_value=mock_client)
+
+        async def _noop_sleep(*a, **kw):
+            return None
+        mocker.patch.object(asyncio, "sleep", new=_noop_sleep)
 
         try:
             result = _call_openai_vision("分析页面", b"fake_png", retries=3)
@@ -609,13 +629,21 @@ class TestVisionCall:
         """全部重试失败 → 返回空字符串（不抛异常）"""
         mock_settings("OPENAI_API_KEY", "test-key")
         import httpx
+        import asyncio
         from app.services.ai_service import ai_rate_limiter
         ai_rate_limiter._calls.clear()
 
-        mock_client = mocker.MagicMock()
-        mock_client.__enter__.return_value.post.side_effect = httpx.TimeoutException("Timeout")
-        mocker.patch("app.services.ai_service.httpx.Client", return_value=mock_client)
-        mocker.patch("app.services.ai_service.time.sleep")
+        async def _raise_post(*args, **kwargs):
+            raise httpx.TimeoutException("Timeout")
+
+        mock_client = mocker.AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.post = _raise_post
+        mocker.patch("app.services.ai_service.httpx.AsyncClient", return_value=mock_client)
+
+        async def _noop_sleep(*a, **kw):
+            return None
+        mocker.patch.object(asyncio, "sleep", new=_noop_sleep)
 
         try:
             result = _call_openai_vision("分析页面", b"fake_png")
@@ -759,65 +787,6 @@ class TestValidateSyntax:
         code = "def broken( {{{"
         with pytest.raises(SyntaxError):
             _validate_syntax(code)
-
-
-# ═══════════════════════════════════════════════
-# _security_check() 测试
-# ═══════════════════════════════════════════════
-
-class TestSecurityCheck:
-    """安全检查测试"""
-
-    def test_security_check_import_os(self):
-        """场景17: _security_check() import os -> SecurityException 抛出"""
-        code = "import os\nasync def run_test(page):\n    return {'success': True}"
-        with pytest.raises(SecurityException):
-            _security_check(code)
-
-    def test_security_check_eval(self):
-        """场景18: _security_check() eval() -> SecurityException 抛出"""
-        code = "async def run_test(page):\n    eval('1+1')\n    return {'success': True}"
-        with pytest.raises(SecurityException):
-            _security_check(code)
-
-    def test_security_check_valid(self):
-        """场景19: _security_check() 有效代码 -> 无错误"""
-        code = "async def run_test(page):\n    return {'success': True, 'steps': []}"
-        _security_check(code)  # 不抛出异常即为通过
-
-    def test_security_check_import_sys(self):
-        """_security_check() import sys -> SecurityException"""
-        code = "import sys\nasync def run_test(page):\n    return {'success': True}"
-        with pytest.raises(SecurityException):
-            _security_check(code)
-
-    def test_security_check_exec(self):
-        """_security_check() exec() -> SecurityException"""
-        code = "async def run_test(page):\n    exec('x=1')\n    return {'success': True}"
-        with pytest.raises(SecurityException):
-            _security_check(code)
-
-    def test_security_check_syntax_error_skips(self):
-        """_security_check() 语法错误 -> 跳过检查不报错"""
-        code = "this is not valid python {{{"
-        _security_check(code)  # 语法错误时安全模块静默返回
-
-    def test_security_check_import_from_os(self):
-        """_security_check() from os import path -> SecurityException"""
-        code = "from os import path\nasync def run_test(page):\n    return {'success': True}"
-        with pytest.raises(SecurityException):
-            _security_check(code)
-
-    def test_security_check_import_from_subprocess(self):
-        """_security_check() from subprocess import run -> SecurityException"""
-        code = "from subprocess import run\nasync def run_test(page):\n    return {'success': True}"
-        with pytest.raises(SecurityException):
-            _security_check(code)
-
-    def test_security_check_relative_import_skipped(self):
-        """_security_check() 相对导入 (from . import x) -> module=None，跳过检查"""
-        code = "from . import utils\nasync def run_test(page):\n    return {'success': True}"
-        _security_check(code)  # 不抛出异常，相对导入 module 为 None
 
 
 # ═══════════════════════════════════════════════
@@ -1104,11 +1073,12 @@ class TestMockAndroidCode:
         assert "AppiumBy" not in code  # 注入运行时不导入 AppiumBy
 
     def test_mock_android_structure(self):
-        """基础结构：同步函数 + steps_result"""
+        """基础结构：同步函数 + steps_result + 无 import/无 datetime"""
         code = _mock_android_code(steps_json="[]")
         assert "def run_test(driver)" in code
         assert "steps_result = []" in code
-        assert "from datetime import datetime" in code
+        assert "import" not in code  # P1-3: 无任何 import 语句
+        assert "datetime" not in code  # P1-3: 耗时由监控器采集，不自算
 
     def test_click_with_target(self):
         """click 有 target → 生成 find_element + click 代码"""
@@ -1146,12 +1116,13 @@ class TestMockAndroidCode:
         assert "无 selector" in code
 
     def test_wait_with_numeric_value(self):
-        """wait 数字 value → 生成 time.sleep(2.0)"""
+        """wait 数字 value → 生成 sleep(2.0)（受控睡眠，无 import time）"""
         steps = json.dumps([
             {"step_number": 1, "action": "wait", "target": "", "value": "2000", "description": "等待"},
         ])
         code = _mock_android_code(steps_json=steps)
-        assert "time.sleep(2.0)" in code
+        assert "sleep(2.0)" in code
+        assert "import" not in code
 
     def test_wait_with_non_numeric_value(self):
         """wait 非数字 value → 回退默认 1000ms"""
@@ -1159,7 +1130,7 @@ class TestMockAndroidCode:
             {"step_number": 1, "action": "wait", "target": "", "value": "abc", "description": "等待"},
         ])
         code = _mock_android_code(steps_json=steps)
-        assert "time.sleep(1.0)" in code
+        assert "sleep(1.0)" in code
 
     def test_back_action(self):
         """back 动作 → 生成 driver.back()"""

@@ -103,25 +103,42 @@ class CaseService:
                 errors=parse_result.errors,
             )
 
+        # 预取项目内已存在的编号与名称，用于唯一性校验（一次性查询，避免逐行查库）
+        existing_nos = {
+            r[0] for r in self._db.query(TestCase.case_no)
+            .filter(TestCase.project_id == project_id, TestCase.case_no.isnot(None)).all()
+        }
+        existing_names = {
+            r[0] for r in self._db.query(TestCase.case_name)
+            .filter(TestCase.project_id == project_id).all()
+        }
+        # 本文件内已处理过的编号/名称（捕获同文件内的重复）
+        seen_nos: set[str] = set()
+        seen_names: set[str] = set()
+
         # 批量插入
         insert_count = 0
         for case in parse_result.cases:
             try:
-                # 查重（同项目同编号）
+                # ① 编号唯一：项目内已存在 或 本文件内已出现
+                dup_reason = None
                 if case.case_no:
-                    existing = (
-                        self._db.query(TestCase)
-                        .filter(TestCase.project_id == project_id, TestCase.case_no == case.case_no)
-                        .first()
-                    )
-                    if existing:
-                        parse_result.errors.append({
-                            "row": case.row_number,
-                            "reason": f"编号 {case.case_no} 已存在，已跳过",
-                        })
-                        parse_result.failed += 1
-                        parse_result.success -= 1
-                        continue
+                    if case.case_no in existing_nos or case.case_no in seen_nos:
+                        dup_reason = f"编号 {case.case_no} 已存在，已跳过"
+                    else:
+                        seen_nos.add(case.case_no)
+
+                # ② 用例名称唯一：项目内已存在 或 本文件内已出现
+                if dup_reason is None:
+                    if case.case_name in existing_names or case.case_name in seen_names:
+                        dup_reason = f"用例名称「{case.case_name}」已存在，已跳过"
+                    else:
+                        seen_names.add(case.case_name)
+
+                if dup_reason:
+                    parse_result.errors.append({"row": case.row_number, "reason": dup_reason})
+                    parse_result.failed += 1
+                    continue
 
                 # 序列化 steps
                 steps_json = json.dumps(
@@ -154,7 +171,6 @@ class CaseService:
                     "reason": f"插入失败: {str(e)}",
                 })
                 parse_result.failed += 1
-                parse_result.success -= 1
 
         self._db.commit()
 

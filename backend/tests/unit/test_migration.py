@@ -1,463 +1,228 @@
-"""测试数据库迁移逻辑 — 幂等性验证
+"""测试数据库迁移逻辑 — P0-11：Alembic 单一权威 + Legacy Bridge
+
+P0-11 后 _run_migrations() 降级为 Legacy Bridge（只做旧库 baseline/stamp 判断），
+不再承担任何平行演进 / ALTER 结构变更；新结构只由 Alembic 定义。
 
 测试目标：
-1. 已有旧数据库升级：模拟不含新字段的表结构，插入旧数据，迁移后验证字段存在且默认值正确
-2. 新数据库初始化：验证 schema.sql 创建的表包含新字段
-3. 迁移幂等性：重复运行迁移不会报错
+1. _run_migrations() 不再新增任何结构变更（代码审查证明：文件内无 ALTER / create_all）。
+2. Legacy Bridge 四分支：已管理 / 空库 / 兼容旧库 / 不兼容旧库。
+3. Alembic 语义：stamp 只写版本表，不执行 migration。
 """
 
 import pytest
-from sqlalchemy import create_engine, inspect, text, MetaData, Table, Column, Integer, String, DateTime, func
-from sqlalchemy.orm import sessionmaker
+from pathlib import Path
+from sqlalchemy import create_engine, inspect, text
+
+_BACKEND_ROOT = Path(__file__).parents[2]  # tests/unit → backend
 
 
-class TestDatabaseMigration:
-    """测试 _run_migrations() 的幂等性和正确性"""
+class TestLegacyBridgeNoStructuralChange:
+    """_run_migrations() 不新增结构变更（双轨演进禁止证明）"""
 
-    @pytest.fixture
-    def old_db(self):
-        """创建模拟的旧数据库（不含新字段），插入旧数据"""
-        engine = create_engine("sqlite:///:memory:", echo=False)
-        conn = engine.connect()
+    def test_source_contains_no_structural_mutation(self):
+        """database.py 源码不含 ALTER TABLE / create_all / schema.sql 执行"""
+        import inspect as pyinspect
+        from app.db import database
 
-        # 创建旧版 projects 表（不含 platform）
-        conn.execute(text("""
-            CREATE TABLE projects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name VARCHAR(255) NOT NULL,
-                target_url VARCHAR(500) NOT NULL,
-                test_path VARCHAR(255) DEFAULT '/',
-                browser_type VARCHAR(20) DEFAULT 'chromium',
-                headless INTEGER DEFAULT 1,
-                status VARCHAR(20) DEFAULT 'active',
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """))
+        src = pyinspect.getsource(database)
+        for banned in ("ALTER TABLE", "create_all", "schema.sql", "add_column",
+                       "CREATE TABLE", "DROP TABLE"):
+            assert banned not in src, f"_run_migrations 仍含结构变更关键字: {banned}"
 
-        # 创建旧版 page_elements 表（不含 platform, selector_type, metadata）
-        conn.execute(text("""
-            CREATE TABLE page_elements (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER NOT NULL,
-                element_type VARCHAR(50) NOT NULL,
-                tag_name VARCHAR(50),
-                element_id VARCHAR(255),
-                name VARCHAR(255),
-                class_name VARCHAR(500),
-                selector VARCHAR(500) NOT NULL,
-                text_content VARCHAR(500),
-                placeholder VARCHAR(255),
-                is_visible INTEGER DEFAULT 1,
-                bounding_box TEXT,
-                attributes TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
-            )
-        """))
+    def test_init_only_bridge_and_alembic(self):
+        """init() 仅由 _run_migrations + _run_alembic_upgrade_head 组成"""
+        import inspect as pyinspect
+        from app.db import database
 
-        conn.commit()
-        yield engine, conn
-        conn.close()
-        engine.dispose()
+        src = pyinspect.getsource(database.init)
+        assert "_run_migrations()" in src
+        assert "_run_alembic_upgrade_head()" in src
 
-    @pytest.fixture
-    def old_db_with_data(self, old_db):
-        """在旧数据库中插入示例数据"""
-        engine, conn = old_db
 
-        # 插入项目
-        conn.execute(text("""
-            INSERT INTO projects (id, name, target_url, test_path, browser_type, headless, status)
-            VALUES (1, 'Project Alpha', 'https://alpha.com', '/', 'chromium', 1, 'active')
-        """))
-        conn.execute(text("""
-            INSERT INTO projects (id, name, target_url, test_path, browser_type, headless, status)
-            VALUES (2, 'Project Beta', 'https://beta.com', '/login', 'firefox', 0, 'active')
-        """))
+class TestLegacyBridgeBehavior:
+    """Legacy Bridge 行为：兼容→stamp；不兼容→拒绝；已管理/空库→no-op"""
 
-        # 插入页面元素
-        conn.execute(text("""
-            INSERT INTO page_elements (id, project_id, element_type, tag_name, selector, text_content)
-            VALUES (1, 1, 'button', 'button', '#submit-btn', 'Submit')
-        """))
-        conn.execute(text("""
-            INSERT INTO page_elements (id, project_id, element_type, tag_name, selector, text_content)
-            VALUES (2, 1, 'input', 'input', '#username', '')
-        """))
+    def test_legacy_compatible_db_stamped_and_upgraded(self, tmp_path, monkeypatch):
+        """完整 legacy 库（0001 结构）→ bridge stamp 0001 → upgrade head → 结构完整数据保留"""
+        from alembic import command
+        from alembic.config import Config
+        from app.db.legacy_baseline import LEGACY_BASELINE_REVISION
+        from app.db import database as dbmod
 
-        conn.commit()
-        yield engine, conn
+        root = Path(tmp_path)
+        db = root / "legacy.db"
+        url = f"sqlite:///{db.as_posix()}"
 
-    def _run_migration(self, engine):
-        """模拟 database.py 中的 _run_migrations() 逻辑"""
-        inspector = inspect(engine)
-        migrations = [
-            ("projects", "platform", "VARCHAR(10) DEFAULT 'web'"),
-            ("page_elements", "platform", "VARCHAR(10) DEFAULT 'web'"),
-            ("page_elements", "selector_type", "VARCHAR(20)"),
-            ("page_elements", "metadata", "TEXT"),
-        ]
-        with engine.connect() as conn:
-            for table, column, col_def in migrations:
-                if table in inspector.get_table_names():
-                    existing = {c["name"] for c in inspector.get_columns(table)}
-                    if column not in existing:
-                        stmt = f"ALTER TABLE {table} ADD COLUMN {column} {col_def}"
-                        conn.execute(text(stmt))
+        cfg = Config(str(_BACKEND_ROOT / "alembic.ini"))
+        cfg.set_main_option("script_location", str(_BACKEND_ROOT / "alembic"))
+        monkeypatch.setenv("AUTOPILOT_ALEMBIC_URL", url)
+        command.upgrade(cfg, "0001_initial_schema")
+
+        # 模拟旧库：删除 alembic_version 表
+        eng = create_engine(url)
+        with eng.connect() as conn:
+            conn.execute(text("INSERT INTO projects (id, name, target_url) VALUES (1, 'p1', 'http://x')"))
+            conn.execute(text("DROP TABLE alembic_version"))
             conn.commit()
+        eng.dispose()
 
-    # ── 测试用例 ──
+        # Legacy Bridge：兼容 → stamp
+        original_engine = dbmod.engine
+        try:
+            dbmod.engine = create_engine(url)
+            dbmod._run_migrations()
+            eng = dbmod.engine
+            with eng.connect() as conn:
+                v = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                assert v == LEGACY_BASELINE_REVISION, f"stamp 应为 {LEGACY_BASELINE_REVISION}"
+                assert conn.execute(text("SELECT name FROM projects WHERE id=1")).scalar() == "p1"
+            eng.dispose()
 
-    def test_old_data_has_platform_default_after_migration(self, old_db_with_data):
-        """旧数据升级后，platform 字段应有默认值 'web'"""
-        engine, conn = old_db_with_data
+            # upgrade head：只应用 0002 delta，结构正确且数据保留
+            monkeypatch.setenv("AUTOPILOT_ALEMBIC_URL", url)
+            command.upgrade(cfg, "head")
+            eng = create_engine(url)
+            try:
+                insp = inspect(eng)
+                tables = set(insp.get_table_names())
+                assert {"batch_cases", "batch_records"} <= tables, tables
+                with eng.connect() as conn:
+                    assert conn.execute(text("SELECT name FROM projects WHERE id=1")).scalar() == "p1"
+                    v = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                    assert v == "0002_formal_delta", v
+            finally:
+                eng.dispose()
+        finally:
+            dbmod.engine = original_engine
 
-        # 迁移前：确认字段不存在
-        inspector = inspect(engine)
-        project_cols = {c["name"] for c in inspector.get_columns("projects")}
-        assert "platform" not in project_cols, "迁移前不应有 platform 字段"
+    def test_legacy_incompatible_db_rejected(self, tmp_path, monkeypatch):
+        """不完整旧库 → Compatibility Check 拒绝，并打印差异清单"""
+        from app.db import database as dbmod
 
-        # 执行迁移
-        self._run_migration(engine)
-
-        # 迁移后：确认字段存在
-        inspector = inspect(engine)
-        project_cols = {c["name"] for c in inspector.get_columns("projects")}
-        assert "platform" in project_cols, "迁移后应有 platform 字段"
-
-        # 验证旧数据的 platform 默认值为 'web'
-        rows = conn.execute(text("SELECT id, name, platform FROM projects ORDER BY id")).fetchall()
-        assert len(rows) == 2
-        for row in rows:
-            assert row[2] == "web", f"项目 {row[0]} 的 platform 应为 'web'，实际为 {row[2]}"
-
-    def test_old_element_has_new_fields_after_migration(self, old_db_with_data):
-        """旧元素数据升级后，应有 platform、selector_type、metadata 字段"""
-        engine, conn = old_db_with_data
-
-        # 执行迁移
-        self._run_migration(engine)
-
-        # 验证字段存在
-        inspector = inspect(engine)
-        element_cols = {c["name"] for c in inspector.get_columns("page_elements")}
-        for col in ("platform", "selector_type", "metadata"):
-            assert col in element_cols, f"迁移后 page_elements 应有 {col} 字段"
-
-        # 验证旧数据默认值
-        rows = conn.execute(text(
-            "SELECT id, platform, selector_type, metadata FROM page_elements ORDER BY id"
-        )).fetchall()
-        assert len(rows) == 2
-        for row in rows:
-            assert row[1] == "web", f"元素 {row[0]} 的 platform 应为 'web'"
-            assert row[2] is None, f"元素 {row[0]} 的 selector_type 应为 NULL"
-            assert row[3] is None, f"元素 {row[0]} 的 metadata 应为 NULL"
-
-    def test_migration_is_idempotent(self, old_db_with_data):
-        """重复运行迁移不会报错，且数据不受影响"""
-        engine, conn = old_db_with_data
-
-        # 第一次迁移
-        self._run_migration(engine)
-
-        # 验证第一次迁移后的数据
-        rows_before = conn.execute(text(
-            "SELECT id, name, platform FROM projects ORDER BY id"
-        )).fetchall()
-
-        # 第二次迁移（不应报错）
-        self._run_migration(engine)
-
-        # 验证数据不变
-        rows_after = conn.execute(text(
-            "SELECT id, name, platform FROM projects ORDER BY id"
-        )).fetchall()
-        assert rows_before == rows_after, "幂等迁移不应改变数据"
-
-    def test_new_database_has_all_columns(self, old_db):
-        """新数据库初始化（schema.sql 或 create_all）后应包含所有新字段"""
-        engine, conn = old_db
-
-        # 先创建旧表，模拟 schema.sql 直接创建含新字段的表
-        conn.execute(text("ALTER TABLE projects ADD COLUMN platform VARCHAR(10) DEFAULT 'web'"))
-        conn.execute(text("ALTER TABLE page_elements ADD COLUMN platform VARCHAR(10) DEFAULT 'web'"))
-        conn.execute(text("ALTER TABLE page_elements ADD COLUMN selector_type VARCHAR(20)"))
-        conn.execute(text("ALTER TABLE page_elements ADD COLUMN metadata TEXT"))
-        conn.commit()
-
-        # 运行迁移（幂等，不应再添加任何字段）
-        self._run_migration(engine)
-
-        # 验证所有字段存在
-        inspector = inspect(engine)
-        project_cols = {c["name"] for c in inspector.get_columns("projects")}
-        element_cols = {c["name"] for c in inspector.get_columns("page_elements")}
-
-        assert "platform" in project_cols
-        for col in ("platform", "selector_type", "metadata"):
-            assert col in element_cols
-
-    def test_orm_model_has_platform_default(self, db_session):
-        """通过 ORM 创建 Project 时，platform 默认值应为 'web'"""
-        from app.models.project import Project
-
-        project = Project(name="ORM Test", target_url="https://orm-test.com")
-        db_session.add(project)
-        db_session.commit()
-        db_session.refresh(project)
-
-        assert project.platform == "web"
-
-    def test_create_project_with_android_platform(self, db_session):
-        """通过 ORM 创建 Project 时，可指定 platform='android'"""
-        from app.models.project import Project
-
-        project = Project(
-            name="Android Project",
-            target_url="https://android-test.com",
-            platform="android",
-        )
-        db_session.add(project)
-        db_session.commit()
-        db_session.refresh(project)
-
-        assert project.platform == "android"
-
-    def test_page_element_orm_has_defaults(self, db_session):
-        """通过 ORM 创建 PageElement 时，新字段应有正确的默认值"""
-        from app.models.project import Project
-        from app.models.element import PageElement
-
-        project = Project(name="Elem Test", target_url="https://elem-test.com")
-        db_session.add(project)
-        db_session.commit()
-
-        element = PageElement(
-            project_id=project.id,
-            element_type="button",
-            tag_name="button",
-            selector="#test-btn",
-        )
-        db_session.add(element)
-        db_session.commit()
-        db_session.refresh(element)
-
-        assert element.platform == "web"
-        assert element.selector_type is None
-        assert element.element_metadata is None
-
-
-class TestConfigJsonMigration:
-    """测试 config_json 字段迁移"""
-
-    @pytest.fixture
-    def old_db(self):
-        """创建模拟的旧数据库（不含 config_json）"""
-        engine = create_engine("sqlite:///:memory:", echo=False)
-        conn = engine.connect()
-
-        conn.execute(text("""
-            CREATE TABLE projects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name VARCHAR(255) NOT NULL,
-                target_url VARCHAR(500) NOT NULL,
-                test_path VARCHAR(255) DEFAULT '/',
-                browser_type VARCHAR(20) DEFAULT 'chromium',
-                headless INTEGER DEFAULT 1,
-                status VARCHAR(20) DEFAULT 'active',
-                platform VARCHAR(10) DEFAULT 'web',
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """))
-
-        conn.commit()
-        yield engine, conn
-        conn.close()
-        engine.dispose()
-
-    @pytest.fixture
-    def old_db_with_data(self, old_db):
-        """在旧数据库中插入示例数据"""
-        engine, conn = old_db
-
-        conn.execute(text("""
-            INSERT INTO projects (id, name, target_url, test_path, browser_type, headless, status, platform)
-            VALUES (1, 'Project Alpha', 'https://alpha.com', '/', 'chromium', 1, 'active', 'web')
-        """))
-        conn.execute(text("""
-            INSERT INTO projects (id, name, target_url, test_path, browser_type, headless, status, platform)
-            VALUES (2, 'Project Beta', 'https://beta.com', '/login', 'firefox', 0, 'active', 'web')
-        """))
-
-        conn.commit()
-        yield engine, conn
-
-    def _run_migration(self, engine):
-        """模拟 config_json 迁移逻辑"""
-        inspector = inspect(engine)
-        migrations = [
-            ("projects", "config_json", "TEXT DEFAULT '{}'"),
-        ]
-        with engine.connect() as conn:
-            for table, column, col_def in migrations:
-                if table in inspector.get_table_names():
-                    existing = {c["name"] for c in inspector.get_columns(table)}
-                    if column not in existing:
-                        stmt = f"ALTER TABLE {table} ADD COLUMN {column} {col_def}"
-                        conn.execute(text(stmt))
+        db = Path(tmp_path) / "incomplete.db"
+        url = f"sqlite:///{db.as_posix()}"
+        eng = create_engine(url)
+        with eng.connect() as conn:
+            conn.execute(text("CREATE TABLE projects (id INTEGER PRIMARY KEY, name VARCHAR(255) NOT NULL)"))
             conn.commit()
+        eng.dispose()
 
-    def test_old_db_has_config_json_after_migration(self, old_db_with_data):
-        """旧数据库升级后获得 config_json 字段"""
-        engine, conn = old_db_with_data
+        original_engine = dbmod.engine
+        try:
+            dbmod.engine = create_engine(url)
+            with pytest.raises(RuntimeError) as exc_info:
+                dbmod._run_migrations()
+            msg = str(exc_info.value)
+            assert "不兼容" in msg
+            assert "缺少表: page_elements" in msg or "缺少列 platform" in msg
+        finally:
+            dbmod.engine = original_engine
 
-        # 迁移前：确认字段不存在
-        inspector = inspect(engine)
-        project_cols = {c["name"] for c in inspector.get_columns("projects")}
-        assert "config_json" not in project_cols, "迁移前不应有 config_json 字段"
+    def test_stamp_does_not_execute_migration(self, tmp_path):
+        """stamp 只写版本表：stamp 0001 后库中不应存在 batch 表"""
+        from app.db.legacy_baseline import stamp_baseline, LEGACY_BASELINE_REVISION
 
-        # 执行迁移
-        self._run_migration(engine)
-
-        # 迁移后：确认字段存在
-        inspector = inspect(engine)
-        project_cols = {c["name"] for c in inspector.get_columns("projects")}
-        assert "config_json" in project_cols, "迁移后应有 config_json 字段"
-
-        # 验证旧数据的 config_json 默认值为 '{}'
-        rows = conn.execute(text("SELECT id, name, config_json FROM projects ORDER BY id")).fetchall()
-        assert len(rows) == 2
-        for row in rows:
-            assert row[2] == "{}", f"项目 {row[0]} 的 config_json 应为 '{{}}'，实际为 {row[2]}"
-
-    def test_config_json_migration_idempotent(self, old_db_with_data):
-        """重复运行迁移不会报错"""
-        engine, conn = old_db_with_data
-
-        # 第一次迁移
-        self._run_migration(engine)
-
-        # 验证第一次迁移后的数据
-        rows_before = conn.execute(text(
-            "SELECT id, name, config_json FROM projects ORDER BY id"
-        )).fetchall()
-
-        # 第二次迁移（不应报错）
-        self._run_migration(engine)
-
-        # 验证数据不变
-        rows_after = conn.execute(text(
-            "SELECT id, name, config_json FROM projects ORDER BY id"
-        )).fetchall()
-        assert rows_before == rows_after, "幂等迁移不应改变数据"
-
-    def test_new_database_has_config_json(self, old_db):
-        """新创建的数据库包含 config_json 列"""
-        engine, conn = old_db
-
-        # 添加 config_json 列（模拟新数据库已包含该字段）
-        conn.execute(text("ALTER TABLE projects ADD COLUMN config_json TEXT DEFAULT '{}'"))
-        conn.commit()
-
-        # 运行迁移（幂等，不应再添加任何字段）
-        self._run_migration(engine)
-
-        # 验证字段存在
-        inspector = inspect(engine)
-        project_cols = {c["name"] for c in inspector.get_columns("projects")}
-        assert "config_json" in project_cols
-
-    def test_existing_data_keeps_original_config_json(self, old_db):
-        """已有 config_json 数据在迁移后保持不变"""
-        engine, conn = old_db
-
-        # 先创建含 config_json 的表并插入数据
-        conn.execute(text("ALTER TABLE projects ADD COLUMN config_json TEXT DEFAULT '{}'"))
-        conn.execute(text("""
-            INSERT INTO projects (id, name, target_url, config_json)
-            VALUES (1, 'Config Project', 'https://config.com', '{"appium_server_url": "http://localhost:4723"}')
-        """))
-        conn.commit()
-
-        # 运行迁移
-        self._run_migration(engine)
-
-        # 验证数据不变
-        row = conn.execute(
-            text("SELECT config_json FROM projects WHERE id = 1")
-        ).fetchone()
-        assert row[0] == '{"appium_server_url": "http://localhost:4723"}', \
-            f"config_json 数据应保持不变，实际为 {row[0]}"
+        db = Path(tmp_path) / "stamp_only.db"
+        url = f"sqlite:///{db.as_posix()}"
+        eng = create_engine(url)
+        with eng.connect() as conn:
+            stamp_baseline(conn)
+        with eng.connect() as conn:
+            v = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+            assert v == LEGACY_BASELINE_REVISION
+            tables = {r[0] for r in conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table'"))}
+            assert "projects" not in tables, "stamp 不应创建任何业务表"
+        eng.dispose()
 
 
-class TestConfigJsonData:
-    """测试 config_json 数据完整性"""
+class _FakeInspector:
+    """以指定类型反射 Baseline 规格结构（用于模拟 MySQL 旧库的方言类型写法）"""
 
-    def test_config_json_default_empty(self, db_session):
-        """新项目的 config_json 默认值为 '{}'"""
-        from app.models.project import Project
+    def __init__(self, types: dict[str, dict]) -> None:
+        self._types = types
 
-        project = Project(name="Default Config", target_url="https://default-config.com")
-        db_session.add(project)
-        db_session.commit()
-        db_session.refresh(project)
+    def get_table_names(self):
+        return list(self._types)
 
-        assert project.config_json == "{}"
+    def get_columns(self, table):
+        return [{"name": c, "type": t} for c, t in self._types[table].items()]
 
-    def test_config_json_stores_android_config(self, db_session):
-        """config_json 可以存储 Android 配置"""
-        from app.models.project import Project
-        import json
+    def get_foreign_keys(self, table):
+        from app.db.legacy_baseline import _LEGACY_SCHEMA
+        return [
+            {"constrained_columns": [col], "referred_table": parent,
+             "options": {"ondelete": "CASCADE" if od == "cascade" else "RESTRICT"}}
+            for (col, parent, od) in _LEGACY_SCHEMA[table]["fks"]
+        ]
 
-        android_config = {
-            "appium_server_url": "http://localhost:4723",
-            "app_package": "com.example.app",
-            "app_activity": ".MainActivity",
-            "device_name": "Android Emulator",
-            "platform_version": "12.0",
+    def get_unique_constraints(self, table):
+        from app.db.legacy_baseline import _LEGACY_SCHEMA
+        return [{"column_names": list(u)} for u in _LEGACY_SCHEMA[table]["uniques"]]
+
+
+class TestLegacyTypeDialectNormalization:
+    """字符串族方言写法（LONGTEXT / JSON / TEXT）不得与 Baseline（varchar / text）产生伪差异"""
+
+    def test_mysql_string_family_normalized_to_one_bucket(self):
+        from sqlalchemy.dialects import mysql
+        from app.db.legacy_baseline import _norm_type, _canon_baseline_type
+
+        for mysql_type in (mysql.VARCHAR(500), mysql.TEXT(), mysql.LONGTEXT(),
+                           mysql.MEDIUMTEXT(), mysql.JSON()):
+            assert _norm_type(mysql_type) == "string", mysql_type
+        assert _canon_baseline_type("varchar") == "string"
+        assert _canon_baseline_type("text") == "string"
+        # 非字符串族仍保持各自大类型（不得被一并放宽）
+        assert _norm_type(mysql.INTEGER()) == "integer"
+        assert _norm_type(mysql.DATETIME()) == "datetime"
+
+    def test_mysql_dialect_legacy_db_passes_compatibility_check(self, mocker):
+        """复现真实报错场景：MySQL 旧库字符串族写法差异 → 不再判为不兼容"""
+        from sqlalchemy.dialects import mysql
+        import app.db.legacy_baseline as lb
+
+        reported = {
+            "execution_reports": {"report_html": mysql.LONGTEXT(),
+                                  "report_summary": mysql.JSON()},
+            "execution_steps": {"target_selector": mysql.TEXT()},
+            "generated_codes": {"code_content": mysql.LONGTEXT()},
+            "heal_records": {"error_context": mysql.JSON()},
+            "page_elements": {"attributes": mysql.JSON(), "bounding_box": mysql.JSON(),
+                              "selector": mysql.TEXT(), "text_content": mysql.TEXT()},
+            "test_cases": {"steps": mysql.JSON()},
         }
-        project = Project(
-            name="Android App",
-            target_url="https://android-app.com",
-            platform="android",
-            config_json=json.dumps(android_config, ensure_ascii=False),
-        )
-        db_session.add(project)
-        db_session.commit()
-        db_session.refresh(project)
-
-        stored = json.loads(project.config_json) if isinstance(project.config_json, str) else project.config_json
-        assert stored["appium_server_url"] == "http://localhost:4723"
-        assert stored["app_package"] == "com.example.app"
-        assert stored["app_activity"] == ".MainActivity"
-
-    def test_config_json_round_trip(self, db_session):
-        """config_json 经过保存和查询后数据不变"""
-        from app.models.project import Project
-        import json
-
-        config = {
-            "appium_server_url": "http://localhost:4723",
-            "app_package": "com.example.app",
-            "settings": {
-                "timeout": 30,
-                "retry_count": 3,
-            },
+        by_baseline_type = {"varchar": mysql.VARCHAR(500), "text": mysql.TEXT(),
+                            "integer": mysql.INTEGER(), "datetime": mysql.DATETIME()}
+        types = {
+            table: {
+                col: reported.get(table, {}).get(col, by_baseline_type[t])
+                for col, t in bl["columns"].items()
+            }
+            for table, bl in lb._LEGACY_SCHEMA.items()
         }
-        project = Project(
-            name="Round Trip",
-            target_url="https://round-trip.com",
-            platform="android",
-            config_json=json.dumps(config, ensure_ascii=False),
-        )
-        db_session.add(project)
-        db_session.commit()
-        db_session.refresh(project)
 
-        stored = json.loads(project.config_json) if isinstance(project.config_json, str) else project.config_json
-        assert stored == config
-        assert stored["settings"]["timeout"] == 30
-        assert stored["settings"]["retry_count"] == 3
+        mocker.patch("app.db.legacy_baseline.sa.inspect",
+                     return_value=_FakeInspector(types))
+        ok, diffs = lb.compatibility_check(object())
+        assert ok is True, f"方言字符串族差异不应被判为不兼容: {diffs}"
+        assert diffs == []
+
+    def test_non_string_type_mismatch_still_rejected(self, mocker):
+        """反向保护：真正的类型族不匹配（integer vs string）仍必须拒绝"""
+        from sqlalchemy.dialects import mysql
+        import app.db.legacy_baseline as lb
+
+        by_baseline_type = {"varchar": mysql.VARCHAR(500), "text": mysql.TEXT(),
+                            "integer": mysql.INTEGER(), "datetime": mysql.DATETIME()}
+        types = {
+            table: {col: by_baseline_type[t] for col, t in bl["columns"].items()}
+            for table, bl in lb._LEGACY_SCHEMA.items()
+        }
+        types["projects"]["id"] = mysql.TEXT()  # 期望 integer，实际字符串族
+
+        mocker.patch("app.db.legacy_baseline.sa.inspect",
+                     return_value=_FakeInspector(types))
+        ok, diffs = lb.compatibility_check(object())
+        assert ok is False
+        assert any("projects: 列 id 类型不匹配" in d for d in diffs), diffs

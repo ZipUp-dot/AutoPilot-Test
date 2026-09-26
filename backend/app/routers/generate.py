@@ -1,21 +1,21 @@
-"""代码生成路由 — 单条生成 + 批量异步 + 最新代码查询"""
+"""代码生成路由 — 单条生成 + 批量异步 + 最新代码查询
 
-import uuid
-import threading
+批量生成统一收敛到 BatchGenerateService（进程内单例），
+与 Orchestrator run_full_pipeline 共享同一实现（双入口统一）。
+本文件保持薄路由：只调用 Service，保留接口形状，status 响应升级为 case-level 明细。
+"""
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
-from app.services.ai_service import AIService, GenerateResult, BatchJob
+from app.services.ai_service import AIService
+from app.services.batch_generate_service import batch_generate_service
 from app.schemas import ApiResponse
-from app.exceptions import AIException
+from app.exceptions import AIException, NotFoundException, ValidationException
 
 router = APIRouter(tags=["代码生成"])
-
-# ── 批量任务内存追踪 ──
-_batch_jobs: dict[str, BatchJob] = {}
-_batch_lock = threading.Lock()
 
 
 class BatchGenerateBody(BaseModel):
@@ -34,15 +34,6 @@ class BatchGenerateResponse(BaseModel):
     batch_id: str
     total: int
     status: str = "running"
-
-
-class BatchStatusResponse(BaseModel):
-    batch_id: str
-    status: str
-    total: int
-    completed: int = 0
-    failed: int = 0
-    progress_pct: float = 0.0
 
 
 class LatestCodeResponse(BaseModel):
@@ -69,15 +60,7 @@ def generate_code(
     case_id: int,
     db: Session = Depends(get_db),
 ):
-    """为单条用例生成可执行的 Playwright Python 异步代码。
-
-    流程:
-      1. 查询用例 steps + 项目 elements
-      2. 智能匹配步骤 target 到页面元素 selector
-      3. 调用 LLM（gpt-4o-mini / deepseek-chat）生成代码
-      4. ast.parse 语法校验 + 安全黑名单检查
-      5. 存入 generated_codes 表，更新用例状态为 generated
-    """
+    """为单条用例生成可执行的 Playwright Python 异步代码。"""
     svc = AIService(db)
     result = svc.generate_single(project_id, case_id)
     return ApiResponse(data={
@@ -107,35 +90,16 @@ def batch_generate(
 
     返回 batch_id，通过 GET /generate-batch/{batch_id}/status 轮询进度。
     """
-    batch_id = str(uuid.uuid4())[:8]
-    total = len(body.case_ids)
-
-    job = BatchJob(batch_id=batch_id, total=total, status="running")
-    with _batch_lock:
-        _batch_jobs[batch_id] = job
-
-    # 后台线程逐条生成
-    def _run_batch():
-        from app.db.database import SessionLocal
-        db_session = SessionLocal()
-        try:
-            svc = AIService(db_session)
-            for cid in body.case_ids:
-                try:
-                    svc.generate_single(project_id, cid)
-                    job.completed += 1
-                except Exception:
-                    job.failed += 1
-            job.status = "completed"
-        finally:
-            db_session.close()
-
-    t = threading.Thread(target=_run_batch, daemon=True)
-    t.start()
+    try:
+        batch_id = batch_generate_service.create_job(project_id, body.case_ids, db=db)
+    except ValidationException as e:
+        return ApiResponse(code=422, message=str(e), data=None)
+    except NotFoundException as e:
+        return ApiResponse(code=404, message=str(e), data=None)
 
     return ApiResponse(data={
         "batch_id": batch_id,
-        "total": total,
+        "total": len(dict.fromkeys(body.case_ids)),
         "status": "running",
     })
 
@@ -146,25 +110,13 @@ def batch_generate(
     summary="查询批量生成进度",
 )
 def batch_generate_status(project_id: int, batch_id: str):
-    """轮询批量生成任务的完成进度"""
-    job = _batch_jobs.get(batch_id)
-    if not job:
-        return ApiResponse(
-            code=404,
-            message=f"批次 {batch_id} 不存在",
-            data=None,
-        )
+    """轮询批量生成任务的完成进度（case-level 明细）"""
+    try:
+        data = batch_generate_service.status(project_id, batch_id)
+    except NotFoundException as e:
+        return ApiResponse(code=404, message=str(e), data=None)
 
-    total = job.total
-    done = job.completed + job.failed
-    return ApiResponse(data={
-        "batch_id": job.batch_id,
-        "status": job.status,
-        "total": total,
-        "completed": job.completed,
-        "failed": job.failed,
-        "progress_pct": round(done / total * 100, 1) if total > 0 else 0,
-    })
+    return ApiResponse(data=data)
 
 
 # ═══════════════════════════════════════════════

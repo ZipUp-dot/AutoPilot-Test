@@ -141,6 +141,77 @@ class TestCaseServiceImportExcel:
         cases = db_session.query(TestCase).filter(TestCase.project_id == project.id).all()
         assert len(cases) == 1
 
+    def test_import_duplicate_case_no_within_file_skipped(self, db_session, mocker):
+        # 同一 Excel 文件内出现相同编号 → 后者跳过（修复逐行查库抓不到同文件重复的缺陷）
+        mocker.patch("app.services.case_service._save_upload", return_value="/fake/path.xlsx")
+        project = Project(name="P", target_url="https://a.com")
+        db_session.add(project)
+        db_session.commit()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["用例编号", "用例名称", "操作步骤"])
+        ws.append(["TC001", "用例A", json.dumps([{"action": "click", "target": "#a"}])])
+        ws.append(["TC001", "用例B", json.dumps([{"action": "click", "target": "#b"}])])
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        service = CaseService(db_session)
+        result = service.import_excel(project.id, buf.getvalue(), "dup_no.xlsx")
+        assert result.success == 1
+        assert result.failed >= 1
+        assert any("编号 TC001 已存在" in e["reason"] for e in result.errors)
+        cases = db_session.query(TestCase).filter(TestCase.project_id == project.id).all()
+        assert len(cases) == 1
+
+    def test_import_duplicate_case_name_within_file_skipped(self, db_session, mocker):
+        # 同一 Excel 文件内出现相同用例名称（不同编号）→ 后者跳过
+        mocker.patch("app.services.case_service._save_upload", return_value="/fake/path.xlsx")
+        project = Project(name="P", target_url="https://a.com")
+        db_session.add(project)
+        db_session.commit()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["用例编号", "用例名称", "操作步骤"])
+        ws.append(["TC001", "登录测试", json.dumps([{"action": "click", "target": "#a"}])])
+        ws.append(["TC002", "登录测试", json.dumps([{"action": "click", "target": "#b"}])])
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        service = CaseService(db_session)
+        result = service.import_excel(project.id, buf.getvalue(), "dup_name.xlsx")
+        assert result.success == 1
+        assert result.failed >= 1
+        assert any("用例名称「登录测试」已存在" in e["reason"] for e in result.errors)
+        cases = db_session.query(TestCase).filter(TestCase.project_id == project.id).all()
+        assert len(cases) == 1
+
+    def test_import_duplicate_case_name_against_db_skipped(self, db_session, mocker):
+        # 项目内已有用例名称 → 再导入同名被跳过
+        mocker.patch("app.services.case_service._save_upload", return_value="/fake/path.xlsx")
+        project = Project(name="P", target_url="https://a.com")
+        db_session.add(project)
+        db_session.commit()
+        db_session.add(TestCase(project_id=project.id, case_name="登录测试", steps="[]", status="imported"))
+        db_session.commit()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["用例编号", "用例名称", "操作步骤"])
+        ws.append(["TC001", "登录测试", json.dumps([{"action": "click", "target": "#a"}])])
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        service = CaseService(db_session)
+        result = service.import_excel(project.id, buf.getvalue(), "dup_db_name.xlsx")
+        assert result.success == 0
+        assert result.failed >= 1
+        assert any("用例名称「登录测试」已存在" in e["reason"] for e in result.errors)
+
     def test_import_empty_file(self, db_session, mocker):
         mocker.patch("app.services.case_service._save_upload", return_value="/fake/path.xlsx")
         project = Project(name="P", target_url="https://a.com")

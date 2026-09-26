@@ -27,12 +27,14 @@ def get_orchestrator(db: Session = Depends(get_db)):
     from app.services.appium_service import AppiumService
     from app.services.report_service import ReportService
     from app.services.orchestrator import TestOrchestrator
+    from app.services.execution_admission_service import ExecutionAdmissionService
 
     return TestOrchestrator(
         ai_service=AIService(db),
         playwright_service=PlaywrightService(db),
         appium_service=AppiumService(db),
         report_service=ReportService(db),
+        admission_service=ExecutionAdmissionService(db),
     )
 
 

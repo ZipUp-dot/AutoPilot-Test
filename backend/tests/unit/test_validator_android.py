@@ -11,8 +11,7 @@ ANDROID_VALID_CODE = """def run_test(driver):
 """
 
 # ── Web 有效代码 ──
-WEB_VALID_CODE = """import asyncio
-async def run_test(safe) -> dict:
+WEB_VALID_CODE = """async def run_test(safe) -> dict:
     return {"success": True, "steps": []}
 """
 
@@ -22,8 +21,7 @@ ANDROID_INVALID_CODE = """def run_test(driver):
 """
 
 # ── Web 无效代码（缺少 return） ──
-WEB_INVALID_CODE = """import asyncio
-async def run_test(safe) -> dict:
+WEB_INVALID_CODE = """async def run_test(safe) -> dict:
     await safe.goto("https://example.com")
 """
 
@@ -63,14 +61,15 @@ class TestValidatorAndroid:
         assert result is None
 
     def test_android_valid_with_imports(self):
-        """Android 有效代码含合法 import → 校验通过"""
+        """P1-3 升级：import 一律拒绝——即使是被注入能力对应的模块（AppiumBy）"""
         code = """from appium.webdriver.common.appiumby import AppiumBy
 def run_test(driver):
     driver.find_element(AppiumBy.ID, "btn").click()
     return {"success": True, "steps": []}
 """
         result = CodeValidator.validate(code, platform="android")
-        assert result is None
+        assert result is not None
+        assert "禁止导入模块" in result
 
     def test_android_invalid_missing_return(self):
         """Android 无效代码（缺少 return） → 校验不通过"""
@@ -159,8 +158,7 @@ class TestValidatorSyncAsyncContract:
 
     def test_web_async_valid(self):
         """Web 异步合约 → 校验通过"""
-        code = """import asyncio
-async def run_test(safe) -> dict:
+        code = """async def run_test(safe) -> dict:
     await safe.goto("https://example.com")
     return {"success": True, "steps": []}
 """
@@ -217,8 +215,7 @@ class TestValidatorCodeStyle:
 
     def test_web_chain_call_not_restricted(self):
         """Web 代码不受 Android 链式调用约束"""
-        code = """import asyncio
-async def run_test(safe) -> dict:
+        code = """async def run_test(safe) -> dict:
     await safe.click("#btn")
     return {"success": True, "steps": []}
 """

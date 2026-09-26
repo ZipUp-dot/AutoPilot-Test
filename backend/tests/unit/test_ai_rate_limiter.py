@@ -3,6 +3,7 @@
 验证：并发上限（Concurrency Limit）+ 速率（Rate Limit）双层防护
 """
 
+import asyncio
 import threading
 import time
 
@@ -140,7 +141,7 @@ class TestBatchConcurrencyEndToEnd:
         ai_rate_limiter._calls.clear()
 
     def _mock_httpx_success(self, mocker, active, peak, lock):
-        """构造成功响应，跟踪 HTTP 在途峰值"""
+        """构造成功响应（async），跟踪 HTTP 在途峰值"""
         from app.services import ai_service
 
         class _FakeResponse:
@@ -156,23 +157,22 @@ class TestBatchConcurrencyEndToEnd:
             def __init__(self, *a, **kw):
                 pass
 
-            def __enter__(self):
+            async def __aenter__(self):
                 return self
 
-            def __exit__(self, *a):
+            async def __aexit__(self, *a):
                 return False
 
-            def post(self, *a, **kw):
+            async def post(self, *a, **kw):
                 with lock:
                     active[0] += 1
                     peak[0] = max(peak[0], active[0])
-                time.sleep(0.01)
+                await asyncio.sleep(0.01)
                 with lock:
                     active[0] -= 1
                 return _FakeResponse()
 
-        mocker.patch.object(ai_service.httpx, "Client", _FakeClient)
-        mocker.patch.object(ai_service.time, "sleep")
+        mocker.patch.object(ai_service.httpx, "AsyncClient", _FakeClient)
 
     def test_100_concurrent_calls_rate_and_concurrency(self, mock_settings, mocker):
         """100 并发：速率熔断恰好 N 次放行，HTTP 并发峰值 ≤ AI_MAX_CONCURRENCY，全部结束无死锁"""
@@ -234,18 +234,21 @@ class TestBatchConcurrencyEndToEnd:
             def __init__(self, *a, **kw):
                 pass
 
-            def __enter__(self):
+            async def __aenter__(self):
                 return self
 
-            def __exit__(self, *a):
+            async def __aexit__(self, *a):
                 return False
 
-            def post(self, *a, **kw):
+            async def post(self, *a, **kw):
                 call_count[0] += 1
                 raise httpx.TimeoutException("timeout")
 
-        mocker.patch.object(ai_service.httpx, "Client", _FakeClient)
-        mocker.patch.object(ai_service.time, "sleep")
+        mocker.patch.object(ai_service.httpx, "AsyncClient", _FakeClient)
+        # backoff 用 asyncio.sleep，patch 为 no-op 使退避即时返回（不占 slot）
+        async def _noop_sleep(*a, **kw):
+            return None
+        mocker.patch.object(ai_service.asyncio, "sleep", new=_noop_sleep)
 
         try:
             with pytest.raises(AIException, match="已重试3次"):

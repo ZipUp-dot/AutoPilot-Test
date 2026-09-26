@@ -16,7 +16,7 @@ from pathlib import Path
 from app.dependencies import get_db
 from app.config import settings
 from app.schemas import ApiResponse
-from app.services.report_service import ReportService
+from app.services.report_service import ReportService, ReportClaimConflict
 from app.exceptions import NotFoundException
 
 logger = logging.getLogger("autopilot.report")
@@ -43,6 +43,9 @@ def generate_report(execution_id: int, db: Session = Depends(get_db)):
     try:
         result = service.generate(execution_id)
         return ApiResponse(data=result)
+    except ReportClaimConflict as e:
+        # 该 report_type 仍处于 generating 且未超时（另一 owner 在途）→ 409 冲突
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise NotFoundException(str(e))
     except Exception as e:

@@ -1,30 +1,54 @@
 """测试报告服务 — 数据聚合 + Jinja2 渲染 + 文件管理 + 过期清理
 
-数据源:
+数据源（P0-10 事实源钉死）:
   - executions 表：批次信息、总耗时、执行模式
+  - executions.manifest_json：环境/名称快照（project name/target_url，Admission 时
+    冻结；改 Project 后旧报告不变）
+  - executions.runtime_state_json：case 终态事实源（Seal 时 Resolver 计算一次写入；
+    Seal 后 Report/Metrics/Detail 只读 sealed case_status + terminal_reason，
+    禁止重跑 Resolver）
   - execution_steps 表：每步的执行状态、截图、日志、错误
   - test_cases 表：用例名称、优先级、预期结果
-  - generated_codes 表：生成的代码（含 healed 版本）
   - heal_records 表：自愈记录
 
-报告输出:
-  - HTML 文件：reports/execution_{execution_id}_report.html（内联所有资源，离线可查看）
-  - DB 记录：execution_reports 表
+报告终态分型（映射钉死，禁止自定义值）:
+  completed→full、stopped→partial、failed→diagnostic、interrupted→interrupted；
+  非终态 status（queued/running/healing）兜底 full。
+
+Report Claim（幂等 + 可恢复 + owner fencing）:
+  状态机 generating→ready/failed、failed→generating（不存在 pending 态，claim 即
+  创建 generating）。claim 逻辑：
+    - 不存在 → 创建 generating + 唯一 claim_token
+    - ready → 直接复用（artifact 文件缺失时转 failed 重新 claim，保留恢复语义）
+    - generating 未超时 → ReportClaimConflict（路由映射 409）
+    - generating 已超时 → reclaim（生成新 claim_token，旧 token 立即失效）
+    - failed → 重新 claim（generating + 新 token）
+  每次 claim 内部最多一次生成尝试：生成异常 → fenced 置 failed 再抛（模板错误/
+  路径不可写等永久故障不得空转，等待人工/monitor 再次触发）。
+
+  Report Claim Fencing：生成完成/失败写回必须携带本次 claim_token，更新条件 =
+  WHERE execution_id=? AND report_type=? AND generation_status='generating' AND
+  claim_token=<本次 token>——旧 owner 在 reclaim 后晚到，其写回因 token 失效而
+  影响行数=0，不得覆盖新 owner 结果。
+  Report Artifact Fencing：每次 claim 的临时文件与最终 artifact 路径绑定 token
+  （report_{id}_{type}_{token}.tmp → os.replace 原子 rename → .html），不同 claim
+  禁止共享同一最终文件路径；只有当前 token 的 owner 才能发布 canonical artifact，
+  旧 owner 晚到的文件只能成为孤立文件、不得覆盖当前 owner 的可见报告。
 """
 
 import json
 import logging
 import os
-import re
-import shutil
 import threading
 import time
+import uuid
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from jinja2 import Environment, FileSystemLoader, Template, select_autoescape
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+from sqlalchemy import update as _sa_update
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -39,8 +63,26 @@ from app.models.test_case import TestCase
 logger = logging.getLogger("autopilot.report")
 
 # 报告生成进程内互斥锁：编排器后台自动生成与手动 POST /reports/generate 并发时，
-# 防止同一 execution_id 同时走"查询-插入"导致 execution_reports UNIQUE 冲突。
+# 防止同一 execution_id 同时进入 claim 状态机（DB 层另由 fenced UPDATE 兜底竞态）。
 _REPORT_LOCK = threading.Lock()
+
+# 报告终态分型映射（P0-10，钉死，禁止自定义值）
+REPORT_TYPES = {
+    "completed": "full",
+    "stopped": "partial",
+    "failed": "diagnostic",
+    "interrupted": "interrupted",
+}
+
+
+class ReportClaimConflict(Exception):
+    """report_type 的生成 claim 冲突：该行仍处于 generating 且未超时（另一 owner 在途）"""
+
+
+def report_type_for_status(status: str) -> str:
+    """Execution.status → report_type；非终态 status（queued/running/healing）兜底 full"""
+    return REPORT_TYPES.get(status, "full")
+
 
 # ── Jinja2 环境 ──
 # autoescape 开启：模板中所有 {{ }} 输出的不可信动态内容（用例名/错误/日志/代码等）
@@ -59,11 +101,11 @@ class ReportService:
         self._db = db
 
     # ═══════════════════════════════════════════════
-    # 报告生成
+    # 报告生成（claim 状态机 + owner fencing）
     # ═══════════════════════════════════════════════
 
     def generate(self, execution_id: int) -> dict:
-        """生成 HTML 报告（进程内互斥，防并发重复创建 UNIQUE 冲突）
+        """生成 HTML 报告（进程内互斥 + claim 状态机）
 
         Returns:
             { "report_id": 1, "download_url": "..." }
@@ -75,29 +117,214 @@ class ReportService:
         """生成 HTML 报告（锁内执行）"""
         t0 = time.time()
 
-        # 1. 检查是否已有报告
-        existing = (
-            self._db.query(Report)
-            .filter(Report.execution_id == execution_id)
+        execution = (
+            self._db.query(Execution)
+            .filter(Execution.id == execution_id)
             .first()
         )
-        if existing and existing.report_html:
-            # 记录已存在且 HTML 文件在磁盘上存在 → 直接复用，不重复渲染。
-            # 若 download_url 指向的文件已被清理/人工删除，则不返回，继续向下重渲染，
-            # 让文件自动恢复（_save_html_file 重写文件、_save_db 为 upsert 更新同一行）。
-            file_exists = False
-            if existing.download_url:
-                file_exists = (
-                    Path(settings.REPORT_DIR) / Path(existing.download_url).name
-                ).exists()
-            if file_exists:
-                logger.info("报告已存在: execution_id=%s", execution_id)
-                return {
-                    "report_id": existing.id,
-                    "download_url": existing.download_url,
-                }
+        if not execution:
+            raise ValueError(f"执行批次 {execution_id} 不存在")
 
-        # 2. 查询执行批次
+        report_type = report_type_for_status(execution.status)
+
+        # claim 状态机（claim 即创建/复用 generating 行；无 pending 态）
+        report, claim_token = self._claim(execution, report_type)
+        if report.generation_status == "ready":
+            logger.info("报告已存在(ready): execution_id=%s type=%s", execution_id, report_type)
+            return {
+                "report_id": report.id,
+                "download_url": report.download_url or "",
+            }
+
+        # 每次 claim 内部最多一次生成尝试（禁止内部自动无限重试；
+        # 永久故障置 failed，等待人工/monitor 再次触发）
+        try:
+            html, report_data = self._render_report(execution_id)
+        except Exception as e:
+            self._mark_failed(execution, report_type, claim_token)
+            logger.exception("报告渲染失败: execution_id=%s type=%s", execution_id, report_type)
+            raise
+
+        # Report Artifact Fencing：临时文件与最终 artifact 路径绑定 claim_token，
+        # 原子 rename 发布；不同 claim 禁止共享同一最终文件路径。
+        report_dir = Path(settings.REPORT_DIR)
+        report_dir.mkdir(parents=True, exist_ok=True)
+        file_name = f"report_{execution_id}_{report_type}_{claim_token}.html"
+        tmp_name = f"report_{execution_id}_{report_type}_{claim_token}.tmp"
+        final_path = report_dir / file_name
+        tmp_path = report_dir / tmp_name
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(html)
+        os.replace(tmp_path, final_path)
+        download_url = f"/reports/{file_name}"
+
+        summary = {
+            "total_cases": report_data["total_cases"],
+            "passed": report_data["passed"],
+            "failed": report_data["failed"],
+            "skipped": report_data["skipped"],
+            "pass_rate": report_data["pass_rate"],
+            "duration": report_data["duration"],
+            "heal_attempts": report_data["heal_attempts"],
+            "heal_success": report_data["heal_success"],
+        }
+
+        # fenced 写回（Report Claim Fencing）：仅当仍 generating 且 token 匹配
+        report = self._mark_ready(
+            execution, report_type, claim_token, html, summary, download_url
+        )
+        if report is None:
+            # 旧 owner 晚到（claim_token 已失效被 reclaim）：不得覆盖新 owner 结果
+            logger.warning(
+                "报告 claim 已失效（旧 token 晚到），不覆盖新 owner 结果: "
+                "execution_id=%s type=%s token=%s", execution_id, report_type, claim_token,
+            )
+            return {"report_id": None, "download_url": download_url}
+
+        elapsed = time.time() - t0
+        logger.info(
+            "报告生成完成: execution_id=%s type=%s elapsed=%.2fs size=%s KB",
+            execution_id, report_type, elapsed, len(html) // 1024,
+        )
+        return {
+            "report_id": report.id,
+            "download_url": download_url,
+        }
+
+    def _claim(self, execution: Execution, report_type: str) -> tuple[Report, str]:
+        """claim 状态机（无 pending 态；超时 reclaim 生成新 token，旧 token 立即失效）
+
+        Returns:
+            (report_row, claim_token)。generation_status=='ready' 表示直接复用。
+        Raises:
+            ReportClaimConflict: generating 且未超时（另一 owner 在途）。
+        """
+        now = datetime.utcnow()
+        existing = (
+            self._db.query(Report)
+            .filter(
+                Report.execution_id == execution.id,
+                Report.report_type == report_type,
+            )
+            .first()
+        )
+        token = uuid.uuid4().hex
+        timeout = settings.REPORT_CLAIM_TIMEOUT_SECONDS
+
+        # 不存在 → 创建 generating + 唯一 claim_token
+        if existing is None:
+            report = Report(
+                execution_id=execution.id,
+                report_type=report_type,
+                generation_status="generating",
+                claim_token=token,
+                claimed_at=now,
+            )
+            self._db.add(report)
+            self._db.commit()
+            self._db.refresh(report)
+            return report, token
+
+        # ready → 直接复用；artifact 文件缺失（清理/人工删除）→ 转 failed 重新 claim
+        if existing.generation_status == "ready":
+            if self._artifact_exists(existing):
+                return existing, existing.claim_token or token
+            existing.generation_status = "failed"
+            self._db.commit()
+
+        # generating → 未超时拒绝；已超时 reclaim（新 token）
+        if existing.generation_status == "generating":
+            if existing.claimed_at is not None and (
+                now - existing.claimed_at
+            ).total_seconds() < timeout:
+                raise ReportClaimConflict(
+                    f"报告正在生成中（type={report_type}），请稍后重试"
+                )
+            existing.claim_token = token
+            existing.claimed_at = now
+            self._db.commit()
+            return existing, token
+
+        # failed → 重新 claim（generating + 新 token）
+        existing.generation_status = "generating"
+        existing.claim_token = token
+        existing.claimed_at = now
+        self._db.commit()
+        return existing, token
+
+    def _mark_ready(
+        self,
+        execution: Execution,
+        report_type: str,
+        token: str,
+        html: str,
+        summary: dict,
+        download_url: str,
+    ) -> Optional[Report]:
+        """fenced 写回：仅当行仍处于 generating 且 claim_token==本次 token 才置 ready。
+
+        影响行数=0 → 该 claim 已被 reclaim（token 失效）→ 返回 None，旧 owner 不得覆盖。
+        """
+        result = self._db.execute(
+            _sa_update(Report)
+            .where(
+                Report.execution_id == execution.id,
+                Report.report_type == report_type,
+                Report.generation_status == "generating",
+                Report.claim_token == token,
+            )
+            .values(
+                report_html=html[:50000],  # DB 中存储截断版本
+                report_summary=json.dumps(summary, ensure_ascii=False),
+                download_url=download_url,
+                generation_status="ready",
+                claimed_at=datetime.utcnow(),
+            )
+        )
+        self._db.commit()
+        if result.rowcount == 0:
+            return None
+        report = (
+            self._db.query(Report)
+            .filter(
+                Report.execution_id == execution.id,
+                Report.report_type == report_type,
+            )
+            .first()
+        )
+        return report
+
+    def _mark_failed(self, execution: Execution, report_type: str, token: str) -> None:
+        """fenced 置 failed（同 _mark_ready 的 fencing 语义；生成异常时调用）"""
+        self._db.execute(
+            _sa_update(Report)
+            .where(
+                Report.execution_id == execution.id,
+                Report.report_type == report_type,
+                Report.generation_status == "generating",
+                Report.claim_token == token,
+            )
+            .values(generation_status="failed")
+        )
+        self._db.commit()
+
+    @staticmethod
+    def _artifact_exists(report: Report) -> bool:
+        """artifact 文件是否存在（ready 复用判定；download_url 指向文件已被清理则重渲染）"""
+        if not report.download_url:
+            return False
+        return (Path(settings.REPORT_DIR) / Path(report.download_url).name).exists()
+
+    # ═══════════════════════════════════════════════
+    # 数据聚合（事实源 = sealed runtime_state + Manifest 快照）
+    # ═══════════════════════════════════════════════
+
+    def _render_report(self, execution_id: int) -> tuple[str, dict]:
+        """查询执行数据、聚合、渲染 HTML（生成尝试主体）
+
+        Returns:
+            (html, report_data)：report_data 供 summary 使用，避免重复聚合。
+        """
         execution = (
             self._db.query(Execution)
             .filter(Execution.id == execution_id)
@@ -112,7 +339,6 @@ class ReportService:
             .first()
         )
 
-        # 3. 查询所有执行步骤
         steps = (
             self._db.query(ExecutionStep)
             .filter(ExecutionStep.execution_id == execution_id)
@@ -120,7 +346,6 @@ class ReportService:
             .all()
         )
 
-        # 4. 查询关联的用例
         case_ids = list(set(s.case_id for s in steps))
         cases_map = {
             c.id: c
@@ -129,9 +354,8 @@ class ReportService:
             .all()
         } if case_ids else {}
 
-        # 5. 查询自愈记录
         step_ids = [s.id for s in steps]
-        heal_records = {}
+        heal_records: dict[int, list] = {}
         if step_ids:
             for hr in (
                 self._db.query(HealRecord)
@@ -140,55 +364,20 @@ class ReportService:
             ):
                 heal_records.setdefault(hr.execution_step_id, []).append(hr)
 
-        # 6. 查询生成代码
-        gen_codes = {}
+        # 最终代码统一走 ExecutionCodeResolver：只读 runtime_state 冻结的 active_code_id
+        gen_codes: dict[int, GeneratedCode] = {}
         if case_ids:
-            for gc in (
-                self._db.query(GeneratedCode)
-                .filter(GeneratedCode.case_id.in_(case_ids))
-                .order_by(GeneratedCode.created_at.desc())
-                .all()
-            ):
-                if gc.case_id not in gen_codes:
-                    gen_codes[gc.case_id] = gc
+            from app.services.execution_code_resolver import ExecutionCodeResolver
+            resolver = ExecutionCodeResolver(self._db)
+            for cid in case_ids:
+                code = resolver.get_active_code(execution_id, cid)
+                if code is not None:
+                    gen_codes[cid] = code
 
-        # 7. 聚合数据
         report_data = self._aggregate(
             execution, project, steps, cases_map, heal_records, gen_codes
         )
-
-        # 8. 渲染 HTML
-        html = self._render(report_data)
-
-        # 9. 保存 HTML 文件
-        file_path = self._save_html_file(execution_id, html)
-
-        # 10. 保存/更新 DB 记录
-        summary = {
-            "total_cases": report_data["total_cases"],
-            "passed": report_data["passed"],
-            "failed": report_data["failed"],
-            "skipped": report_data["skipped"],
-            "pass_rate": report_data["pass_rate"],
-            "duration": report_data["duration"],
-            "heal_attempts": report_data["heal_attempts"],
-            "heal_success": report_data["heal_success"],
-        }
-        report = self._save_db(execution_id, html, summary, file_path)
-
-        elapsed = time.time() - t0
-        logger.info(
-            "报告生成完成: execution_id=%s elapsed=%.2fs size=%s KB",
-            execution_id, elapsed, len(html) // 1024,
-        )
-        return {
-            "report_id": report.id,
-            "download_url": file_path,
-        }
-
-    # ═══════════════════════════════════════════════
-    # 数据聚合
-    # ═══════════════════════════════════════════════
+        return self._render(report_data), report_data
 
     def _aggregate(
         self,
@@ -199,12 +388,36 @@ class ReportService:
         heal_records: dict[int, list[HealRecord]],
         gen_codes: dict[int, GeneratedCode],
     ) -> dict:
-        """聚合所有数据为报告数据结构"""
+        """聚合所有数据为报告数据结构。
 
+        case 终态两阶段钉死：Seal 时 Resolver 算一次写入 runtime_state → 此处只读
+        sealed case_status + terminal_reason，禁止重跑 Resolver、禁止自判状态。
+        """
         # ── 概览统计 ──
         case_steps = defaultdict(list)
         for s in steps:
             case_steps[s.case_id].append(s)
+
+        # sealed runtime_state（唯一持久化真源；无 case_status 的 case 报告归 skipped）
+        runtime_state: dict = {}
+        if execution.runtime_state_json:
+            try:
+                runtime_state = json.loads(execution.runtime_state_json)
+            except (TypeError, ValueError):
+                runtime_state = {}
+
+        # Manifest project 快照（环境/名称；Admission 时冻结，改 Project 后旧报告不变）
+        manifest: dict = {}
+        if execution.manifest_json:
+            try:
+                manifest = json.loads(execution.manifest_json)
+            except (TypeError, ValueError):
+                manifest = {}
+        mproj = manifest.get("project") or {}
+        project_name = mproj.get("name") or (project.name if project else "")
+        target_url = mproj.get("target_url") or (
+            project.target_url if project else ""
+        )
 
         case_results = []
         passed = failed = skipped = 0
@@ -215,7 +428,11 @@ class ReportService:
             if not case:
                 continue
 
-            final_status = self._determine_status(case_steps_list)
+            entry = runtime_state.get(str(case_id), {}) or {}
+            final_status = entry.get("case_status") or "unknown"
+            # 报告展示值域仅 success/failed/skipped；unknown/pending/running 兜底 skipped
+            if final_status not in ("success", "failed", "skipped"):
+                final_status = "skipped"
             case_duration = sum(s.duration_ms or 0 for s in case_steps_list)
             total_duration_ms += case_duration
 
@@ -353,8 +570,9 @@ class ReportService:
             )
 
         return {
-            # 模板变量
-            "project_name": project.name if project else "",
+            # 模板变量（project 快照来自 Manifest，保证改 Project 后旧报告不变）
+            "project_name": project_name,
+            "target_url": target_url,
             "batch_name": execution.batch_name or f"Execution #{execution.id}",
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "execution_mode": execution.execution_mode or "headless",
@@ -405,21 +623,6 @@ class ReportService:
     # ═══════════════════════════════════════════════
     # 分析辅助方法
     # ═══════════════════════════════════════════════
-
-    @staticmethod
-    def _determine_status(case_steps: list[ExecutionStep]) -> str:
-        """根据步骤判断用例最终状态
-
-        - 任一 failed → failed
-        - 全部 success / skipped / pending 且至少一个 success → success
-        - 全部 skipped / pending → skipped
-        """
-        statuses = [s.status for s in case_steps]
-        if "failed" in statuses:
-            return "failed"
-        if all(s in ("success", "skipped", "pending") for s in statuses):
-            return "success" if any(s == "success" for s in statuses) else "skipped"
-        return "skipped"
 
     @staticmethod
     def _analyze_errors(steps: list[ExecutionStep]) -> list[dict]:
@@ -493,41 +696,6 @@ class ReportService:
         template = _env.get_template("report_template.html")
         return template.render(**data)
 
-    def _save_html_file(self, execution_id: int, html: str) -> str:
-        """保存 HTML 到 reports 目录"""
-        report_dir = Path(settings.REPORT_DIR)
-        report_dir.mkdir(parents=True, exist_ok=True)
-        file_name = f"execution_{execution_id}_report.html"
-        file_path = report_dir / file_name
-        file_path.write_text(html, encoding="utf-8")
-        return f"/reports/{file_name}"
-
-    def _save_db(
-        self, execution_id: int, html: str, summary: dict, file_path: str
-    ) -> Report:
-        """保存/更新 execution_reports 记录"""
-        existing = (
-            self._db.query(Report)
-            .filter(Report.execution_id == execution_id)
-            .first()
-        )
-        if existing:
-            existing.report_html = html[:50000]  # DB 中存储截断版本
-            existing.report_summary = json.dumps(summary, ensure_ascii=False)
-            existing.download_url = file_path
-        else:
-            existing = Report(
-                execution_id=execution_id,
-                report_html=html[:50000],
-                report_summary=json.dumps(summary, ensure_ascii=False),
-                download_url=file_path,
-            )
-            self._db.add(existing)
-
-        self._db.commit()
-        self._db.refresh(existing)
-        return existing
-
     @staticmethod
     def _relative_path(absolute: str) -> str:
         """将绝对路径转为相对路径（HTML 中引用用 ../ 前缀，统一使用 / 分隔符）"""
@@ -543,10 +711,22 @@ class ReportService:
     # ═══════════════════════════════════════════════
 
     def get_report_info(self, execution_id: int) -> Optional[dict]:
-        """获取报告信息"""
+        """获取报告信息（按 execution 当前 status 对应的 report_type 查询）
+
+        Seal 后 status 冻结 → 查询目标唯一；非终态（极少直接查询场景）兜底 full。
+        """
+        execution = (
+            self._db.query(Execution)
+            .filter(Execution.id == execution_id)
+            .first()
+        )
+        report_type = report_type_for_status(execution.status) if execution else "full"
         report = (
             self._db.query(Report)
-            .filter(Report.execution_id == execution_id)
+            .filter(
+                Report.execution_id == execution_id,
+                Report.report_type == report_type,
+            )
             .first()
         )
         if not report:
@@ -554,6 +734,8 @@ class ReportService:
         return {
             "report_id": report.id,
             "execution_id": report.execution_id,
+            "report_type": report.report_type,
+            "generation_status": report.generation_status,
             "summary": (
                 json.loads(report.report_summary)
                 if report.report_summary else {}
@@ -568,22 +750,24 @@ class ReportService:
 
     @staticmethod
     def cleanup_old_reports(max_days: int = 30) -> int:
-        """清理超过 max_days 天的报告文件"""
+        """清理超过 max_days 天的报告文件（兼容新旧命名：execution_*_report.html 与
+        token 绑定的 report_*.html；token 孤立文件同样按 mtime 清理）"""
         report_dir = Path(settings.REPORT_DIR)
         if not report_dir.exists():
             return 0
 
         cutoff = datetime.now() - timedelta(days=max_days)
         deleted = 0
-        for f in report_dir.glob("execution_*_report.html"):
-            try:
-                mtime = datetime.fromtimestamp(f.stat().st_mtime)
-                if mtime < cutoff:
-                    f.unlink()
-                    deleted += 1
-                    logger.info("清理过期报告: %s", f.name)
-            except Exception:
-                pass
+        for pattern in ("execution_*_report.html", "report_*.html"):
+            for f in report_dir.glob(pattern):
+                try:
+                    mtime = datetime.fromtimestamp(f.stat().st_mtime)
+                    if mtime < cutoff:
+                        f.unlink()
+                        deleted += 1
+                        logger.info("清理过期报告: %s", f.name)
+                except Exception:
+                    pass
         if deleted:
             logger.info("报告清理完成: 删除 %s 个过期文件", deleted)
         return deleted

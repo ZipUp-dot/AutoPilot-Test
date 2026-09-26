@@ -1,11 +1,13 @@
 """AI 代码生成服务 — 元素匹配 + Prompt 构建 + OpenAI 调用 + 安全校验"""
 
 import ast
+import asyncio
 import base64
 import difflib
 import json
 import logging
 import os
+import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -19,27 +21,17 @@ from app.models.test_case import TestCase
 from app.models.generated_code import GeneratedCode
 from app.models.element import PageElement
 from app.models.project import Project
-from app.exceptions import AIException, SecurityException
+from app.exceptions import AIException, DeadlineExceeded
 from app.utils.ai_rate_limiter import get_limiter
+from app.utils.code_validator import CodeValidator
+from app.utils.step_canonicalizer import hash_steps
+from app.utils.url_builder import build_target_url
 
 logger = logging.getLogger("autopilot.ai")
 
 # 共享 AI 限流器（代码生成 / Vision / 自愈共用同一窗口）：
 # 并发上限（Semaphore） + 速率熔断（滑动窗口），防无底线调用烧 Token
 ai_rate_limiter = get_limiter()
-
-# ── 危险导入黑名单 ──
-BANNED_IMPORTS = frozenset({
-    "os", "sys", "subprocess", "socket", "requests",
-    "urllib", "ftplib", "smtplib", "shutil", "signal",
-    "ctypes", "multiprocessing", "threading._",
-})
-
-# ── 危险内置函数黑名单 ──
-BANNED_BUILTINS = frozenset({
-    "eval", "exec", "open", "compile", "__import__",
-    "getattr.__", "setattr.__", "delattr.__",
-})
 
 # ── 选择器特征 ──
 SELECTOR_PATTERN = re.compile(r'[#\.\[/\(]')
@@ -83,7 +75,8 @@ class AIService:
     # 单条生成
     # ═══════════════════════════════════════════════
 
-    def generate_single(self, project_id: int, case_id: int) -> GenerateResult:
+    def generate_single(self, project_id: int, case_id: int,
+                        *, remaining: Optional[float] = None) -> GenerateResult:
         """为单条用例生成 Playwright 代码
 
         流程:
@@ -103,12 +96,16 @@ class AIService:
             raise AIException(f"用例 {case_id} 不存在")
 
         # 获取项目目标 URL
+        # P1-1：AI Prompt 构建属 Admission 前上下文，用 Project 当前值（target_url + test_path）
         project = self._db.query(Project).filter(Project.id == project_id).first()
-        target_url = project.target_url if project and project.target_url else ""
+        target_url = build_target_url(project.target_url, project.test_path) if project else ""
 
         steps = json.loads(case.steps) if case.steps else []
         if not steps:
             raise AIException("用例无步骤数据")
+
+        # 步骤来源哈希：记录本次生成基于的 TestCase.steps，供执行期来源绑定
+        source_steps_hash = hash_steps(steps)
 
         # 1. 查元素 + 智能匹配（平台隔离：只查当前项目 platform 的元素）
         project_platform = getattr(project, "platform", "web") if project else "web"
@@ -138,24 +135,23 @@ class AIService:
 
         # 3. 调用 LLM
         try:
-            raw_code = _call_openai(prompt, settings.OPENAI_MODEL, target_url=target_url, steps_json=json.dumps(matched_steps, ensure_ascii=False), platform=project_platform)
+            raw_code = _call_openai(prompt, settings.OPENAI_MODEL, target_url=target_url, steps_json=json.dumps(matched_steps, ensure_ascii=False), platform=project_platform, remaining=remaining)
+        except AIException:
+            # 透传原始 AIException，保留 error_type（deadline/quota/slot/read_timeout 等）
+            # 与 retryable，供 Batch 层 KPI exclusion bucket 精确分类；禁止统一包裹吞掉信号。
+            raise
         except Exception as e:
             raise AIException(f"AI 服务调用失败: {str(e)}")
 
         # 4. 提取代码
         code = _extract_code(raw_code)
 
-        # 5. 校验
+        # 5. 校验（CodeValidator 为唯一代码校验来源，闭合并生成/执行两套规则缝隙）
         syntax_error = None
         is_valid = 1
-        try:
-            _validate_syntax(code)
-            _security_check(code)
-        except SyntaxError as e:
-            syntax_error = str(e)
-            is_valid = 0
-        except SecurityException as e:
-            syntax_error = str(e.message)
+        error = CodeValidator.validate(code, platform=project_platform)
+        if error:
+            syntax_error = error
             is_valid = 0
 
         # 6. 存储
@@ -167,6 +163,7 @@ class AIService:
             ai_model=settings.OPENAI_MODEL,
             is_valid=is_valid,
             syntax_error=syntax_error,
+            source_steps_hash=source_steps_hash,
         )
         self._db.add(gen_code)
 
@@ -412,16 +409,250 @@ def _format_elements(elements: list[PageElement], platform: str = "web") -> str:
     return "\n".join(lines)
 
 
-def _call_openai(prompt: str, model: str, retries: int = 3, target_url: str = "", steps_json: str = "", platform: str = "web") -> str:
-    """调用 OpenAI API，带指数退避重试
+def _make_deadline(remaining: Optional[float]) -> float:
+    """把 remaining 预算换算成绝对 monotonic 截止时刻（未传时用配置默认）"""
+    if remaining is not None:
+        return time.monotonic() + remaining
+    return time.monotonic() + settings.AI_DEADLINE_DEFAULT_SECONDS
+
+
+def _remaining(deadline: float) -> Optional[float]:
+    """距 deadline 的剩余秒数；deadline 开关关闭时返回 None（视为无上限）"""
+    return max(0.0, deadline - time.monotonic())
+
+
+def _request_timeout(deadline: float) -> httpx.Timeout:
+    """四项分离超时；每个分项 = min(配置上限, remaining)，禁止为保下限突破 remaining"""
+    rem = _remaining(deadline)
+    return httpx.Timeout(
+        connect=min(settings.AI_REQUEST_TIMEOUT_CONNECT, rem),
+        write=min(settings.AI_REQUEST_TIMEOUT_WRITE, rem),
+        read=min(settings.AI_REQUEST_TIMEOUT_READ, rem),
+        pool=min(settings.AI_REQUEST_TIMEOUT_POOL, rem),
+    )
+
+
+# 可重试的错误类型（真正发生了一次网络/服务端错误）
+# 语义由 _classify_status 与各 httpx 分支决定；此集合用于外部判定/文档
+_RETRYABLE_ERROR_TYPES = frozenset({
+    "connect_timeout", "read_timeout", "write_timeout", "pool_timeout",
+    "timeout", "connect_error", "protocol_error", "rate_limited",
+    "server_error", "request_timeout",
+})
+
+
+def _classify_status(status: int) -> tuple[str, bool]:
+    """按 HTTP 状态码分类（retryable / non-retryable）"""
+    if status in (408, 409, 425, 429):
+        return ("rate_limited" if status == 429 else "request_timeout", True)
+    if 500 <= status < 600:
+        return ("server_error", True)
+    return ("http_4xx", False)  # 其他 4xx：non-retryable
+
+
+@dataclass
+class _HTTPAttempt:
+    content: Optional[str] = None
+    error_type: Optional[str] = None
+    retryable: bool = False
+    http_status: Optional[int] = None
+    usage: Optional[int] = None
+    retry_after: Optional[str] = None
+
+
+def _log_attempt(*, batch_id, case_id, attempt, error_type, http_status,
+                 latency_ms, usage, retry_after):
+    """每次 attempt 的结构化日志（成功/失败都记）"""
+    logger.info(
+        "AI attempt batch=%s case=%s attempt=%s error_type=%s http_status=%s "
+        "latency_ms=%s usage=%s retry_after=%s",
+        batch_id or "-", case_id or "-", attempt,
+        error_type or "-", http_status if http_status is not None else "-",
+        f"{latency_ms:.1f}" if latency_ms is not None else "-",
+        usage if usage is not None else "-",
+        retry_after if retry_after is not None else "-",
+    )
+
+
+async def _chat_http_attempt(
+    *, model: str, messages: list, max_tokens: int, attempt: int,
+    deadline: float, batch_id=None, case_id=None, vision: bool = False,
+) -> _HTTPAttempt:
+    """执行一次 HTTP attempt（wall-clock deadline 由 asyncio.wait_for 真正终止请求）。
+
+    - 统一 wall-clock deadline：分项 timeout 不保证总时长，任一时刻到期即取消，
+      取消会经 httpx/httpcore 关闭底层连接（真实终止，非伪取消）。
+    - 返回 _HTTPAttempt；成功时 error_type=None。
+    """
+    start = time.monotonic()
+    http_status = None
+    retry_after = None
+    usage = None
+    error_type = None
+    retryable = False
+    content = None
+
+    async with httpx.AsyncClient(timeout=_request_timeout(deadline)) as client:
+        headers = {"Content-Type": "application/json"}
+        if settings.OPENAI_API_KEY:
+            # 空 key 时禁止发送非法头 "Bearer "（尾随空值），否则 httpx 抛 LocalProtocolError
+            headers["Authorization"] = f"Bearer {settings.OPENAI_API_KEY}"
+        try:
+            response = await asyncio.wait_for(
+                client.post(
+                    f"{settings.OPENAI_BASE_URL}/chat/completions",
+                    headers=headers,
+                    json={
+                        "model": model,
+                        "messages": messages,
+                        "temperature": 0.1,
+                        "max_tokens": max_tokens,
+                    },
+                ),
+                timeout=_remaining(deadline),  # HTTP 调用级 wall-clock deadline
+            )
+        except asyncio.TimeoutError:
+            # wall-clock 到期：wait_for 已取消内部协程 → 底层连接已关闭（真实终止）
+            error_type = "deadline_exceeded"
+            retryable = False
+            _log_attempt(batch_id=batch_id, case_id=case_id, attempt=attempt,
+                         error_type=error_type, http_status=http_status,
+                         latency_ms=(time.monotonic() - start) * 1000,
+                         usage=usage, retry_after=retry_after)
+            raise DeadlineExceeded()
+        except DeadlineExceeded:
+            raise
+        except httpx.HTTPStatusError as e:
+            http_status = e.response.status_code
+            retry_after = e.response.headers.get("Retry-After")
+            error_type, retryable = _classify_status(http_status)
+        except httpx.ConnectTimeout:
+            error_type, retryable = "connect_timeout", True
+        except httpx.ReadTimeout:
+            error_type, retryable = "read_timeout", True
+        except httpx.WriteTimeout:
+            error_type, retryable = "write_timeout", True
+        except httpx.PoolTimeout:
+            error_type, retryable = "pool_timeout", True
+        except httpx.ConnectError:
+            error_type, retryable = "connect_error", True
+        except httpx.TimeoutException:
+            error_type, retryable = "timeout", True
+        except httpx.HTTPError:
+            error_type, retryable = "protocol_error", True
+        else:
+            http_status = response.status_code
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                retry_after = e.response.headers.get("Retry-After")
+                error_type, retryable = _classify_status(e.response.status_code)
+            else:
+                # 200：解析响应，响应返回后再校 elapsed，超 deadline 一律 deadline_exceeded
+                if _remaining(deadline) <= 0:
+                    raise DeadlineExceeded()
+                try:
+                    body = response.json()
+                except (ValueError, Exception):  # invalid JSON
+                    error_type, retryable = "invalid_json", False
+                else:
+                    if not isinstance(body, dict):
+                        error_type, retryable = "schema_error", False
+                    else:
+                        usage = body.get("usage", {}).get("total_tokens")
+                        try:
+                            choices = body["choices"]
+                            content = choices[0]["message"]["content"]
+                        except (KeyError, IndexError, TypeError):
+                            error_type, retryable = "schema_error", False
+
+        latency_ms = (time.monotonic() - start) * 1000
+        _log_attempt(batch_id=batch_id, case_id=case_id, attempt=attempt,
+                     error_type=error_type, http_status=http_status,
+                     latency_ms=latency_ms, usage=usage, retry_after=retry_after)
+
+        return _HTTPAttempt(content=content, error_type=error_type,
+                            retryable=retryable, http_status=http_status,
+                            usage=usage, retry_after=retry_after)
+
+
+def _retry_wait(attempt: int, retry_after: Optional[str], deadline: float) -> float:
+    """计算 backoff 时长：尊重 Retry-After，否则 base*2^(attempt-1)+jitter；均受 deadline 钳制"""
+    remaining = _remaining(deadline)
+    if remaining <= 0:
+        raise DeadlineExceeded()
+    desired = 0.0
+    if retry_after:
+        try:
+            desired = float(retry_after)
+        except (TypeError, ValueError):
+            desired = settings.AI_RETRY_BASE * (2 ** (attempt - 1))
+    else:
+        desired = settings.AI_RETRY_BASE * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
+    return min(desired, remaining)
+
+
+async def _call_openai_async(
+    prompt: str, model: str, retries: int, deadline: float,
+    platform: str, batch_id=None, case_id=None,
+) -> str:
+    """Chat 调用（async）：deadline 贯穿整个 attempt 链"""
+    messages = [
+        {"role": "system",
+         "content": "你是一名精通 Playwright Python 异步 API 的自动化测试专家。只输出 Python 代码，不含解释。"},
+        {"role": "user", "content": prompt},
+    ]
+    for attempt in range(1, retries + 1):
+        remaining = _remaining(deadline)
+        if remaining <= 0:
+            raise DeadlineExceeded()
+        # 原子预留 quota + slot；任一失败本次 attempt 不成立（不计 attempt，不 backoff）
+        reservation = ai_rate_limiter.acquire_attempt(remaining)
+        if reservation == "quota_timeout":
+            raise AIException(
+                f"AI 调用熔断：每分钟最多 {settings.AI_RATE_LIMIT} 次，请稍后重试",
+                error_type="quota_timeout", retryable=False,
+            )
+        if reservation == "slot_timeout":
+            raise AIException(
+                "AI 并发调用已满（排队超时），请稍后重试",
+                error_type="slot_timeout", retryable=False,
+            )
+        try:
+            result = await _chat_http_attempt(
+                model=model, messages=messages, max_tokens=4096,
+                attempt=attempt, deadline=deadline,
+                batch_id=batch_id, case_id=case_id,
+            )
+        finally:
+            ai_rate_limiter.release_slot()  # 每次 attempt 结束即释放 slot；backoff 不占 slot
+
+        if result.error_type is None:
+            return result.content
+        if not result.retryable:
+            raise AIException(f"AI 调用失败: {result.error_type}",
+                              error_type=result.error_type, retryable=False)
+        if attempt >= retries:
+            raise AIException(f"AI 服务调用失败(已重试{retries}次): {result.error_type}",
+                              error_type=result.error_type, retryable=True)
+        await asyncio.sleep(_retry_wait(attempt, result.retry_after, deadline))
+    raise AIException(f"AI 服务调用失败(已重试{retries}次)",
+                      error_type="unknown", retryable=False)
+
+
+def _call_openai(prompt: str, model: str, retries: int = settings.AI_RETRY_MAX_ATTEMPTS,
+                 target_url: str = "", steps_json: str = "", platform: str = "web",
+                 *, remaining: Optional[float] = None,
+                 batch_id=None, case_id=None) -> str:
+    """调用 OpenAI API，带分类重试与 wall-clock deadline（Mock 模式原样返回）
 
     Args:
         prompt: 用户消息
         model: 模型名
-        retries: 最大重试次数
-        target_url: 项目目标 URL（Mock 模式使用）
-        steps_json: 测试步骤 JSON（Mock 模式使用）
-        platform: "web" 或 "android"（Mock 模式使用）
+        retries: 最多 HTTP attempt 次数
+        target_url / steps_json / platform: Mock 模式使用
+        remaining: 本 case 剩余预算（秒），None 用配置默认上限（跨整个 attempt 链）
+        batch_id / case_id: 结构化日志上下文
 
     Returns:
         LLM 返回的原始文本
@@ -429,63 +660,58 @@ def _call_openai(prompt: str, model: str, retries: int = 3, target_url: str = ""
     if not settings.OPENAI_API_KEY:
         return _mock_code(target_url, steps_json, platform=platform)
 
-    # 速率熔断：超出每分钟调用上限则跳过（防止批量/异常流程无底线调用 AI）
-    if not ai_rate_limiter.acquire():
-        raise AIException(
-            f"AI 调用熔断：每分钟最多 {settings.AI_RATE_LIMIT} 次，请稍后重试"
-        )
-    # 并发控制：同一时刻最多 AI_MAX_CONCURRENCY 个 AI 调用在途（排队等待）
-    if not ai_rate_limiter.acquire_slot():
-        raise AIException("AI 并发调用已满（排队超时），请稍后重试")
+    deadline = _make_deadline(remaining)
+    return asyncio.run(
+        _call_openai_async(prompt, model, retries, deadline, platform,
+                           batch_id=batch_id, case_id=case_id)
+    )
 
-    last_error = None
-    try:
-        for attempt in range(retries):
-            try:
-                with httpx.Client(timeout=60.0) as client:
-                    response = client.post(
-                        f"{settings.OPENAI_BASE_URL}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": model,
-                            "messages": [
-                                {
-                                    "role": "system",
-                                    "content": "你是一名精通 Playwright Python 异步 API 的自动化测试专家。只输出 Python 代码，不含解释。",
-                                },
-                                {"role": "user", "content": prompt},
-                            ],
-                            "temperature": 0.1,
-                            "max_tokens": 4096,
-                        },
-                    )
-                    response.raise_for_status()
-                    body = response.json()
-                    content = body["choices"][0]["message"]["content"]
-                    logger.info(
-                        "AI 调用成功, model=%s, tokens=%s",
-                        model,
-                        body.get("usage", {}).get("total_tokens", "?"),
-                    )
-                    return content
-            except Exception as e:
-                last_error = e
-                if attempt < retries - 1:
-                    wait = 2 ** attempt  # 1s, 2s, 4s
-                    logger.warning("AI 调用失败(第%d次), %ds后重试: %s", attempt + 1, wait, e)
-                    time.sleep(wait)
 
-        raise AIException(f"AI 服务调用失败(已重试{retries}次): {last_error}")
-    finally:
-        # 无论成功失败都释放并发槽位，避免 Semaphore 耗尽导致后续任务卡死
-        ai_rate_limiter.release_slot()
+# ── Vision 调用（同一 deadline / 重试分类 / 结构化日志机制）──
+
+async def _call_openai_vision_async(
+    prompt: str, image_bytes: bytes, model: str, retries: int, deadline: float,
+    batch_id=None, case_id=None,
+) -> str:
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    data_url = f"data:image/png;base64,{image_b64}"
+    messages = [
+        {"role": "system",
+         "content": "你是一个网页自动化分析专家。分析截图中的页面状态，判断是否需要前置操作。只返回 JSON 格式结果。"},
+        {"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": data_url}},
+        ]},
+    ]
+    for attempt in range(1, retries + 1):
+        remaining = _remaining(deadline)
+        if remaining <= 0:
+            return ""
+        reservation = ai_rate_limiter.acquire_attempt(remaining)
+        if reservation in ("quota_timeout", "slot_timeout"):
+            logger.warning("Vision 调用受限(%s)，跳过本次分析", reservation)
+            return ""
+        try:
+            result = await _chat_http_attempt(
+                model=model, messages=messages, max_tokens=1024,
+                attempt=attempt, deadline=deadline, vision=True,
+                batch_id=batch_id, case_id=case_id,
+            )
+        finally:
+            ai_rate_limiter.release_slot()
+        if result.error_type is None:
+            return result.content
+        if not result.retryable:
+            return ""
+        if attempt >= retries:
+            return ""
+        await asyncio.sleep(_retry_wait(attempt, result.retry_after, deadline))
+    return ""
 
 
 def _call_openai_vision(prompt: str, image_bytes: bytes, model: str = None,
-                        retries: int = 2) -> str:
+                        retries: int = 2, *, remaining: Optional[float] = None,
+                        batch_id=None, case_id=None) -> str:
     """调用 OpenAI Vision API，发送文本 + 截图进行分析
 
     Args:
@@ -493,76 +719,20 @@ def _call_openai_vision(prompt: str, image_bytes: bytes, model: str = None,
         image_bytes: PNG 图片二进制数据
         model: 模型名，默认使用 settings.OPENAI_MODEL
         retries: 最大重试次数
+        remaining: 本 case 剩余预算（秒），None 用默认
 
     Returns:
-        LLM 返回的原始文本
+        LLM 返回的原始文本；失败返回 ""
     """
     if not settings.OPENAI_API_KEY:
         logger.warning("OPENAI_API_KEY 未配置，Vision 分析不可用")
         return ""
-
-    # 熔断 + 并发控制：与代码生成共用同一限流窗口与并发槽
-    if not ai_rate_limiter.acquire():
-        logger.warning("Vision 调用熔断：每分钟最多 %d 次，跳过本次分析", settings.AI_RATE_LIMIT)
-        return ""
-    if not ai_rate_limiter.acquire_slot():
-        logger.warning("Vision 并发调用已满（排队超时），跳过本次分析")
-        return ""
-
     model = model or settings.OPENAI_MODEL
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-    data_url = f"data:image/png;base64,{image_b64}"
-
-    last_error = None
-    try:
-        for attempt in range(retries):
-            try:
-                with httpx.Client(timeout=60.0) as client:
-                    response = client.post(
-                        f"{settings.OPENAI_BASE_URL}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": model,
-                            "messages": [
-                                {
-                                    "role": "system",
-                                    "content": "你是一个网页自动化分析专家。分析截图中的页面状态，判断是否需要前置操作。只返回 JSON 格式结果。",
-                                },
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {"type": "text", "text": prompt},
-                                        {"type": "image_url", "image_url": {"url": data_url}},
-                                    ],
-                                },
-                            ],
-                            "temperature": 0.1,
-                            "max_tokens": 1024,
-                        },
-                    )
-                    response.raise_for_status()
-                    body = response.json()
-                    content = body["choices"][0]["message"]["content"]
-                    logger.info(
-                        "Vision 调用成功, model=%s, tokens=%s",
-                        model,
-                        body.get("usage", {}).get("total_tokens", "?"),
-                    )
-                    return content
-            except Exception as e:
-                last_error = e
-                if attempt < retries - 1:
-                    wait = 2 ** attempt
-                    logger.warning("Vision 调用失败(第%d次), %ds后重试: %s", attempt + 1, wait, e)
-                    time.sleep(wait)
-    finally:
-        ai_rate_limiter.release_slot()
-
-    logger.error("Vision 调用失败(已重试%d次): %s", retries, last_error)
-    return ""
+    deadline = _make_deadline(remaining)
+    return asyncio.run(
+        _call_openai_vision_async(prompt, image_bytes, model, retries, deadline,
+                                  batch_id=batch_id, case_id=case_id)
+    )
 
 
 def _extract_code(raw: str) -> str:
@@ -592,44 +762,6 @@ def _validate_syntax(code: str) -> None:
         ast.parse(code)
     except SyntaxError as e:
         raise SyntaxError(f"语法错误 (行 {e.lineno}, 列 {e.offset}): {e.msg}")
-
-
-def _security_check(code: str) -> None:
-    """安全黑名单检查：禁止危险导入和内置函数
-
-    Raises:
-        SecurityException: 检测到危险代码
-    """
-    try:
-        tree = ast.parse(code)
-    except SyntaxError:
-        return  # 语法错误已在 _validate_syntax 处拦截
-
-    # 检查 import
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                name = alias.name.split(".")[0]
-                if name in BANNED_IMPORTS:
-                    raise SecurityException(
-                        f"禁止导入模块: {name}（行 {node.lineno}）"
-                    )
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                name = node.module.split(".")[0]
-                if name in BANNED_IMPORTS:
-                    raise SecurityException(
-                        f"禁止导入模块: {name}（行 {node.lineno}）"
-                    )
-
-    # 检查内置函数调用
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            func = node.func
-            if isinstance(func, ast.Name) and func.id in BANNED_BUILTINS:
-                raise SecurityException(
-                    f"禁止使用函数: {func.id}()（行 {node.lineno}）"
-                )
 
 
 def _mock_code(target_url: str = "", steps_json: str = "", platform: str = "web") -> str:
@@ -666,8 +798,8 @@ def _mock_web_code(target_url: str = "", steps_json: str = "") -> str:
         if action == "navigate" or action == "goto":
             step_lines.append(f'''        # {desc}
         print(f'[执行] 步骤{sn}: 导航到 {url}')
-        await page.goto('{url}')
-        await page.wait_for_load_state("networkidle")
+        await safe.goto('{url}')
+        await safe.wait(500)
         steps_result.append({{"step": {sn}, "status": "passed", "action": "navigate"}})
 ''')
         elif action == "fill":
@@ -733,7 +865,7 @@ def _mock_web_code(target_url: str = "", steps_json: str = "") -> str:
         elif action == "screenshot":
             step_lines.append(f'''        # {desc}
         print(f'[执行] 步骤{sn}: 截图')
-        await safe.screenshot(path="reports/screenshots/step_{sn}.png")
+        await safe.screenshot(path="uploads/screenshots/step_{sn}.png")
         steps_result.append({{"step": {sn}, "status": "passed", "action": "screenshot"}})
 ''')
         else:
@@ -745,15 +877,9 @@ def _mock_web_code(target_url: str = "", steps_json: str = "") -> str:
     steps_code = "\n".join(step_lines) if step_lines else '''        print("[执行] Mock 测试 - 无测试步骤")
         steps_result.append({"step": 1, "status": "passed", "action": "navigate"})'''
 
-    return f'''import asyncio
-import json
-from datetime import datetime
-
-
-async def run_test(safe) -> dict:
+    return f'''async def run_test(safe) -> dict:
     """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
     steps_result = []
-    start_time = datetime.now()
     try:
         print("[执行] Mock 测试 - 导航到 {url}")
         await safe.goto('{url}')
@@ -767,10 +893,9 @@ async def run_test(safe) -> dict:
             "steps": steps_result,
         }}
 
-    duration = (datetime.now() - start_time).total_seconds()
     return {{
         "success": True,
-        "message": f"测试通过, {{len(steps_result)}} 步, {{duration:.1f}}s",
+        "message": f"测试通过, {{len(steps_result)}} 步",
         "steps": steps_result,
     }}
 '''
@@ -836,8 +961,7 @@ def _mock_android_code(steps_json: str = "") -> str:
             wait_ms = int(value) if value and value.isdigit() else 1000
             step_lines.append(f'''        # {desc}
         print(f'[执行] 步骤{sn}: 等待 {wait_ms}ms')
-        import time
-        time.sleep({wait_ms / 1000})
+        sleep({wait_ms / 1000})
         steps_result.append({{"step": {sn}, "status": "passed", "action": "wait"}})
 ''')
         elif action == "back":
@@ -849,7 +973,7 @@ def _mock_android_code(steps_json: str = "") -> str:
         elif action == "screenshot":
             step_lines.append(f'''        # {desc}
         print(f'[执行] 步骤{sn}: 截图')
-        driver.save_screenshot("reports/screenshots/step_{sn}.png")
+        driver.save_screenshot("uploads/screenshots/step_{sn}.png")
         steps_result.append({{"step": {sn}, "status": "passed", "action": "screenshot"}})
 ''')
         else:
@@ -861,13 +985,9 @@ def _mock_android_code(steps_json: str = "") -> str:
     steps_code = "\n".join(step_lines) if step_lines else '''        print("[执行] Mock 测试 - 无测试步骤")
         steps_result.append({"step": 1, "status": "passed", "action": "navigate"})'''
 
-    return f'''from datetime import datetime
-
-
-def run_test(driver) -> dict:
+    return f'''def run_test(driver) -> dict:
     """Mock — 请配置 OPENAI_API_KEY 以使用 AI 生成"""
     steps_result = []
-    start_time = datetime.now()
     try:
         print("[执行] Android Mock 测试")
 
@@ -879,10 +999,9 @@ def run_test(driver) -> dict:
             "steps": steps_result,
         }}
 
-    duration = (datetime.now() - start_time).total_seconds()
     return {{
         "success": True,
-        "message": f"测试通过, {{len(steps_result)}} 步, {{duration:.1f}}s",
+        "message": f"测试通过, {{len(steps_result)}} 步",
         "steps": steps_result,
     }}
 '''

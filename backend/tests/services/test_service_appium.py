@@ -79,8 +79,7 @@ INPUT_CODE = """def run_test(driver):
 """
 
 WAIT_CODE = """def run_test(driver):
-    import time
-    time.sleep(0.1)
+    sleep(0.1)
     return {"success": True, "steps": []}
 """
 
@@ -90,7 +89,7 @@ BACK_CODE = """def run_test(driver):
 """
 
 SCREENSHOT_CODE = """def run_test(driver):
-    driver.save_screenshot("/tmp/screenshot.png")
+    driver.save_screenshot("uploads/screenshots/step_1.png")
     return {"success": True, "steps": []}
 """
 
@@ -166,14 +165,27 @@ def _create_case_and_code(db_session, project, code_content, steps=None):
     return case
 
 
-def _create_execution(db_session, project):
-    """创建 Execution 记录"""
+def _create_execution(db_session, project, case=None):
+    """创建 Execution 记录（P0-6：携带 runtime_state 冻结代码，供 ExecutionCodeResolver 读取）"""
     from app.models.execution import Execution
+    from app.models.generated_code import GeneratedCode
+
+    runtime_state = None
+    if case is not None:
+        code = (
+            db_session.query(GeneratedCode)
+            .filter(GeneratedCode.case_id == case.id)
+            .order_by(GeneratedCode.id.desc())
+            .first()
+        )
+        if code is not None:
+            runtime_state = json.dumps({str(case.id): {"active_code_id": code.id}})
     exec_obj = Execution(
         project_id=project.id,
         batch_name="Android Test Batch",
         total_cases=1,
-        status="running",
+        status="queued",
+        runtime_state_json=runtime_state,
     )
     db_session.add(exec_obj)
     db_session.commit()
@@ -191,7 +203,7 @@ class TestAppiumExecuteCase:
     def test_click(self, db_session, appium_svc, mock_driver, android_project):
         """click 操作 → 执行成功"""
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
 
@@ -210,7 +222,7 @@ class TestAppiumExecuteCase:
     def test_input(self, db_session, appium_svc, mock_driver, android_project):
         """input(send_keys) 操作 → 执行成功"""
         case = _create_case_and_code(db_session, android_project, INPUT_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
 
@@ -218,9 +230,9 @@ class TestAppiumExecuteCase:
         mock_driver.find_element.return_value.send_keys.assert_called_once_with("hello")
 
     def test_wait(self, db_session, appium_svc, mock_driver, android_project):
-        """time.sleep 等待 → 执行成功"""
+        """受控 sleep 等待 → 执行成功（namespace 注入 sleep，无 import time）"""
         case = _create_case_and_code(db_session, android_project, WAIT_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         with patch("time.sleep") as mock_sleep:
             result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
@@ -231,7 +243,7 @@ class TestAppiumExecuteCase:
     def test_back(self, db_session, appium_svc, mock_driver, android_project):
         """driver.back() → 执行成功"""
         case = _create_case_and_code(db_session, android_project, BACK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
 
@@ -239,22 +251,26 @@ class TestAppiumExecuteCase:
         mock_driver.back.assert_called_once()
 
     def test_screenshot(self, db_session, appium_svc, mock_driver, android_project):
-        """driver.save_screenshot() → 执行成功"""
+        """driver.save_screenshot() 受控截图（uploads/screenshots/）→ 执行成功"""
+        from pathlib import Path
+        from app.config import settings
         case = _create_case_and_code(db_session, android_project, SCREENSHOT_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
 
         assert result is True
         # save_screenshot 被调用 3 次：before 截图 + 用户代码 + after 截图
         assert mock_driver.save_screenshot.call_count >= 1
-        mock_driver.save_screenshot.assert_any_call("/tmp/screenshot.png")
+        # 用户代码走 DriverProxy 受控实现：路径剥前缀后 resolve 到 SCREENSHOT_DIR
+        resolved = str(Path(settings.SCREENSHOT_DIR).resolve() / "step_1.png")
+        mock_driver.save_screenshot.assert_any_call(resolved)
 
     def test_failure_step_recorded(self, db_session, appium_svc, mock_driver, android_project):
         """操作失败 → 返回 False 且步骤记录包含失败状态和异常信息"""
         mock_driver.find_element.side_effect = Exception("NoSuchElement")
         case = _create_case_and_code(db_session, android_project, FAILURE_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
 
@@ -273,7 +289,7 @@ class TestAppiumExecuteCase:
         """操作失败 → exception_type 被正确记录"""
         mock_driver.find_element.side_effect = ValueError("wrong value")
         case = _create_case_and_code(db_session, android_project, FAILURE_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
 
@@ -301,7 +317,7 @@ class TestAppiumExecuteCase:
         db_session.commit()
         db_session.refresh(case)
 
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
         result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
         assert result is False
 
@@ -310,7 +326,7 @@ class TestAppiumExecuteCase:
         from app.exceptions import SecurityException
         invalid_code = "def run_test(driver):\n    import os\n    os.system('rm -rf /')\n"
         case = _create_case_and_code(db_session, android_project, invalid_code)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         with pytest.raises(SecurityException, match="代码校验失败"):
             appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
@@ -333,7 +349,7 @@ class TestAppiumExecuteSync:
         mock_remote.return_value = mock_driver
 
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         svc._execute_sync(android_project.id, [case.id], exec_obj.id, "headless")
 
@@ -349,7 +365,7 @@ class TestAppiumExecuteSync:
         mock_remote.return_value = mock_driver
 
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         # 执行前设置停止标志
         set_stop_flag(exec_obj.id)
@@ -379,7 +395,7 @@ class TestAppiumExecuteSync:
         case1 = _create_case_and_code(db_session, android_project, CLICK_CODE)
         case2 = _create_case_and_code(db_session, android_project, CLICK_CODE,
                                        steps=[{"step_number": 1, "action": "click", "target": "btn2", "value": ""}])
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case1)
 
         try:
             # 模拟第一个用例执行完后设置停止标志
@@ -413,7 +429,7 @@ class TestAppiumExecuteSync:
         mock_remote.return_value = mock_driver
 
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         svc._execute_sync(android_project.id, [case.id], exec_obj.id, "headless")
 
@@ -487,7 +503,7 @@ class TestAppiumSessionConfig:
 
         svc = AppiumService(db_session)
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
         svc._execute_sync(android_project.id, [case.id], exec_obj.id, "headless")
 
         # Remote 应以自定义 URL 被调用
@@ -510,7 +526,7 @@ class TestAppiumSessionConfig:
 
         svc = AppiumService(db_session)
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
         svc._execute_sync(android_project.id, [case.id], exec_obj.id, "headless")
 
         call_args, call_kwargs = mock_remote.call_args
@@ -534,7 +550,7 @@ class TestAppiumStartupFailure:
 
         svc = AppiumService(db_session)
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         svc._execute_sync(android_project.id, [case.id], exec_obj.id, "headless")
 
@@ -552,7 +568,7 @@ class TestAppiumStartupFailure:
 
         svc = AppiumService(db_session)
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         svc._execute_sync(android_project.id, [case.id], exec_obj.id, "headless")
 
@@ -633,7 +649,7 @@ class TestAppiumExecuteSyncFailures:
         mock_remote.return_value = mock_driver
 
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         mock_start_healing = patch.object(AppiumService, "_start_healing")
         with mock_start_healing as mock_heal:
@@ -644,7 +660,8 @@ class TestAppiumExecuteSyncFailures:
         db_session.expire_all()
         updated = db_session.query(Execution).filter(Execution.id == exec_obj.id).first()
         assert updated.status == "healing"
-        assert updated.failed_cases == 1
+        # P0-7: counters 为 Seal 时 Derived Cache，healing 阶段不落库
+        assert updated.failed_cases == 0
         mock_heal.assert_called_once()
 
     @patch("appium.webdriver.Remote")
@@ -658,7 +675,7 @@ class TestAppiumExecuteSyncFailures:
         mock_driver.quit.side_effect = RuntimeError("quit failed")
 
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         with patch.object(AppiumService, "_start_healing"):
             svc._execute_sync(android_project.id, [case.id], exec_obj.id, "headless")
@@ -678,7 +695,7 @@ class TestAppiumExecuteSyncFailures:
         mock_remote.return_value = mock_driver
 
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         with patch.object(AppiumService, "_start_healing"):
             svc._execute_sync(99999, [case.id], exec_obj.id, "headless")
@@ -697,7 +714,7 @@ class TestAppiumExecuteSyncFailures:
         mock_remote.return_value = mock_driver
 
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         with patch.object(AppiumService, "_start_healing") as mock_heal:
             svc._execute_case = MagicMock(return_value=False)
@@ -707,7 +724,8 @@ class TestAppiumExecuteSyncFailures:
         db_session.expire_all()
         updated = db_session.query(Execution).filter(Execution.id == exec_obj.id).first()
         assert updated.status == "healing"
-        assert updated.failed_cases == 1
+        # P0-7: counters 为 Seal 时 Derived Cache，healing 阶段不落库
+        assert updated.failed_cases == 0
         mock_heal.assert_called_once()
 
 
@@ -723,7 +741,7 @@ class TestAppiumExecuteCaseEdgeCases:
         from app.exceptions import SecurityException
         from app.utils.appium_code_injector import AppiumCodeInjector
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         mocker.patch.object(AppiumCodeInjector, "inject", side_effect=SecurityException("inject failed"))
 
@@ -733,7 +751,7 @@ class TestAppiumExecuteCaseEdgeCases:
     def test_exec_compile_error_marks_failed(self, db_session, appium_svc, mock_driver, android_project, mocker):
         """exec 执行失败 → 用例标记失败并返回 False"""
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         mocker.patch("app.services.appium_service.exec", side_effect=RuntimeError("compile error"))
 
@@ -750,7 +768,7 @@ class TestAppiumExecuteCaseEdgeCases:
     def test_missing_run_test_marks_failed(self, db_session, appium_svc, mock_driver, android_project, mocker):
         """代码中无 run_test 函数 → 标记失败并返回 False"""
         case = _create_case_and_code(db_session, android_project, CLICK_CODE)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         # 模拟注入后代码不包含 run_test（namespace 中无 run_test）
         mocker.patch("app.services.appium_service.exec")
@@ -762,7 +780,7 @@ class TestAppiumExecuteCaseEdgeCases:
         """run_test 返回 success=False → 标记失败并返回 False"""
         code = "def run_test(driver):\n    return {'success': False}\n"
         case = _create_case_and_code(db_session, android_project, code)
-        exec_obj = _create_execution(db_session, android_project)
+        exec_obj = _create_execution(db_session, android_project, case=case)
 
         result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
         assert result is False

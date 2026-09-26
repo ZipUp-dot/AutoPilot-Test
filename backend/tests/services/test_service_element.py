@@ -22,13 +22,20 @@ from app.exceptions import NotFoundException, PlaywrightException, ValidationExc
 # 辅助函数
 # ═══════════════════════════════════════════════
 
-def _make_mock_page(evaluate_side_effect=None):
-    """创建一个可配置 evaluate 的 mock page"""
+def _make_mock_page(count_side_effect=None):
+    """创建一个可配置 locator().count() 的 mock page
+
+    P1-2：唯一性检查改为 Playwright-native page.locator(sel).count()。
+    真实 Playwright 的 page.locator() 是同步方法（返回 Locator，Locator.count 异步），
+    因此这里用 MagicMock 模拟 page.locator，用 AsyncMock 模拟 locator.count。
+    """
     page = AsyncMock()
-    if evaluate_side_effect is not None:
-        page.evaluate = AsyncMock(side_effect=evaluate_side_effect)
+    locator = AsyncMock()
+    if count_side_effect is not None:
+        locator.count = AsyncMock(side_effect=count_side_effect)
     else:
-        page.evaluate = AsyncMock(return_value=1)
+        locator.count = AsyncMock(return_value=1)
+    page.locator = MagicMock(return_value=locator)
     return page
 
 
@@ -84,7 +91,8 @@ class TestCrawl:
         result = await service.crawl(sample_project.id)
 
         assert isinstance(result, CrawlResult)
-        assert result.url == "https://example.com"
+        # P1-1：URL 统一走 build_target_url（保留 test_path 尾斜杠语义）
+        assert result.url == "https://example.com/"
         assert result.crawled_count == 1
         assert result.elapsed_ms >= 0
         assert result.error is None
@@ -589,10 +597,20 @@ class TestGenerateSelector:
         assert selector == 'span:has-text("Hello World")'
 
     @pytest.mark.asyncio
-    async def test_level_7_nth_child_fallback(self, db_session):
-        """第7级: 兜底 nth-child（所有高级选择器都不唯一）"""
-        # 所有唯一性检查都返回 False（count != 1）
-        page = _make_mock_page(evaluate_side_effect=[0, 0, 0, 0, 0, 0])
+    async def test_level_7_hierarchy_fallback(self, db_session):
+        """第7级: 层级兜底 nth-of-type（count!=1 继续向上扩展至唯一）"""
+        # 所有高级选择器属性都为空 → 直接进入层级兜底；
+        # 原始元素身份句柄经 evaluate_handle 复取 → 祖先路径 html→body→div→div(3)
+        page = _make_mock_page(count_side_effect=[2, 1])  # depth1=2（不唯一）→ depth2=1（唯一）
+        identity = AsyncMock()
+        identity.evaluate = AsyncMock(return_value=[
+            {"tag": "html", "idx": 1},
+            {"tag": "body", "idx": 1},
+            {"tag": "div", "idx": 1},
+            {"tag": "div", "idx": 3},
+        ])
+        page.evaluate_handle = AsyncMock(return_value=identity)
+        page.evaluate = AsyncMock(return_value=True)  # identity comparison 通过
         service = ElementService(db_session)
         raw = {
             "tag": "div", "dataTestid": "", "id": "", "name": "",
@@ -600,7 +618,7 @@ class TestGenerateSelector:
         }
 
         selector = await service._generate_selector(page, raw)
-        assert selector == "div:nth-child(3)"
+        assert selector == "div:nth-of-type(1) > div:nth-of-type(3)"
 
     @pytest.mark.asyncio
     async def test_falls_through_to_id_when_data_testid_empty(self, db_session):
@@ -652,30 +670,29 @@ class TestGenerateSelector:
 class TestIsUnique:
     @pytest.mark.asyncio
     async def test_unique_selector_returns_true(self, db_session):
-        """唯一选择器 → True"""
-        page = _make_mock_page(evaluate_side_effect=[1])
+        """唯一选择器 → True（locator().count()==1）"""
+        page = _make_mock_page(count_side_effect=[1])
         result = await ElementService._is_unique(page, "#my-btn")
         assert result is True
 
     @pytest.mark.asyncio
     async def test_non_unique_selector_returns_false(self, db_session):
         """多个匹配 → False"""
-        page = _make_mock_page(evaluate_side_effect=[3])
+        page = _make_mock_page(count_side_effect=[3])
         result = await ElementService._is_unique(page, ".btn")
         assert result is False
 
     @pytest.mark.asyncio
     async def test_zero_elements_returns_false(self, db_session):
         """0 个匹配 → False"""
-        page = _make_mock_page(evaluate_side_effect=[0])
+        page = _make_mock_page(count_side_effect=[0])
         result = await ElementService._is_unique(page, "#nonexistent")
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_evaluate_error_returns_false(self, db_session):
-        """evaluate 抛出异常 → False"""
-        page = AsyncMock()
-        page.evaluate = AsyncMock(side_effect=Exception("Invalid selector"))
+    async def test_locator_count_error_returns_false(self, db_session):
+        """locator().count() 抛出异常 → False"""
+        page = _make_mock_page(count_side_effect=Exception("Invalid selector"))
         result = await ElementService._is_unique(page, "invalid[[")
         assert result is False
 

@@ -10,7 +10,6 @@
   Response: { "code": 0, "data": { "items": [...], "total": 5 } }
 """
 
-import asyncio
 import json
 import logging
 
@@ -47,89 +46,113 @@ async def trigger_heal(
     body: HealRequest,
     db: Session = Depends(get_db),
 ):
-    """对指定失败的步骤启动自愈，同步等待完成后返回结果。
+    """对指定失败的用例启动 Case 级 HealRound，同步等待完成后返回结果。
 
     返回:
-        { "code": 0, "data": { "heal_id": 1, "healed_code": "...", "retry_status": "success", "retry_count": 2 } }
+        { "code": 0, "data": { "heal_id": 1, "healed_code": "...", "retry_status": "success", "error_type": null } }
     """
-    # 定位失败步骤
+    from app.services.execution_finalizer import TERMINAL_STATUSES
+
+    execution = db.query(Execution).filter(Execution.id == execution_id).first()
+    if not execution:
+        raise NotFoundException(f"执行批次 {execution_id} 不存在")
+
+    # 验收 6：四终态（completed/stopped/failed/interrupted）一律拒绝（Seal 规则）
+    if execution.status in TERMINAL_STATUSES:
+        raise ValidationException(
+            f"执行已处于终态 {execution.status}，禁止手动自愈"
+        )
+
+    # 定位 root failed step（step_index 最小者）；其余 failed step 作上下文
     step = (
         db.query(ExecutionStep)
         .filter(
             ExecutionStep.execution_id == execution_id,
             ExecutionStep.case_id == body.case_id,
-            ExecutionStep.step_index == body.step_index,
+            ExecutionStep.status == "failed",
         )
+        .order_by(ExecutionStep.step_index)
         .first()
     )
     if not step:
-        raise NotFoundException(
-            f"步骤 case={body.case_id} step={body.step_index} 不存在"
+        # 兼容旧契约：按 step_index 定位以区分「不存在」与「非失败」
+        any_step = (
+            db.query(ExecutionStep)
+            .filter(
+                ExecutionStep.execution_id == execution_id,
+                ExecutionStep.case_id == body.case_id,
+                ExecutionStep.step_index == body.step_index,
+            )
+            .first()
         )
-
-    if step.status != "failed":
+        if not any_step:
+            raise NotFoundException(
+                f"步骤 case={body.case_id} step={body.step_index} 不存在"
+            )
         raise ValidationException(
-            f"步骤状态为 {step.status}，非失败状态无需自愈"
+            f"步骤状态为 {any_step.status}，非失败状态无需自愈"
         )
-
-    # 获取项目信息
-    execution = db.query(Execution).filter(Execution.id == execution_id).first()
-    if not execution:
-        raise NotFoundException(f"执行批次 {execution_id} 不存在")
 
     project_id = execution.project_id
     project = db.query(Project).filter(Project.id == project_id).first()
-    target_url = project.target_url if project else "https://example.com"
+    platform = project.platform if project else "web"
+    if platform != "web":
+        raise ValidationException(
+            f"Android 项目手动自愈未启用（platform={platform}），请经执行引擎自愈线程触发"
+        )
+
+    # P1-1：手动 Heal 属 Admission 后上下文，URL/launch 只读 Manifest 冻结快照，
+    # 禁止回读 Project 当前 target_url / browser_type（platform 校验已在上方完成）
+    from app.services.playwright_service import _load_manifest, _env_from_manifest, _resolve_launcher
+    from app.utils.url_builder import build_target_url
+    env = _env_from_manifest(_load_manifest(execution))
+    heal_target_url = build_target_url(env["target_url"], env["test_path"])
+    heal_browser_type = env["browser_type"]
+    heal_headless = env["headless"]
 
     # 更新执行状态为 healing
     if execution.status not in ("healing", "completed", "stopped"):
         execution.status = "healing"
         db.commit()
 
-    # 同步执行自愈
-    from app.services.heal_service import HealService
+    # 同步执行自愈（统一走 HealRoundService；同 execution+case 已有 HealRecord 由 claim 拒绝）
+    from app.services.heal_service import HealRoundService
 
-    heal_service = HealService(db)
+    heal_service = HealRoundService(db)
 
     async def _heal():
         from playwright.async_api import async_playwright
         from app.utils.url_policy import UrlPolicy, install_network_policy
 
-        try:
-            config_json = json.loads(project.config_json) if project and project.config_json else None
-        except (TypeError, ValueError):
-            config_json = None
-
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
+            browser = await _resolve_launcher(pw, heal_browser_type).launch(headless=heal_headless)
             context = await browser.new_context(
                 viewport={"width": 1920, "height": 1080},
                 service_workers="block",
             )
-            await install_network_policy(context, UrlPolicy(target_url, config_json=config_json))
+            await install_network_policy(
+                context,
+                UrlPolicy(
+                    heal_target_url,
+                    allowed_hosts=env["allowed_hosts"],
+                    allowed_ports=env["allowed_ports"],
+                ),
+            )
             page = await context.new_page()
             page.set_default_timeout(settings.PLAYWRIGHT_TIMEOUT)
 
             try:
-                await page.goto(target_url, wait_until="networkidle")
+                await page.goto(heal_target_url, wait_until="networkidle")
             except Exception as e:
                 logger.warning("手动自愈导航失败: %s", e)
 
-            # 重新查询 step
-            step_obj = (
-                db.query(ExecutionStep)
-                .filter(ExecutionStep.id == step.id)
-                .first()
-            )
-            if not step_obj:
-                return None
-
-            result = await heal_service.try_heal_manual(
+            result = await heal_service.heal_case(
                 execution_id=execution_id,
-                step=step_obj,
-                page=page,
+                case_id=body.case_id,
                 project_id=project_id,
-                max_retries=3,
+                page=page,
+                platform="web",
+                manual=True,
             )
 
             await context.close()
@@ -138,14 +161,12 @@ async def trigger_heal(
 
     result = await _heal()
 
-    if result is None:
-        raise NotFoundException("步骤已被删除")
-
     return ApiResponse(data={
         "heal_id": result.heal_id,
         "healed_code": result.healed_code,
         "retry_status": result.retry_status,
-        "retry_count": result.retry_count,
+        "error_type": result.error_type,
+        "error_message": result.error_message,
     })
 
 

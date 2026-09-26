@@ -49,7 +49,8 @@ class TestGenerate:
         assert "report_id" in result
         assert "download_url" in result
         assert result["report_id"] > 0
-        assert "execution_" in result["download_url"]
+        # P0-10：artifact 文件名为 report_{id}_{type}_{token}.html（token 绑定路径）
+        assert "report_" in result["download_url"]
 
         # 验证 DB 中有报告记录
         report = (
@@ -101,41 +102,6 @@ class TestGenerate:
         for t in threads:
             t.join(timeout=10)
         assert len(results) == 5
-
-
-# ═══════════════════════════════════════════════
-# _determine_status()
-# ═══════════════════════════════════════════════
-
-class TestDetermineStatus:
-    """_determine_status() 状态判定"""
-
-    def _make_step(self, status):
-        """创建指定状态的 mock ExecutionStep"""
-        step = MagicMock(spec=ExecutionStep)
-        step.status = status
-        return step
-
-    def test_all_success(self):
-        steps = [self._make_step("success"), self._make_step("success")]
-        assert ReportService._determine_status(steps) == "success"
-
-    def test_one_failed(self):
-        steps = [self._make_step("success"), self._make_step("failed")]
-        assert ReportService._determine_status(steps) == "failed"
-
-    def test_all_skipped(self):
-        steps = [self._make_step("skipped"), self._make_step("skipped")]
-        assert ReportService._determine_status(steps) == "skipped"
-
-    def test_mix_success_and_pending(self):
-        """success + pending 混合 → success（至少有一步成功）"""
-        steps = [self._make_step("success"), self._make_step("pending")]
-        assert ReportService._determine_status(steps) == "success"
-
-    def test_all_pending(self):
-        steps = [self._make_step("pending"), self._make_step("pending")]
-        assert ReportService._determine_status(steps) == "skipped"
 
 
 # ═══════════════════════════════════════════════

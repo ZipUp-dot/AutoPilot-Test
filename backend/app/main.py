@@ -31,6 +31,7 @@ from app.routers import (
     executions_router,
     reports_router,
     files_router,
+    metrics_router,
 )
 
 # ── 日志 ──
@@ -118,6 +119,7 @@ app.include_router(cases_router, prefix=api)
 app.include_router(heal_router, prefix=api)
 app.include_router(executions_router, prefix=api)
 app.include_router(reports_router, prefix=api)
+app.include_router(metrics_router, prefix=api)
 
 # ── 健康检查（无前缀） ──
 

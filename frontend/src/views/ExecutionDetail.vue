@@ -114,6 +114,14 @@
               <ExecutionStatusTag :status="row.status" />
             </template>
           </el-table-column>
+          <el-table-column label="终止原因" width="110" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.terminal_reason" size="small" :type="terminalReasonType(row.terminal_reason)">
+                {{ terminalReasonText(row.terminal_reason) }}
+              </el-tag>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
           <el-table-column label="步骤数" width="80" align="center">
             <template #default="{ row }">
               {{ row.steps?.length ?? row.step_count ?? '-' }}
@@ -306,6 +314,32 @@ const FINAL_STATUSES = ['completed', 'stopped', 'failed', 'interrupted']
 const isCompleted = computed(() => detail.value.status === 'completed')
 const isRunning = computed(() => detail.value.status === 'running' || detail.value.status === 'healing')
 
+// terminal_reason 中英文映射（与后端 terminal_reason 六类对齐）
+const TERMINAL_REASON_MAP = {
+  normal_success: '正常完成',
+  business_failure: '业务失败',
+  user_stopped: '用户停止',
+  interrupted: '中断',
+  execution_failed: '执行失败',
+  integrity_anomaly: '数据异常',
+}
+const TERMINAL_REASON_TYPE = {
+  normal_success: 'success',
+  business_failure: 'danger',
+  user_stopped: 'warning',
+  interrupted: 'info',
+  execution_failed: 'danger',
+  integrity_anomaly: 'danger',
+}
+
+function terminalReasonText(reason) {
+  return TERMINAL_REASON_MAP[reason] || reason || '-'
+}
+
+function terminalReasonType(reason) {
+  return TERMINAL_REASON_TYPE[reason] || 'info'
+}
+
 // 统计卡片统一以用例列表（case_results）为数据源，保证与列表完全一致
 const stats = computed(() => {
   const list = caseResults.value
@@ -487,8 +521,11 @@ async function handleStop() {
   stopping.value = true
   try {
     await executionApi.stop(executionId.value)
-    ElMessage.success('已发送停止指令')
-    polling.stop()
+    // P0-9 契约：Stop 后保持轮询，收到 status=stopped 才停止（pollStatus 自动处理）
+    ElMessage.success('正在停止，当前用例完成后结束')
+    if (!polling.isActive.value) {
+      polling.start()
+    }
     await fetchDetail()
   } catch {
     ElMessage.error('停止执行失败')

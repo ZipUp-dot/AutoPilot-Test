@@ -27,8 +27,15 @@ logger = logging.getLogger("autopilot.files")
 
 router = APIRouter(tags=["文件访问"])
 
-# 报告文件命名：execution_{id}_report.html（资源 ID = execution_id）
-REPORT_PATH_RE = re.compile(r"^execution_(\d+)_report\.html$")
+# 报告文件命名（P0-10 双兼容）：
+#   旧：execution_{id}_report.html
+#   新：report_{id}_{type}_{token}.html（type ∈ full/partial/diagnostic/interrupted，
+#       token = claim_token 32 位 hex，与 Report Claim Artifact Fencing 绑定；
+#       token 绑定路径保证不同 claim 不共享同一最终文件路径）
+REPORT_PATH_RE = re.compile(
+    r"^(?:execution_(\d+)_report\.html|"
+    r"report_(\d+)_(full|partial|diagnostic|interrupted)_([0-9a-f]{32})\.html)$"
+)
 
 # 上传类型子目录（内含资源 ID 段）
 UPLOAD_TYPE_DIRS = frozenset({"screenshots", "videos", "excels"})

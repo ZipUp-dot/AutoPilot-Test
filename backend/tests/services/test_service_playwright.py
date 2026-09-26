@@ -15,6 +15,27 @@ from app.models.execution import Execution
 from app.models.execution_step import ExecutionStep
 
 
+def _manifest_json(project, browser_type="chromium", execution_mode="headless"):
+    """构造 P1-1 Manifest 冻结快照（URL/browser/mode/SSRF），供裸 Execution 测试补全。
+
+    _execute_async 只读 Manifest，裸 Execution 缺 manifest_json 会 target_url=""
+    → validate 失败 → 被 seal failed，掩盖真实被测路径。
+    """
+    test_path = getattr(project, "test_path", "/") or "/"
+    return json.dumps({
+        "target_url": project.target_url,
+        "test_path": test_path,
+        "browser_type": browser_type,
+        "execution_mode": execution_mode,
+        "ssrf_policy": {"allowed_hosts": [], "allowed_ports": []},
+        "project": {
+            "name": project.name,
+            "target_url": project.target_url,
+            "test_path": test_path,
+        },
+    })
+
+
 # ═══════════════════════════════════════════════
 # create_execution() 测试
 # ═══════════════════════════════════════════════
@@ -214,8 +235,8 @@ class TestInitSteps:
 class TestUpdateExecution:
     """更新执行记录测试"""
 
-    def test_update_execution_updates_counts(self, db_session, sample_project):
-        """场景5: _update_execution() -> passed_cases, failed_cases 更新"""
+    def test_update_execution_heartbeat_only(self, db_session, sample_project):
+        """P0-7: _update_execution() 仅心跳保活，counters 为 Seal 时 Derived Cache 不再自增"""
         from app.models.execution import Execution
         from datetime import datetime as dt
 
@@ -224,19 +245,23 @@ class TestUpdateExecution:
             total_cases=3,
             passed_cases=0,
             failed_cases=0,
+            progress=0,
             status="running",
             start_time=dt.utcnow(),
         )
         db_session.add(exec_obj)
         db_session.commit()
         db_session.refresh(exec_obj)
+        assert exec_obj.heartbeat_at is None
 
         svc = PlaywrightService(db_session)
         svc._update_execution(exec_obj.id, passed=2, failed=1)
 
         db_session.refresh(exec_obj)
-        assert exec_obj.passed_cases == 2
-        assert exec_obj.failed_cases == 1
+        assert exec_obj.passed_cases == 0
+        assert exec_obj.failed_cases == 0
+        assert exec_obj.progress == 0
+        assert exec_obj.heartbeat_at is not None
 
     def test_update_execution_not_found(self, db_session, sample_project):
         """_update_execution() 记录不存在 → 静默跳过"""
@@ -510,9 +535,7 @@ class TestBuildNamespace:
     """命名空间构建测试"""
 
     def test_build_namespace_contains_key_modules(self):
-        """场景12: _build_namespace() -> 包含 safe, json, asyncio, monitor hooks, datetime"""
-        import asyncio
-        from datetime import datetime
+        """场景12: _build_namespace() -> 包含 safe, monitor hooks；不含 stdlib 模块"""
         from unittest.mock import AsyncMock
         from app.utils.safe_playwright import SafePlaywright
 
@@ -523,12 +546,12 @@ class TestBuildNamespace:
 
         assert isinstance(ns["safe"], SafePlaywright)
         assert "page" not in ns
-        assert ns["json"] is json
-        assert ns["asyncio"] is asyncio
-        assert ns["datetime"] is datetime
         assert ns["__monitor_before"] is not None
         assert ns["__monitor_after"] is not None
         assert isinstance(ns["__builtins__"], dict)
+        # P1-3 收口：不再注入完整标准库模块（json/time/asyncio/datetime）
+        for stdlib_name in ("json", "time", "asyncio", "datetime"):
+            assert stdlib_name not in ns, f"namespace 不应注入完整标准库模块: {stdlib_name}"
 
     def test_build_namespace_banned_builtins_excluded(self):
         """场景13: _build_namespace() 禁止的 builtins 排除 -> eval, exec, open 不在命名空间"""
@@ -599,6 +622,10 @@ class TestExecuteCase:
             total_cases=1,
             status="running",
             start_time=dt.utcnow(),
+            # P0-6：物化的 Execution 必有 runtime_state，供 ExecutionCodeResolver 读冻结代码
+            runtime_state_json=json.dumps({
+                str(sample_test_case.id): {"active_code_id": sample_generated_code.id}
+            }),
         )
         db_session.add(exec_obj)
         db_session.commit()
@@ -645,6 +672,10 @@ class TestExecuteCase:
             total_cases=1,
             status="running",
             start_time=dt.utcnow(),
+            # P0-6：物化的 Execution 必有 runtime_state，供 ExecutionCodeResolver 读冻结代码
+            runtime_state_json=json.dumps({
+                str(sample_test_case.id): {"active_code_id": sample_generated_code.id}
+            }),
         )
         db_session.add(exec_obj)
         db_session.commit()
@@ -673,6 +704,10 @@ class TestExecuteCase:
             total_cases=1,
             status="running",
             start_time=dt.utcnow(),
+            # P0-6：物化的 Execution 必有 runtime_state，供 ExecutionCodeResolver 读冻结代码
+            runtime_state_json=json.dumps({
+                str(sample_test_case.id): {"active_code_id": sample_generated_code.id}
+            }),
         )
         db_session.add(exec_obj)
         db_session.commit()
@@ -699,6 +734,10 @@ class TestExecuteCase:
             total_cases=1,
             status="running",
             start_time=dt.utcnow(),
+            # P0-6：物化的 Execution 必有 runtime_state，供 ExecutionCodeResolver 读冻结代码
+            runtime_state_json=json.dumps({
+                str(sample_test_case.id): {"active_code_id": sample_generated_code.id}
+            }),
         )
         db_session.add(exec_obj)
         db_session.commit()
@@ -725,6 +764,10 @@ class TestExecuteCase:
             total_cases=1,
             status="running",
             start_time=dt.utcnow(),
+            # P0-6：物化的 Execution 必有 runtime_state，供 ExecutionCodeResolver 读冻结代码
+            runtime_state_json=json.dumps({
+                str(sample_test_case.id): {"active_code_id": sample_generated_code.id}
+            }),
         )
         db_session.add(exec_obj)
         db_session.commit()
@@ -758,6 +801,10 @@ class TestExecuteCase:
             total_cases=1,
             status="running",
             start_time=dt.utcnow(),
+            # P0-6：物化的 Execution 必有 runtime_state，供 ExecutionCodeResolver 读冻结代码
+            runtime_state_json=json.dumps({
+                str(sample_test_case.id): {"active_code_id": sample_generated_code.id}
+            }),
         )
         db_session.add(exec_obj)
         db_session.commit()
@@ -784,6 +831,10 @@ class TestExecuteCase:
             total_cases=1,
             status="running",
             start_time=dt.utcnow(),
+            # P0-6：物化的 Execution 必有 runtime_state，供 ExecutionCodeResolver 读冻结代码
+            runtime_state_json=json.dumps({
+                str(sample_test_case.id): {"active_code_id": sample_generated_code.id}
+            }),
         )
         db_session.add(exec_obj)
         db_session.commit()
@@ -863,8 +914,9 @@ class TestExecuteAsync:
         exec_obj = Execution(
             project_id=sample_project.id,
             total_cases=1,
-            status="running",
+            status="queued",
             start_time=dt.utcnow(),
+            manifest_json=_manifest_json(sample_project),
         )
         db_session.add(exec_obj)
         db_session.commit()
@@ -883,22 +935,30 @@ class TestExecuteAsync:
 
     @pytest.mark.asyncio
     async def test_execute_async_all_pass(self, db_session, sample_project, sample_test_case, sample_generated_code, mocker):
-        """场景22: _execute_async() 全部用例通过 → status='completed'"""
+        """场景22: _execute_async() 全部用例通过 → status='completed'，counters 由 Seal 时 Resolver 重算"""
         mock_playwright_for_execution_service_func(mocker)
         mocker.patch.object(PlaywrightService, "_execute_case", return_value=True)
         mocker.patch.object(PlaywrightService, "_start_healing")
 
         from app.models.execution import Execution
+        from app.models.execution_step import ExecutionStep
         from datetime import datetime as dt
         exec_obj = Execution(
             project_id=sample_project.id,
             total_cases=1,
-            status="running",
+            status="queued",
             start_time=dt.utcnow(),
+            manifest_json=_manifest_json(sample_project),
         )
         db_session.add(exec_obj)
         db_session.commit()
         db_session.refresh(exec_obj)
+        # 物化成功步骤，供 Seal 时 Resolver 重算 counters（Derived Cache）
+        db_session.add(ExecutionStep(
+            execution_id=exec_obj.id, case_id=sample_test_case.id,
+            step_index=1, status="success",
+        ))
+        db_session.commit()
 
         svc = PlaywrightService(db_session)
         await svc._execute_async(sample_project.id, [sample_test_case.id], exec_obj.id, "headless")
@@ -920,8 +980,9 @@ class TestExecuteAsync:
         exec_obj = Execution(
             project_id=sample_project.id,
             total_cases=1,
-            status="running",
+            status="queued",
             start_time=dt.utcnow(),
+            manifest_json=_manifest_json(sample_project),
         )
         db_session.add(exec_obj)
         db_session.commit()
@@ -932,7 +993,8 @@ class TestExecuteAsync:
 
         db_session.refresh(exec_obj)
         assert exec_obj.status == "healing"
-        assert exec_obj.failed_cases == 1
+        # P0-7: counters 为 Seal 时 Derived Cache，healing 阶段不落库
+        assert exec_obj.failed_cases == 0
         mock_heal.assert_called_once()
 
     @pytest.mark.asyncio
@@ -947,8 +1009,9 @@ class TestExecuteAsync:
         exec_obj = Execution(
             project_id=sample_project.id,
             total_cases=3,
-            status="running",
+            status="queued",
             start_time=dt.utcnow(),
+            manifest_json=_manifest_json(sample_project),
         )
         db_session.add(exec_obj)
         db_session.commit()
@@ -984,8 +1047,9 @@ class TestExecuteAsync:
         exec_obj = Execution(
             project_id=sample_project.id,
             total_cases=1,
-            status="running",
+            status="queued",
             start_time=dt.utcnow(),
+            manifest_json=_manifest_json(sample_project),
         )
         db_session.add(exec_obj)
         db_session.commit()
@@ -1006,16 +1070,24 @@ class TestExecuteAsync:
         mocker.patch.object(PlaywrightService, "_start_healing")
 
         from app.models.execution import Execution
+        from app.models.execution_step import ExecutionStep
         from datetime import datetime as dt
         exec_obj = Execution(
             project_id=sample_project.id,
             total_cases=1,
-            status="running",
+            status="queued",
             start_time=dt.utcnow(),
+            manifest_json=_manifest_json(sample_project),
         )
         db_session.add(exec_obj)
         db_session.commit()
         db_session.refresh(exec_obj)
+        # 物化成功步骤，供 Seal 时 Resolver 重算 counters（Derived Cache）
+        db_session.add(ExecutionStep(
+            execution_id=exec_obj.id, case_id=sample_test_case.id,
+            step_index=1, status="success",
+        ))
+        db_session.commit()
 
         svc = PlaywrightService(db_session)
         await svc._execute_async(sample_project.id, [sample_test_case.id], exec_obj.id, "headless")
@@ -1037,8 +1109,9 @@ class TestExecuteAsync:
         exec_obj = Execution(
             project_id=sample_project.id,
             total_cases=1,
-            status="running",
+            status="queued",
             start_time=dt.utcnow(),
+            manifest_json=_manifest_json(sample_project),
         )
         db_session.add(exec_obj)
         db_session.commit()
@@ -1049,7 +1122,8 @@ class TestExecuteAsync:
 
         db_session.refresh(exec_obj)
         assert exec_obj.status == "healing"
-        assert exec_obj.failed_cases == 1
+        # P0-7: counters 为 Seal 时 Derived Cache，healing 阶段不落库
+        assert exec_obj.failed_cases == 0
         mock_heal.assert_called_once()
 
 

@@ -74,6 +74,7 @@ def _fake_call_openai(
     target_url: str = "",
     steps_json: str = "",
     platform: str = "web",
+    **kwargs,
 ) -> str:
     """确定性 Mock LLM：替代真实模型调用，返回能真实跑通 Demo 页面的代码"""
     if platform == "android":
@@ -339,7 +340,10 @@ def test_golden_path_real_chromium(golden_env):
     assert info["summary"]["failed"] == 0, f"报告统计错误: {info}"
     assert "report_id" in info and info["report_id"] > 0, info
 
-    # 报告 HTML 文件真实存在
+    # 报告 HTML 文件真实存在（P0-10 命名：report_{id}_{type}_{token}.html，以
+    # download_url 为准，不硬编码旧 execution_{id}_report.html）
     from app.config import settings
-    report_file = Path(settings.REPORT_DIR) / f"execution_{eid}_report.html"
+    file_name = info["download_url"].rsplit("/", 1)[-1]
+    report_file = Path(settings.REPORT_DIR) / file_name
     assert report_file.exists(), f"报告文件不存在: {report_file}"
+    assert "report_" in file_name

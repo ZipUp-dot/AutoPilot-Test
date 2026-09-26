@@ -14,13 +14,16 @@ from app.models.project import Project
 from app.config import settings
 from app.exceptions import NotFoundException, PlaywrightException, ValidationException
 from app.services.ai_service import _call_openai_vision
+from app.utils.url_builder import build_target_url
+from app.services.element_extractor import (
+    extract_elements as _extract_elements_shared,
+    generate_selector as _generate_selector_shared,
+    is_unique as _is_unique_shared,
+    _css_escape,
+    _filter_stable_classes,
+)
 
 logger = logging.getLogger("autopilot.crawl")
-
-# 动态 class 模式（排除 hash 类）
-DYNAMIC_CLASS_PATTERN = re.compile(
-    r'(css-[a-z0-9]+|_[a-zA-Z0-9]{6,}|[a-z]+-[a-f0-9]{6,}|sc-[a-zA-Z]+$)'
-)
 
 
 @dataclass
@@ -88,7 +91,8 @@ class ElementService:
                 f"项目 platform={project.platform}，Web 元素抓取仅支持 platform=web 的项目"
             )
 
-        url = (project.target_url.rstrip("/") + "/" + project.test_path.lstrip("/")).rstrip("/")
+        # P1-1：crawl 属 Admission 前上下文，用 Project 当前值（target_url + test_path）
+        url = build_target_url(project.target_url, project.test_path)
         browser_type = project.browser_type or "chromium"
 
         # SSRF 执行期策略：target 同源 + 项目 allowlist
@@ -254,7 +258,8 @@ class ElementService:
                     raise PlaywrightException(f"无法访问页面 {url}: {msg}")
 
             try:
-                raw_elements = await page.evaluate(_EXTRACT_JS)
+                # P1-2：提取走共享实现（element_extractor，白名单补全 + 身份上下文持有）
+                raw_elements = await _extract_elements_shared(page)
             except Exception as e:
                 await browser.close()
                 msg = str(e) or repr(e) or type(e).__name__
@@ -373,156 +378,17 @@ class ElementService:
         return True
 
     # ═══════════════════════════════════════════════
-    # 选择器生成（7 级优先级）
+    # 选择器生成 — 委托 element_extractor 共享实现
     # ═══════════════════════════════════════════════
 
     async def _generate_selector(self, page, raw: dict) -> str:
-        """按优先级生成 Playwright 选择器，在页面上下文验证唯一性"""
-
-        tag = raw.get("tag", "")
-        el_id = raw.get("id", "")
-        name_attr = raw.get("name", "")
-        placeholder = raw.get("placeholder", "")
-        text = (raw.get("textContent") or "")[:50].strip()
-        className = raw.get("className", "")
-        data_testid = raw.get("dataTestid", "")
-
-        # 1. data-testid
-        if data_testid:
-            sel = f'[data-testid="{data_testid}"]'
-            if await self._is_unique(page, sel):
-                return sel
-
-        # 2. id
-        if el_id:
-            sel = f"#{_css_escape(el_id)}"
-            if await self._is_unique(page, sel):
-                return sel
-
-        # 3. name
-        if name_attr:
-            sel = f'[name="{name_attr}"]'
-            if await self._is_unique(page, sel):
-                return sel
-
-        # 4. placeholder + tag
-        if placeholder:
-            sel = f'{tag}[placeholder="{placeholder}"]'
-            if await self._is_unique(page, sel):
-                return sel
-
-        # 5. 稳定 class（排除动态类）
-        stable_classes = _filter_stable_classes(className.split()) if className else []
-        if stable_classes:
-            sel = f"{tag}.{'.'.join(stable_classes[:2])}"
-            if await self._is_unique(page, sel):
-                return sel
-
-        # 6. text content
-        if text:
-            sel = f'{tag}:has-text("{text}")'
-            if await self._is_unique(page, sel):
-                return sel
-
-        # 7. 兜底：nth-child XPath
-        idx = raw.get("index", 0)
-        sel = f"{tag}:nth-child({idx + 1})" if idx >= 0 else tag
-        return sel
+        """P1-2：单一实现来源 element_extractor（7 级优先级 + nth-of-type 层级兜底）"""
+        return await _generate_selector_shared(page, raw)
 
     @staticmethod
     async def _is_unique(page, selector: str) -> bool:
-        """验证选择器在页面中唯一"""
-        try:
-            count = await page.evaluate(
-                """(sel) => document.querySelectorAll(sel).length""",
-                selector,
-            )
-            return count == 1
-        except Exception:
-            return False
-
-
-# ═══════════════════════════════════════════════
-# 页面 JS 提取脚本
-# ═══════════════════════════════════════════════
-
-_EXTRACT_JS = """() => {
-    const selectors = [
-        'button',
-        'input:not([type])', 'input[type="text"]', 'input[type="password"]', 'input[type="email"]', 'input[type="number"]',
-        'input[type="tel"]', 'input[type="url"]', 'input[type="search"]', 'input[type="date"]', 'input[type="time"]',
-        'textarea', 'select',
-        'a[href]',
-        '[role="button"]', '[role="link"]',
-    ];
-    const all = document.querySelectorAll(selectors.join(','));
-    const seen = new Set();
-    const result = [];
-
-    all.forEach((el, i) => {
-        // 过滤不可见
-        const rect = el.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return;
-        if (el.offsetParent === null) return;
-
-        // 去重（同一 DOM 节点被多个选择器匹配）
-        const uid = el.outerHTML ? el.outerHTML.substring(0, 80) : el.tagName + i;
-        if (seen.has(uid)) return;
-        seen.add(uid);
-
-        const tag = el.tagName.toLowerCase();
-        let element_type = tag;
-        if (tag === 'input') element_type = el.type || 'text';
-        if (tag === 'a') element_type = 'link';
-
-        result.push({
-            index: i,
-            tag: tag,
-            element_type: element_type,
-            id: el.id || null,
-            name: el.getAttribute('name') || null,
-            className: el.className || null,
-            textContent: (el.textContent || '').trim() || null,
-            placeholder: el.getAttribute('placeholder') || null,
-            type: el.getAttribute('type') || null,
-            href: el.getAttribute('href') || null,
-            role: el.getAttribute('role') || null,
-            dataTestid: el.getAttribute('data-testid') || el.getAttribute('data-test-id') || null,
-            isVisible: true,
-            boundingBox: {
-                x: Math.round(rect.x),
-                y: Math.round(rect.y),
-                width: Math.round(rect.width),
-                height: Math.round(rect.height),
-            },
-            attributes: null,
-        });
-    });
-    return result;
-}"""
-
-
-# ═══════════════════════════════════════════════
-# 工具函数
-# ═══════════════════════════════════════════════
-
-def _css_escape(value: str) -> str:
-    """CSS 选择器转义（处理含特殊字符的 id）"""
-    return value.replace(":", "\\:").replace(".", "\\.").replace("#", "\\#")
-
-
-def _filter_stable_classes(classes: list[str]) -> list[str]:
-    """过滤动态 class（含 hash、css-in-js）"""
-    result = []
-    for c in classes:
-        if not c or len(c) < 2:
-            continue
-        if DYNAMIC_CLASS_PATTERN.search(c):
-            continue
-        if c.startswith("ant-") and len(c) > 20:
-            continue
-        result.append(c)
-    return result
+        """P1-2：唯一性检查 Playwright-native（page.locator().count()）"""
+        return await _is_unique_shared(page, selector)
 
 
 def _orm_to_crawled(el: PageElement) -> CrawledElement:

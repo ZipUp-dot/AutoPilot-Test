@@ -176,8 +176,9 @@ def test_list_executions_progress_zero_when_total_zero(client, db_session, sampl
     assert item["progress"] == 0
 
 
-def test_list_executions_healing_mixed_steps_latest_record_wins(client, db_session, sample_project, sample_test_case):
-    """healing 状态：用例经历 failed → success（自愈成功），最终状态取最新记录 → 计入 passed，而非 failed"""
+def test_list_executions_healing_mixed_steps_failed_wins(client, db_session, sample_project, sample_test_case):
+    """healing 状态：用例存在任一 failed 步骤 → 真值表钉死 case=failed（铁律 11，
+    禁止'最新记录覆盖'旧语义；自愈成功场景步骤会被原地改写为 success，不会残留 failed）"""
     exec_obj = _create_execution_with_steps(
         db_session, sample_project,
         steps_by_case={sample_test_case.id: ["failed", "success"]},
@@ -189,9 +190,9 @@ def test_list_executions_healing_mixed_steps_latest_record_wins(client, db_sessi
     resp = client.get(f"/api/v1/projects/{sample_project.id}/executions")
     assert resp.status_code == 200
     item = _find_item(resp.json(), exec_obj.id)
-    # 最终状态 = 最新一条执行记录状态（success 覆盖之前的 failed）
-    assert item["passed_cases"] == 1
-    assert item["failed_cases"] == 0
+    # P0-7: 任一 failed step → case failed（counters 由 Resolver 实时聚合）
+    assert item["passed_cases"] == 0
+    assert item["failed_cases"] == 1
     assert item["status"] == "healing"
     assert item["progress"] == 100
 
@@ -283,8 +284,12 @@ def test_get_execution_status(client, sample_execution):
     assert "progress" in data["data"]
 
 
-def test_stop_execution(client, sample_project, sample_test_case, sample_generated_code, mock_playwright_for_execution_service):
-    """POST /api/v1/executions/{eid}/stop — returns 200, status changes to stopped"""
+def test_stop_execution(client, sample_project, sample_test_case, sample_generated_code, mock_playwright_for_execution_service, mock_threading_in_orchestrator, mock_monitor_task):
+    """POST /api/v1/executions/{eid}/stop — queued 态 Stop → 立即 stopped（P0-9 六步收口）
+
+    mock_threading_in_orchestrator 阻止真实 worker 线程启动 → execution 保持 queued，
+    消除 running/completed 竞态，确定性验证 queued→stopped 转换。
+    """
     resp = client.post(
         f"/api/v1/projects/{sample_project.id}/executions",
         json={"case_ids": [sample_test_case.id], "mode": "headless", "batch_name": "StopTest"},
@@ -295,6 +300,7 @@ def test_stop_execution(client, sample_project, sample_test_case, sample_generat
     assert resp.status_code == 200
     data = resp.json()
     assert data["data"]["status"] == "stopped"
+    assert data["data"]["stop_requested"] is True
 
 
 def test_stop_execution_already_completed(client, sample_execution):
@@ -325,13 +331,14 @@ class TestCreateExecutionEdgeCases:
     """POST /api/v1/projects/{pid}/executions — 参数校验与异常包装"""
 
     def test_create_with_nonexistent_case(self, client, sample_project):
-        """case_ids 含不存在用例且无代码 → 422，错误消息含 ID 回退"""
+        """case_ids 含不存在用例且无代码 → 422，错误消息逐 case 返回原因（P0-6）"""
         resp = client.post(
             f"/api/v1/projects/{sample_project.id}/executions",
             json={"case_ids": [99999], "mode": "headless"},
         )
         assert resp.status_code == 422
-        assert "ID=99999" in resp.json()["message"]
+        assert "case 99999" in resp.json()["message"]
+        assert "用例不存在" in resp.json()["message"]
 
     def test_create_orchestrator_error_wrapped(self, client, sample_project, sample_test_case, sample_generated_code, mocker):
         """run_execute_only 抛通用异常 → 包装为 422 '启动执行失败'"""
@@ -346,14 +353,16 @@ class TestCreateExecutionEdgeCases:
         assert resp.status_code == 422
         assert "启动执行失败" in resp.json()["message"]
 
-    def test_create_case_without_code_uses_case_name(self, client, db_session, sample_project, sample_test_case):
-        """存在用例但无生成代码 → 422，错误消息使用 case_name"""
+    def test_create_case_without_code_returns_per_case_reason(self, client, db_session, sample_project, sample_test_case):
+        """存在用例但无生成代码 → 422，错误消息逐 case 返回失败原因（P0-6）"""
         resp = client.post(
             f"/api/v1/projects/{sample_project.id}/executions",
             json={"case_ids": [sample_test_case.id], "mode": "headless"},
         )
         assert resp.status_code == 422
-        assert sample_test_case.case_name in resp.json()["message"]
+        msg = resp.json()["message"]
+        assert f"case {sample_test_case.id}" in msg
+        assert "code_id 未确定" in msg
 
 
 # ═══════════════════════════════════════════════
@@ -393,7 +402,8 @@ class TestDetailStatusClassification:
     """get_execution_detail() case_results 状态分类"""
 
     @pytest.mark.parametrize("step_status,expected", [
-        ("running", "running"),
+        # P0-7: 真值表钉死——含未决步骤(pending/running) → pending；仅 success+pending → running
+        ("running", "pending"),
         ("pending", "pending"),
         ("skipped", "skipped"),
         ("weird_status", "unknown"),

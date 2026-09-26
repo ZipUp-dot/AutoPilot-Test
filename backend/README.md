@@ -91,7 +91,7 @@ backend/
 │   ├── middlewares/              # 中间件
 │   │   ├── logging.py            # 请求日志（method/path/status/duration/ip）
 │   │   └── timing.py             # 响应时间头
-├── tests/                       # pytest 测试套件（4 层架构，980+ 测试，覆盖率 92%）
+├── tests/                       # pytest 测试套件（4 层架构，1451 测试 / 1449 passed，覆盖率 90%）
 │   ├── conftest.py              # 共享 Fixture（SQLite 内存库 + 外部依赖 Mock）
 │   ├── factories.py             # 工厂类
 │   ├── README_TEST.md           # 测试运行说明
@@ -270,6 +270,15 @@ alembic revision --autogenerate -m "描述"  # 基于 ORM models 生成新迁移
 
 ### 7. 启动服务
 
+> 🚨 **必须单 uvicorn worker 运行（运行约束，非建议）**
+>
+> 本应用的多项状态为**进程内实现**，多 worker 会直接破坏核心闭环：
+> - 批量生成 `BatchGenerateService` 的 Job 注册表与 `batch_id → 状态` 映射为进程内单例（多 worker 下 status 查询会落到无该 Job 的进程 → `task_lost`/404）；
+> - 停止控制 `execution_state` 的 stop flag、执行期 `execution lock`（Heal claim 串行化）为进程内结构（多 worker 下 Stop 请求可能落到非持有该执行的进程 → 停止失效）；
+> - `AI_RATE_LIMIT` / `AI_MAX_CONCURRENCY` 为进程内计数（多 worker 下总并发 = worker 数 × 配置值）。
+>
+> **请勿使用 `--workers`（含 `--workers 4`）**。需要并发能力时应扩展单 worker 内部线程池，或先把上述状态迁移到跨进程存储（本版本未引入 Redis）。
+
 > ⚠️ **重要**：`main.py` 启动时自动设置 `TOOLHOST_SANDBOX_DISABLED=true`，这是 Playwright 正常工作的必要条件。**请勿使用 `--reload` 参数**，否则 IDE 沙箱会拦截 Playwright 的子进程调用，导致元素抓取和执行引擎报错。
 
 #### 开发模式
@@ -287,15 +296,15 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 | `--host 127.0.0.1` | 监听地址（仅本机访问） |
 | `--host 0.0.0.0` | 监听所有网卡（允许局域网访问） |
 | `--port 8000` | 监听端口 |
-| `--workers 4` | 多进程模式（生产环境） |
+| `--workers N` | ❌ **禁止使用**：本应用状态为进程内实现，多 worker 会破坏批次状态查询 / 停止控制 / AI 限流 / Heal 串行化，必须单 worker |
 
 > ⚠️ **禁止使用 `--reload`**：热重载模式会导致 IDE 沙箱拦截 Playwright 子进程，引发 `NotImplementedError`。如需热重载，请使用 IDE 自带的重启功能。
 
 #### 生产模式
 
 ```bash
-# 不带头重载，多 worker
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+# 生产模式：单 worker（本应用状态为进程内实现，禁止 --workers 多进程）
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 #### 后台运行
@@ -776,9 +785,11 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 
 | 指标 | 数值 | 目标 |
 |------|------|------|
-| 测试用例 | 983 passed / 1 skipped | 全通过 |
-| **语句覆盖率** | **92%** | ≥ 90% ✅ |
-| **分支覆盖率** | **85%** | ≥ 80% ✅ |
+| 测试用例 | 1449 passed / 2 skipped（collected 1451） | 全通过 |
+| **语句覆盖率** | **91%**（7362 语句 / 635 未覆盖） | ≥ 90% ✅ |
+| **含分支总覆盖率** | **90%**（2100 分支 / 216 partial） | ≥ 80% ✅ |
+
+> 数字来自 **Release R_P2-rc @ commit `7862736`** 的同一次 `python -m pytest` 全量执行，原始输出见 [test_output.txt](test_output.txt)（与根 [README](../README.md) 同源）。四项量化指标实测见 [../docs/ACCEPTANCE_REPORT.md](../docs/ACCEPTANCE_REPORT.md)。
 
 ### 各层覆盖情况
 
@@ -805,9 +816,10 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 ### 安全措施
 
 - CORS 白名单（仅允许前端域名）
-- 代码安全审计（禁止 `eval` / `exec` / `__import__` / `os.system` 等）
+- 代码安全审计（禁止 `eval` / `exec` / `open` / `compile` / `__import__` / `os.system` 等；AI 代码的 `import` / `from ... import` 语句**一律拒绝**）
 - AST 语法校验 + 危险属性拦截（`_check_forbidden_attrs` 拦截 `safe._page` / `safe.__class__` / `safe.__dict__` 等全部下划线前缀属性，以及 `object.*` / `type.*` 反射入口与原生 `page.*` 访问）
 - SafePlaywright 运行时隔离（`__slots__` + `__getattribute__` 白名单；`__class__` 仅放行无能力的假类供 Playwright 栈分析，AI 层 AST 仍禁止）
+- **执行命名空间收口（双端 Web/Android 一致）**：受限命名空间只含白名单 builtins + 受控运行时能力（`safe` / 受控 `DriverProxy` + `AppiumBy` wrapper）+ 监控钩子 + 纯数据对象；不注入裸 `__import__`，不注入 `json/time/datetime/asyncio` 等完整标准库模块。Android 侧 `DriverProxy.find_element/find_elements` 返回 `ElementProxy`（白名单方法，返回值递归代理，禁止反射逃逸），`save_screenshot` 走截图路径策略（AI 侧路径统一 `uploads/screenshots/...`，越界抛 `SecurityError`）。**上述均为「应用级受限执行」**（AST 校验 + 受限命名空间 + 受控 API 代理），**不提供 OS / 容器级隔离**，请勿以此作为不可信代码的隔离边界。
 - SSRF 双层防护（入口 `validate_target_url` 仅允许 http/https、拦截云元数据/链路本地地址 + 执行期 BrowserContext 网络策略 `context.route` / `route_web_socket` / `service_workers="block"`；内网环境经 `SSRF_ALLOWED_HOSTS` / `SSRF_ALLOWED_PORTS` 或项目 `config_json` allowlist 放行，不整体封禁私网段）
 - 文件访问控制（`/uploads`、`/reports` 不再挂载 StaticFiles，改由受控路由：`INTERNAL_API_TOKEN` Bearer 校验 → 路径规范化边界校验 → 资源 ID 白名单校验 → StreamingResponse；响应头含 CSP + `X-Content-Type-Options: nosniff`）
 - Excel 输入资源限制（文件 ≤ 10MB、行数 ≤ 5000、Sheet ≤ 10、单元格长度 ≤ 4000）
@@ -825,7 +837,7 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
    - Token 无时效、无轮换机制，泄露面为整个部署；生产环境务必使用强随机值（`python -c "import secrets; print(secrets.token_urlsafe(32))"`）并妥善保管。
    - 该方案是「无用户管理/RBAC」前提下的过渡设计；后续版本计划升级为细粒度签名（JWT）或基于 nginx 的 IP 白名单 + 内网隔离，以消除共享静态令牌风险。
 2. **开发环境无 Token 放行**：未配置 `INTERNAL_API_TOKEN` 时（仅限非生产），`/uploads`、`/reports` 接口**放行并打 WARN 日志**，避免本地开发被鉴权阻塞。生产环境（ENV=production）未配置 Token 时启动直接失败，不存在此风险。
-3. **AI 并发控制的部署边界**：`AI_RATE_LIMIT` 与 `AI_MAX_CONCURRENCY` 均为**进程内**限制（内存共享）。单副本部署完全生效；**多副本（多 worker / 多容器）部署时各进程独立计数，总并发 = 副本数 × 配置值**。如需严格的全局限流，应在网关层（如 Nginx/Apigw）或消息队列层做外部限流，或使用共享存储（Redis）实现分布式计数（本版本未引入 Redis）。
+3. **AI 并发控制的部署边界**：`AI_RATE_LIMIT` 与 `AI_MAX_CONCURRENCY` 均为**进程内**限制（内存共享）。**本应用必须单 uvicorn worker 运行**（批量生成 Job 注册表、stop flag、执行期 Heal 串行化锁同为进程内状态，多 worker 会破坏批次状态查询与停止控制——见「启动服务」章节）。若通过**多容器副本**横向扩展，各副本独立计数，**总并发 = 副本数 × 配置值**；如需严格的全局限流，应在网关层（如 Nginx/Apigw）或消息队列层做外部限流，或使用共享存储（Redis）实现分布式计数（本版本未引入 Redis）。
 4. **Alembic 与启动迁移的关系**：应用启动仍走 `main.py` 生命周期中的 `db_init()`（`schema.sql` + `_run_migrations` 幂等迁移），保证「开箱即用」；Alembic（`backend/alembic/`，初始版本 `0001_initial_schema.py`）是**独立于运行时的版本化管理通道**，用于显式升级/降级与 schema 演进管理。二者并存且结构对齐；Alembic URL 优先级为 `AUTOPILOT_ALEMBIC_URL` > `alembic.ini` > `settings.DATABASE_URL`。数据库结构变更时，请同步修改 ORM 模型、`schema.sql`、`0001_initial_schema.py` 三处，并运行迁移测试校验一致性。
 5. **报告 CSP 现状**：报告模板已启用严格 CSP（`default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`）。`'unsafe-inline'` 为离线内联报告的**必要**条件；`connect-src 'none'` + `form-action 'none'` + `frame-ancestors 'none'` 已阻断 XSS 外传、表单提交与点击劫持。配合 Jinja2 autoescape 与 `</` 转义，无需进一步收紧。
 6. **Docker 实机验证**：Dockerfile 已固定 `playwright==1.56.0` 对应 Chromium（`playwright install chromium --with-deps`），后端启动无 `--reload`；docker-compose 已注入 `ENV=production`、`INTERNAL_API_TOKEN`、`SECRET_KEY`、`TOOLHOST_SANDBOX_DISABLED=true` 及健康检查。**实机构建/联调未在本仓库开发环境执行，属 `未验证 / 环境缺失`**；首次部署请按「快速开始 → Docker 部署」执行并核对：后端健康检查通过、Chromium 可启动、报告/截图文件可访问。

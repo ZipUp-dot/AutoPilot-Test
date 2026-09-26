@@ -7,8 +7,7 @@ from app.exceptions import SecurityException
 
 import ast
 
-VALID_CODE = '''from playwright.async_api import Page
-async def run_test(page: Page) -> dict:
+VALID_CODE = '''async def run_test(page) -> dict:
     return {"success": True, "steps": []}
 '''
 
@@ -128,11 +127,14 @@ class TestHasRunTest:
 
 
 class TestCheckImports:
-    """_check_imports() — blacklist module detection"""
+    """_check_imports() — Import / ImportFrom 一律拒绝"""
 
-    def test_import_json_returns_none(self):
+    def test_import_json_returns_error(self):
+        """import json 也被拒绝（不再只看黑名单，任何 import 一律拒绝）"""
         tree = ast.parse("import json")
-        assert _check_imports(tree) is None
+        result = _check_imports(tree)
+        assert result is not None
+        assert "禁止导入模块" in result
 
     def test_import_requests_returns_error(self):
         tree = ast.parse("import requests")
@@ -141,6 +143,13 @@ class TestCheckImports:
     def test_from_import_requests_returns_error(self):
         tree = ast.parse("from requests import get")
         assert _check_imports(tree) is not None
+
+    def test_any_stdlib_import_rejected(self):
+        """std 库（os/json/time）同样在 Validator 阶段即被拒"""
+        for stmt in ("import os", "import json", "import time",
+                     "from datetime import datetime"):
+            tree = ast.parse(stmt)
+            assert _check_imports(tree) is not None, f"{stmt} 应被拒绝"
 
 
 class TestCheckBuiltins:
@@ -176,12 +185,21 @@ class TestSafePlaywrightValidation:
         assert CodeValidator.validate(code) is None
 
     def test_legitimate_playwright_code_passes(self):
-        """合法 Playwright 测试代码（仅 import 类型，不操作原生对象）"""
+        """合法 Playwright 测试代码（无 import，不操作原生对象）可通过"""
+        code = '''async def run_test(page) -> dict:
+    return {"success": True, "steps": []}
+'''
+        assert CodeValidator.validate(code) is None
+
+    def test_any_import_now_rejected(self):
+        """P1-3: import 语句一律拒绝（含无害的 playwright 类型导入）"""
         code = '''from playwright.async_api import Page
 async def run_test(page: Page) -> dict:
     return {"success": True, "steps": []}
 '''
-        assert CodeValidator.validate(code) is None
+        result = CodeValidator.validate(code)
+        assert result is not None
+        assert "禁止导入模块" in result
 
     # ── 直接访问原生 page ──
     def test_direct_page_goto_blocked(self):

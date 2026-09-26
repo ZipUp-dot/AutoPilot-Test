@@ -28,9 +28,22 @@ class ValidationException(AppException):
 
 
 class AIException(AppException):
-    """AI 服务异常"""
-    def __init__(self, message: str = "AI 服务异常"):
+    """AI 服务异常
+
+    统一携带 error_type（用于结构化日志/Batch 层分类）与 retryable（是否可重试）。
+    """
+    def __init__(self, message: str = "AI 服务异常", *,
+                 error_type: str = "ai_error", retryable: bool = False):
         super().__init__(code=500, message=message, status_code=500)
+        self.error_type = error_type
+        self.retryable = retryable
+
+
+class DeadlineExceeded(AIException):
+    """case_deadline 到期（wall-clock 或 remaining<=0），non-retryable"""
+
+    def __init__(self, message: str = "AI 调用超过截止时间"):
+        super().__init__(message=message, error_type="deadline_exceeded", retryable=False)
 
 
 class PlaywrightException(AppException):
@@ -45,10 +58,31 @@ class SecurityException(AppException):
         super().__init__(code=403, message=message, status_code=403)
 
 
+class SecurityError(SecurityException):
+    """执行环境越界错误（如截图路径越界）
+
+    SecurityException 的子类：捕获 SecurityException 的既有逻辑同样生效，
+    同时允许按越界语义单独捕获 SecurityError。
+    """
+    def __init__(self, message: str = "执行环境越界"):
+        super().__init__(message=message)
+
+
 class UnauthorizedException(AppException):
     """未授权（令牌缺失/无效）"""
     def __init__(self, message: str = "未授权访问"):
         super().__init__(code=401, message=message, status_code=401)
+
+
+class SealedExecutionError(AppException):
+    """Execution 已封存（终态 status 即数据库封存边界）
+
+    P0-10：Execution 进入终态后，应用层拒绝任何后续 Manifest/Runtime/Step/
+    HealRecord 修改。无需独立 sealed/is_sealed 状态字段——终态 status 本身就是
+    封存标记，Seal 与终态是同一个原子事实。
+    """
+    def __init__(self, message: str = "执行已封存（终态），禁止修改"):
+        super().__init__(code=409, message=message, status_code=409)
 
 
 # ═══════════════════════════════════════════════

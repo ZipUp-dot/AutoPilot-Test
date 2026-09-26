@@ -372,8 +372,9 @@ class TestReportModel:
         assert report.report_summary is not None
         assert isinstance(report.created_at, datetime)
 
-    def test_unique_execution_id(self, db_session):
-        """验证 execution_id 唯一约束：同一 execution 不能创建两个报告"""
+    def test_unique_execution_and_type(self, db_session):
+        """验证复合唯一约束 uq_execution_reports_execution_type：
+        同一 execution 不能创建两个相同 report_type 的报告（P0-10 终态分型）"""
         from sqlalchemy import text
         project = Project(name="Unique Project", target_url="https://example.com")
         db_session.add(project)
@@ -385,15 +386,16 @@ class TestReportModel:
         db_session.commit()
         db_session.refresh(execution)
 
-        report1 = ExecutionReport(execution_id=execution.id)
+        report1 = ExecutionReport(execution_id=execution.id, report_type="full")
         db_session.add(report1)
         db_session.commit()
 
-        # 直接在当前绑定连接上插入重复记录，验证数据库层唯一约束。
-        # 不通过 session flush + rollback，避免真实 rollback 破坏 conftest 外层事务。
+        # 直接在当前绑定连接上插入重复（execution_id + report_type）记录，
+        # 验证数据库层复合唯一约束。不通过 session flush + rollback，
+        # 避免真实 rollback 破坏 conftest 外层事务。
         with pytest.raises(Exception):
             db_session.bind.execute(
-                text("INSERT INTO execution_reports (execution_id) VALUES (:eid)"),
+                text("INSERT INTO execution_reports (execution_id, report_type) VALUES (:eid, 'full')"),
                 {"eid": execution.id},
             )
 

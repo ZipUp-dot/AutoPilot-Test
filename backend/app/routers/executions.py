@@ -17,12 +17,21 @@ from app.models.execution import Execution
 from app.models.execution_step import ExecutionStep
 from app.models.test_case import TestCase
 from app.models.project import Project
-from app.services.execution_state import set_stop_flag
+from app.services.execution_finalizer import ExecutionFinalizer
 from app.services.orchestrator import TestOrchestrator
 from app.exceptions import NotFoundException, ValidationException
 from app.schemas import ApiResponse
+from app.utils import terminal_reason as _tr
 
 router = APIRouter(tags=["执行引擎"])
+
+# Execution.status → Case 收敛 context（Resolved 兜底 reason；Case 自身证据优先）
+_EXEC_STATUS_TO_REASON = {
+    "completed": _tr.NORMAL_SUCCESS,
+    "stopped": _tr.USER_STOPPED,
+    "failed": _tr.EXECUTION_FAILED,
+    "interrupted": _tr.INTERRUPTED,
+}
 
 
 class CreateExecutionBody(BaseModel):
@@ -61,28 +70,8 @@ async def create_execution(
     orchestrator = get_orchestrator(db)
 
     try:
-        # 检查是否所有用例都已生成代码
-        from app.models.generated_code import GeneratedCode
-        missing = []
-        for cid in body.case_ids:
-            gen = (
-                db.query(GeneratedCode)
-                .filter(GeneratedCode.case_id == cid, GeneratedCode.is_valid == 1)
-                .first()
-            )
-            if not gen:
-                case = db.query(TestCase).filter(
-                    TestCase.id == cid,
-                    TestCase.project_id == project_id,
-                ).first()
-                name = case.case_name if case else f"ID={cid}"
-                missing.append(name)
-
-        if missing:
-            raise ValidationException(
-                f"以下用例尚未生成有效代码: {', '.join(missing)}"
-            )
-
+        # 代码来源/存在性/effective 校验统一由 ExecutionAdmissionService 完成；
+        # 本路由禁止再手工查询 GeneratedCode（latest 后门）。
         # 获取项目平台类型
         project = db.query(Project).filter(Project.id == project_id).first()
         if not project:
@@ -125,12 +114,11 @@ def list_project_executions(project_id: int, db: Session = Depends(get_db)):
         .all()
     )
 
-    # 批量查询步骤，实时聚合用例级通过/失败统计
-    # （自愈过程中 Execution 表的缓存统计不会实时更新，需以步骤状态为准）
+    # 批量查询步骤，实时聚合用例级通过/失败统计（唯一真源 = CaseStateResolver）
     from collections import defaultdict
+    from app.utils.case_state_resolver import resolve as _resolve
     exec_ids = [e.id for e in executions]
-    # value: {case_id: [(created_at, step_id, status), ...]}，保留时间与顺序信息用于取最新记录
-    case_statuses: dict[int, dict[int, list]] = defaultdict(lambda: defaultdict(list))
+    case_steps: dict[int, dict[int, list[dict]]] = defaultdict(lambda: defaultdict(list))
     if exec_ids:
         steps = (
             db.query(ExecutionStep)
@@ -138,23 +126,27 @@ def list_project_executions(project_id: int, db: Session = Depends(get_db)):
             .all()
         )
         for s in steps:
-            case_statuses[s.execution_id][s.case_id].append(
-                (s.created_at or datetime.min, s.id, s.status)
-            )
+            case_steps[s.execution_id][s.case_id].append({
+                "status": s.status,
+                "error_type": s.error_type,
+                "skip_reason": s.skip_reason,
+                "exception_type": s.exception_type,
+            })
 
     items = []
     for e in executions:
-        # 实时聚合：用例最终状态 = 该用例最新一条执行记录的状态（created_at 最新、ID 最大兜底）
-        cstatus_map = case_statuses.get(e.id, {})
+        # 实时聚合：每个用例按 steps 真值表解析（Case 自身证据优先，Execution.status 仅兜底）
+        csteps_map = case_steps.get(e.id, {})
         passed = 0
         failed = 0
-        if cstatus_map:
-            for records in cstatus_map.values():
-                latest_status = max(records, key=lambda r: (r[0], r[1]))[2]
-                if latest_status == "failed":
-                    failed += 1
-                elif latest_status == "success":
+        if csteps_map:
+            context = {"reason": _EXEC_STATUS_TO_REASON.get(e.status)}
+            for csteps in csteps_map.values():
+                status, _ = _resolve(csteps, context)
+                if status == "success":
                     passed += 1
+                elif status == "failed":
+                    failed += 1
         else:
             # 无步骤记录（刚创建等）回退到缓存统计
             passed = e.passed_cases or 0
@@ -189,9 +181,15 @@ def list_project_executions(project_id: int, db: Session = Depends(get_db)):
 # 公共聚合（详情/状态共用，保证统计与用例列表同一数据源）
 # ═══════════════════════════════════════════════
 
-def _build_case_results(db: Session, steps: list[ExecutionStep]) -> list[dict]:
-    """按 case_id 把步骤聚合成用例级结果（与用例列表展示一致）"""
+def _build_case_results(db: Session, steps: list[ExecutionStep],
+                        execution_status: str = "") -> list[dict]:
+    """按 case_id 把步骤聚合成用例级结果（唯一真源 = CaseStateResolver）。
+
+    status 由 steps 真值表推出；terminal_reason 由 status + execution 收敛
+    context + step 层 error_type/skip_reason 推出（禁止用 Execution.status 反推）。
+    """
     from collections import OrderedDict
+    from app.utils.case_state_resolver import resolve, step_to_dict
 
     case_groups: "OrderedDict[int, list[ExecutionStep]]" = OrderedDict()
     case_ids = set()
@@ -204,27 +202,18 @@ def _build_case_results(db: Session, steps: list[ExecutionStep]) -> list[dict]:
         cases = db.query(TestCase).filter(TestCase.id.in_(case_ids)).all()
         case_name_map = {c.id: c.case_name for c in cases}
 
+    context = {"reason": _EXEC_STATUS_TO_REASON.get(execution_status)}
+
     case_results = []
     for cid, csteps in case_groups.items():
-        # 最终状态 = 该用例「最新一次执行记录」的状态（created_at 最新，ID 最大兜底），
-        # 而不是“曾经失败过即失败”。同一用例可能因自愈/重试出现多次执行记录，
-        # 取最新一条的 status 作为主列表状态，与“重试历史”中最新的那条一致。
-        latest = max(
-            csteps,
-            key=lambda cs: (cs.created_at or datetime.min, cs.id),
+        status, terminal_reason = resolve(
+            [step_to_dict(cs) for cs in csteps], context
         )
-        # 未识别的步骤状态兜底为 unknown，避免前端状态标签失配
-        _status = latest.status or ""
-        case_status = (
-            _status
-            if _status in ("success", "failed", "running", "pending", "skipped")
-            else "unknown"
-        )
-
         case_results.append({
             "case_id": cid,
             "case_name": case_name_map.get(cid, f"用例 #{cid}"),
-            "status": case_status,
+            "status": status,
+            "terminal_reason": terminal_reason,
             "step_count": len(csteps),
             "duration": sum(cs.duration_ms or 0 for cs in csteps),
             "steps": [
@@ -289,7 +278,7 @@ def get_execution_detail(execution_id: int, project_id: int = None, db: Session 
         .all()
     )
 
-    case_results = _build_case_results(db, steps)
+    case_results = _build_case_results(db, steps, execution.status)
     stats = _compute_case_stats(case_results)
 
     return ApiResponse(data={
@@ -362,7 +351,7 @@ def get_execution_status(execution_id: int, project_id: int = None, db: Session 
 
     # 与详情接口同一数据源，返回实时聚合的用例结果与统计，
     # 使前端轮询时统计卡片与用例列表保持同一口径。
-    case_results = _build_case_results(db, steps)
+    case_results = _build_case_results(db, steps, execution.status)
     stats = _compute_case_stats(case_results)
 
     # 获取当前正在执行的用例名
@@ -412,7 +401,20 @@ def get_execution_status(execution_id: int, project_id: int = None, db: Session 
     summary="停止正在进行的执行",
 )
 def stop_execution(execution_id: int, project_id: int = None, db: Session = Depends(get_db)):
-    """停止正在运行/自愈中的执行批次"""
+    """停止执行批次（P0-9 Stop 语义）
+
+    状态转换（钉死，禁止其他转换）：
+      - queued → stopped：ExecutionFinalizer.seal_stopped 六步收口事务
+        （stop_requested_at + stopped + 全部 Case/Step→skipped(user_stopped) +
+        open HealRound→cancelled_by_recovery + runtime_state 终态）。Stop API
+        只是触发器，禁止自行写 status=stopped 后再补 Seal。
+      - running / healing → 保持原 status 不动，仅写 stop_requested_at + 内存 flag，
+        返回 {stop_requested: true}；执行器 case loop 结束后由同一 Finalizer 走
+        stopped 收口。
+      - 已终态（completed/stopped/failed/interrupted）→ 幂等返回，不重复改写。
+    """
+    from app.services.execution_state import set_stop_flag, get_execution_lock
+
     execution = db.query(Execution).filter(Execution.id == execution_id).first()
     if not execution:
         raise NotFoundException(f"执行批次 {execution_id} 不存在")
@@ -420,17 +422,43 @@ def stop_execution(execution_id: int, project_id: int = None, db: Session = Depe
     if project_id is not None and execution.project_id != project_id:
         raise NotFoundException(f"执行批次 {execution_id} 不存在")
 
-    if execution.status not in ("queued", "running", "healing"):
+    if execution.status in ("completed", "failed", "interrupted"):
         return ApiResponse(message=f"执行已结束（{execution.status}），无需停止", data={
             "status": execution.status,
         })
+    if execution.status == "stopped":
+        return ApiResponse(message="执行已停止", data={
+            "status": "stopped", "stop_requested": True,
+        })
+    if execution.status == "queued":
+        # 六步收口事务（唯一 stopped 出口；Stop API 只是触发它）
+        ExecutionFinalizer(db).seal_stopped(execution_id)
+        set_stop_flag(execution_id)
+        return ApiResponse(data={"status": "stopped", "stop_requested": True})
 
-    # 设置停止标志（共享 execution_state，同时覆盖 Playwright 和 Appium 执行）
+    # running / healing：只写 stop_requested_at（线性化边界内重读最新状态，防并发改写）
+    with get_execution_lock(execution_id):
+        execution = (
+            db.query(Execution)
+            .filter(Execution.id == execution_id)
+            .with_for_update()
+            .first()
+        )
+        if execution is None:
+            raise NotFoundException(f"执行批次 {execution_id} 不存在")
+        # 线性化后重读：可能已被并发 Stop / Finalizer 抢先改写
+        if execution.status in ("completed", "failed", "interrupted"):
+            return ApiResponse(message=f"执行已结束（{execution.status}），无需停止", data={
+                "status": execution.status,
+            })
+        if execution.status == "stopped":
+            return ApiResponse(message="执行已停止", data={
+                "status": "stopped", "stop_requested": True,
+            })
+        # 重复 Stop 幂等：stop_requested_at 已写入则不再改写
+        if execution.stop_requested_at is None:
+            execution.stop_requested_at = datetime.utcnow()
+        db.commit()
+
     set_stop_flag(execution_id)
-
-    # 更新 DB 状态
-    execution.status = "stopped"
-    execution.end_time = datetime.utcnow()
-    db.commit()
-
-    return ApiResponse(data={"status": "stopped"})
+    return ApiResponse(data={"status": execution.status, "stop_requested": True})

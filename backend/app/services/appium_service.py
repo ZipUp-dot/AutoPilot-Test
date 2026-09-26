@@ -30,6 +30,8 @@ from app.models.project import Project
 from app.utils.code_validator import CodeValidator
 from app.utils.appium_code_injector import AppiumCodeInjector
 from app.exceptions import SecurityException
+from app.services.execution_finalizer import ExecutionFinalizer
+from app.utils import terminal_reason as _tr
 
 logger = logging.getLogger("autopilot.appium")
 
@@ -40,10 +42,9 @@ ALLOWED_BUILTINS = frozenset({
     "type", "enumerate", "zip", "map", "filter", "sorted",
     "min", "max", "sum", "abs", "round", "any", "all",
     "True", "False", "None", "Exception", "ValueError", "TypeError",
-    "__import__",
 })
 
-from app.services.execution_state import set_stop_flag, clear_stop_flag, is_stopped, generate_worker_id
+from app.services.execution_state import set_stop_flag, clear_stop_flag, is_stopped, db_stop_requested, generate_worker_id
 
 
 class AppiumService:
@@ -136,7 +137,7 @@ class AppiumService:
             self._execute_sync(project_id, case_ids, execution_id, mode)
         except Exception:
             logger.exception("Appium 执行异常: execution_id=%s", execution_id)
-            self._update_execution_status(execution_id, "failed")
+            ExecutionFinalizer(self._db).seal(execution_id, "failed", _tr.EXECUTION_FAILED)
 
     def _execute_sync(
         self,
@@ -173,39 +174,43 @@ class AppiumService:
 
         appium_url = config.get("appium_server_url", settings.APPIUM_URL)
 
-        # 状态机：queued → running（持久化心跳与进度）
-        self._update_execution_status(execution_id, "running")
-        self._update_execution(execution_id, 0, 0)
+        # 原子状态机：queued → running（条件更新；影响行数 0 则放弃启动，
+        # 可能已被 Stop 或 Recovery 抢先改写，杜绝 stopped→running 回跳）
+        if not self._mark_running_if_queued(execution_id):
+            logger.info("Appium 执行已被 Stop/Recovery 抢先改写，放弃启动: execution_id=%s", execution_id)
+            return
+        self._update_execution(execution_id)
 
         try:
             driver = appium_webdriver.Remote(appium_url, desired_caps)
             driver.implicitly_wait(settings.APPIUM_TIMEOUT / 1000.0)
 
-            passed = 0
-            failed = 0
+            any_failure = False
 
             for case_id in case_ids:
-                if is_stopped(execution_id):
+                if self._stop_requested(self._db, execution_id):
                     logger.info("Appium 执行被手动停止: execution_id=%s", execution_id)
                     break
+
+                # Seal 守卫（P0-10）：终态 Execution 拒绝任何后续 Step/Runtime 写入
+                from app.utils.seal_guard import guard_not_sealed
+                guard_not_sealed(self._db, execution_id)
 
                 try:
                     success = self._execute_case(
                         driver, execution_id, case_id
                     )
-                    if success:
-                        passed += 1
-                    else:
-                        failed += 1
+                    if not success:
+                        any_failure = True
                 except Exception:
-                    failed += 1
+                    any_failure = True
                     logger.exception("Appium 用例执行异常: case_id=%s", case_id)
 
-                # 逐用例持久化进度 + 心跳（Docker 重启后可恢复状态）
-                self._update_execution(execution_id, passed, failed)
+                # 逐用例心跳保活（counters 为 Seal 时 Resolver 重算的 Derived Cache）
+                self._update_execution(execution_id)
 
-            # 更新执行统计
-            self._update_execution(execution_id, passed, failed)
+            # 心跳保活
+            self._update_execution(execution_id)
 
             # 关闭 driver
             try:
@@ -213,16 +218,23 @@ class AppiumService:
             except Exception:
                 pass
 
-            # 如果有失败步骤，进入自愈阶段
-            if failed > 0:
+            # 终态收敛（统一经 ExecutionFinalizer）：先查 stop_requested（决策点
+            # 必须查 DB stop_requested_at，内存 flag 为 fast-path）→ 为真则不进入
+            # healing，剩余 pending→skipped(user_stopped)→stopped；为假才按
+            # failed→healing / completed。
+            if self._stop_requested(self._db, execution_id):
+                ExecutionFinalizer(self._db).seal_stopped(execution_id)
+            elif any_failure:
                 self._update_execution_status(execution_id, "healing")
                 self._start_healing(execution_id, case_ids)
             else:
-                self._update_execution_status(execution_id, "completed")
+                ExecutionFinalizer(self._db).seal(
+                    execution_id, "completed", _tr.NORMAL_SUCCESS
+                )
 
         except Exception:
             logger.exception("Appium 连接/启动异常")
-            self._update_execution_status(execution_id, "failed")
+            ExecutionFinalizer(self._db).seal(execution_id, "failed", _tr.EXECUTION_FAILED)
 
     # ═══════════════════════════════════════════════
     # 单条用例执行（同步）
@@ -232,13 +244,9 @@ class AppiumService:
         self, driver, execution_id: int, case_id: int
     ) -> bool:
         """执行单条用例，返回是否成功"""
-        # 1. 获取最新代码
-        gen_code = (
-            self._db.query(GeneratedCode)
-            .filter(GeneratedCode.case_id == case_id, GeneratedCode.is_valid == 1)
-            .order_by(GeneratedCode.created_at.desc())
-            .first()
-        )
+        # 1. 获取冻结的活跃代码（统一走 ExecutionCodeResolver，禁止 latest 后门）
+        from app.services.execution_code_resolver import ExecutionCodeResolver
+        gen_code = ExecutionCodeResolver(self._db).get_active_code(execution_id, case_id)
         if not gen_code:
             logger.warning("Appium 用例 %s 无有效代码，跳过", case_id)
             return False
@@ -256,10 +264,7 @@ class AppiumService:
         except SecurityException:
             raise
 
-        # 4. 初始化步骤记录
-        self._init_steps(execution_id, case_id)
-
-        # 5. 构建沙箱 + 执行（同步）
+        # 4. 构建沙箱 + 执行（同步）（步骤已在 Admission 物化，禁止 delete+rebuild）
         hooks = _SyncMonitorHooks(self._db, execution_id, case_id, driver)
         namespace = _build_sync_namespace(driver, hooks)
 
@@ -277,7 +282,9 @@ class AppiumService:
             return False
 
         try:
-            result = run_test(driver)
+            # 传入受控 DriverProxy（run_test 参数会遮蔽 namespace 全局名，
+            # 必须显式传 proxy，否则 AI 拿到的是原生 driver）
+            result = run_test(namespace["driver"])
             success = result.get("success", False) if isinstance(result, dict) else False
             if not success:
                 self._mark_case_failed(execution_id, case_id)
@@ -291,12 +298,28 @@ class AppiumService:
     # 辅助方法（与 PlaywrightService 一致）
     # ═══════════════════════════════════════════════
 
-    def _mark_case_failed(self, execution_id: int, case_id: int) -> None:
-        """用例失败时，将所有步骤标记为 failed"""
-        self._db.query(ExecutionStep).filter(
-            ExecutionStep.execution_id == execution_id,
-            ExecutionStep.case_id == case_id,
-        ).update({"status": "failed", "error_message": "case_failed"})
+    def _mark_case_failed(self, execution_id: int, case_id: int, *,
+                          error_type: str = "execution_failed",
+                          error_message: str = "case_failed") -> None:
+        """用例失败兜底：仅标记该 case 首个未终态步骤为 failed（禁止整 case 刷 failed）。
+
+        真实步骤失败已由监控钩子按 error_type 分类记录；此处只兜底未终态步骤。
+        """
+        step = (
+            self._db.query(ExecutionStep)
+            .filter(
+                ExecutionStep.execution_id == execution_id,
+                ExecutionStep.case_id == case_id,
+                ExecutionStep.status.in_(["pending", "running"]),
+            )
+            .order_by(ExecutionStep.step_index)
+            .first()
+        )
+        if step is None:
+            return
+        step.status = "failed"
+        step.error_type = error_type
+        step.error_message = error_message
         self._db.commit()
 
     def _init_steps(self, execution_id: int, case_id: int) -> None:
@@ -328,19 +351,20 @@ class AppiumService:
             ))
         self._db.commit()
 
-    def _update_execution(self, execution_id: int, passed: int, failed: int) -> None:
-        """更新执行记录：统计 + 进度 + 心跳"""
+    def _update_execution(self, execution_id: int, passed: int = 0, failed: int = 0) -> None:
+        """执行过程心跳保活（仅写 heartbeat_at）。
+
+        counters（passed_cases/failed_cases/progress）已改为 Seal 时从 Resolver
+        重算的 Derived Cache，执行过程不再逐次自增维护；passed/failed 参数仅保留
+        兼容调用方签名，不再写入。
+        """
         try:
             exec_row = self._db.query(Execution).filter(Execution.id == execution_id).first()
             if exec_row:
-                exec_row.passed_cases = passed
-                exec_row.failed_cases = failed
-                total = exec_row.total_cases or 0
-                exec_row.progress = round((passed + failed) / total * 100) if total > 0 else 0
                 exec_row.heartbeat_at = datetime.utcnow()
                 self._db.commit()
         except Exception:
-            logger.exception("Appium 更新执行统计失败: execution_id=%s", execution_id)
+            logger.exception("Appium 更新执行心跳失败: execution_id=%s", execution_id)
 
     def _update_execution_status(self, execution_id: int, status: str) -> None:
         """更新执行状态"""
@@ -359,31 +383,63 @@ class AppiumService:
         Path(path).mkdir(parents=True, exist_ok=True)
         return path
 
+    @staticmethod
+    def _stop_requested(db, execution_id: int) -> bool:
+        """stop 判定：内存 flag 为 fast-path，决策点必须查 DB stop_requested_at（权威）。
+
+        禁止只靠内存 flag 做决策（多实例下 flag 不跨进程；DB stop_requested_at 唯一权威）。
+        """
+        if is_stopped(execution_id):
+            return True
+        return db_stop_requested(db, execution_id)
+
+    def _mark_running_if_queued(self, execution_id: int) -> bool:
+        """原子状态机：queued → running（条件更新，线性化边界内执行）。
+
+        仅当 status='queued' 时才更新为 running；影响行数为 0 说明已被 Stop
+        （六步收口置 stopped）或 Recovery 抢先改写 → 放弃启动，杜绝 stopped→running 回跳。
+        """
+        from app.services.execution_state import get_execution_lock
+        from sqlalchemy import update as _sa_update
+        with get_execution_lock(execution_id):
+            result = self._db.execute(
+                _sa_update(Execution)
+                .where(Execution.id == execution_id, Execution.status == "queued")
+                .values(status="running")
+            )
+            self._db.commit()
+            return result.rowcount > 0
+
     def _start_healing(self, execution_id: int, case_ids: list[int]) -> None:
-        """启动后台自愈线程 — 重新连接 Appium，逐个修复失败步骤（同步）"""
+        """启动后台自愈线程 — 重新连接 Appium，逐 failed case 触发 Case 级 HealRound（同步）"""
         def _heal():
             from app.db.database import SessionLocal
-            from app.services.heal_service import HealService
+            from app.services.heal_service import HealRoundService
             from appium import webdriver as appium_webdriver
 
             db = SessionLocal()
             try:
+                # Seal 守卫（P0-10）：终态 Execution 拒绝任何后续 Step/Runtime/HealRecord 写入
+                from app.utils.seal_guard import guard_not_sealed
+                guard_not_sealed(db, execution_id)
                 logger.info("Appium 自愈开始: execution_id=%s", execution_id)
+                # 按 case 分组 failed steps（P0-8：Heal 触发单位是 Case，禁止逐 step 触发）
                 failed_steps = (
                     db.query(ExecutionStep)
                     .filter(
                         ExecutionStep.execution_id == execution_id,
                         ExecutionStep.status == "failed",
                     )
+                    .order_by(ExecutionStep.case_id, ExecutionStep.step_index)
                     .all()
                 )
-                if not failed_steps:
-                    logger.info("Appium 无失败步骤，跳过自愈")
-                    exec_row = db.query(Execution).filter(Execution.id == execution_id).first()
-                    if exec_row:
-                        exec_row.status = "completed"
-                        exec_row.end_time = datetime.utcnow()
-                        db.commit()
+                failed_case_ids: list[int] = []
+                for st in failed_steps:
+                    if st.case_id not in failed_case_ids:
+                        failed_case_ids.append(st.case_id)
+                if not failed_case_ids:
+                    logger.info("Appium 无失败用例，跳过自愈")
+                    ExecutionFinalizer(db).seal(execution_id, "completed", _tr.NORMAL_SUCCESS)
                     return
 
                 # 获取项目 ID
@@ -418,33 +474,31 @@ class AppiumService:
                 driver = appium_webdriver.Remote(appium_url, desired_caps)
                 driver.implicitly_wait(settings.APPIUM_TIMEOUT / 1000.0)
 
-                heal_service = HealService(db)
+                heal_service = HealRoundService(db)
                 healed = 0
                 still_failed = 0
 
-                for step in failed_steps:
-                    if is_stopped(execution_id):
+                for case_id in failed_case_ids:
+                    if self._stop_requested(db, execution_id):
                         logger.info("Appium 自愈被手动停止: execution_id=%s", execution_id)
                         break
 
                     try:
-                        # HealService.try_heal 接受 page 参数，但同步执行时不需要 page
-                        # 这里传递 driver 用于截图等操作
+                        # HealRoundService.heal_case 为 async 包装；Android rerun 内部走同步 _rerun_case_sync
                         import asyncio as _asyncio
-                        success = _asyncio.run(heal_service.try_heal(
+                        result = _asyncio.run(heal_service.heal_case(
                             execution_id=execution_id,
-                            step=step,
-                            page=driver,  # 同步 driver 作为 page 参数传递
+                            case_id=case_id,
                             project_id=project_id,
-                            max_retries=settings.MAX_HEAL_RETRY,
+                            page=driver,  # 同步 driver 作为 page 参数传递
                             platform="android",
                         ))
-                        if success:
+                        if result.retry_status == "success":
                             healed += 1
                         else:
                             still_failed += 1
                     except Exception:
-                        logger.exception("Appium 自愈异常: step_id=%s", step.id)
+                        logger.exception("Appium 自愈异常: case_id=%s", case_id)
                         still_failed += 1
 
                 try:
@@ -452,28 +506,12 @@ class AppiumService:
                 except Exception:
                     pass
 
-                # 更新执行统计：按用例重新聚合步骤状态
-                # （通过 = 该用例所有步骤 success；失败 = 存在 failed 步骤）
-                exec_row = db.query(Execution).filter(Execution.id == execution_id).first()
-                if exec_row:
-                    from collections import defaultdict
-                    case_status: dict[int, list[str]] = defaultdict(list)
-                    for st in (
-                        db.query(ExecutionStep)
-                        .filter(ExecutionStep.execution_id == execution_id)
-                        .all()
-                    ):
-                        case_status[st.case_id].append(st.status)
-                    exec_row.passed_cases = sum(
-                        1 for sts in case_status.values()
-                        if sts and all(s == "success" for s in sts)
-                    )
-                    exec_row.failed_cases = sum(
-                        1 for sts in case_status.values() if "failed" in sts
-                    )
-                    exec_row.status = "completed"
-                    exec_row.end_time = datetime.utcnow()
-                    db.commit()
+                # 终态收敛（统一经 ExecutionFinalizer）：stop_requested → stopped；
+                # 否则 completed（counters 由 Resolver 重算）
+                if self._stop_requested(db, execution_id):
+                    ExecutionFinalizer(db).seal_stopped(execution_id)
+                else:
+                    ExecutionFinalizer(db).seal(execution_id, "completed", _tr.NORMAL_SUCCESS)
 
                 logger.info(
                     "Appium 自愈完成: execution_id=%s healed=%s still_failed=%s",
@@ -483,11 +521,7 @@ class AppiumService:
             except Exception:
                 logger.exception("Appium 自愈过程异常")
                 try:
-                    exec_row = db.query(Execution).filter(Execution.id == execution_id).first()
-                    if exec_row:
-                        exec_row.status = "failed"
-                        exec_row.end_time = datetime.utcnow()
-                        db.commit()
+                    ExecutionFinalizer(db).seal(execution_id, "failed", _tr.EXECUTION_FAILED)
                 except Exception:
                     pass
             finally:
@@ -570,17 +604,34 @@ class _SyncMonitorHooks:
         }
         if status == "failed" and error_msg:
             # 组合 exception_type 与 error_message，确保分类逻辑能匹配异常类型前缀
+            error_type = self._classify_appium_error(exception_type, error_msg)
             if exception_type:
                 combined = f"{exception_type}: {error_msg[:490]}"
                 update_data["error_message"] = combined[:500]
             else:
                 update_data["error_message"] = error_msg[:500]
+            update_data["error_type"] = error_type
             update_data["exception_type"] = exception_type[:100] if exception_type else ""
             update_data["log_output"] = f"[FAIL] step {step_no}: {update_data['error_message'][:500]}"
         else:
             update_data["log_output"] = f"[PASS] step {step_no}: {duration_ms}ms"
 
         self._upsert_step(step_no, update_data)
+
+    @staticmethod
+    def _classify_appium_error(exception_type: str, error_msg: str) -> str:
+        """Appium 步骤失败 error_type 分类（供 Resolver 归因，禁止业务平台互换）"""
+        ex = (exception_type or "").lower()
+        m = (error_msg or "").lower()
+        if "staleelement" in ex or "stale element" in m:
+            return "stale_element"
+        if "nosuchelement" in ex or "no such element" in m:
+            return "element_not_found"
+        if "timeoutexception" in ex or "timeout" in m:
+            return "element_wait_timeout"
+        if ex.startswith("assertionerror"):
+            return "business_assertion_failed"
+        return "execution_failed"
 
     def _upsert_step(self, step_no: int, data: dict) -> None:
         """创建或更新执行步骤记录"""
@@ -621,7 +672,9 @@ class _SyncMonitorHooks:
 def _build_sync_namespace(driver, hooks: _SyncMonitorHooks) -> dict:
     """构建受限执行命名空间（同步版）
 
-    注入 `driver` 而非 `page`，供 Android 用户代码使用。
+    namespace 只含：白名单 builtins + 受控 driver proxy + AppiumBy wrapper +
+    hooks + 受控 sleep。禁止注入原生 driver 与 json/time/datetime 等完整
+    标准库模块（P1-3 收口）。run_test 收到的 driver 参数为受控 DriverProxy。
     """
     import builtins as _builtins_module
 
@@ -636,15 +689,14 @@ def _build_sync_namespace(driver, hooks: _SyncMonitorHooks) -> dict:
     safe_builtins["ValueError"] = ValueError
     safe_builtins["TypeError"] = TypeError
 
-    from appium.webdriver.common.appiumby import AppiumBy
+    from app.utils.appium_proxy import DriverProxy, AppiumByProxy
 
+    driver_proxy = DriverProxy(driver)
     return {
         "__builtins__": safe_builtins,
-        "driver": driver,
-        "AppiumBy": AppiumBy,
-        "json": json,
-        "time": time,
-        "datetime": datetime,
+        "driver": driver_proxy,
+        "AppiumBy": AppiumByProxy,
+        "sleep": lambda sec: time.sleep(sec),
         "__monitor_before": hooks.on_step_before,
         "__monitor_after": hooks.on_step_after,
         "print": lambda *a, **kw: logger.info(" ".join(str(x) for x in a)),

@@ -7,10 +7,12 @@ import pytest
 
 from app.services.heal_service import (
     HealService,
-    _css_escape,
-    _filter_stable_classes,
     _parse_android_elements,
     _format_android_elements,
+)
+from app.services.element_extractor import (
+    _css_escape,
+    _filter_stable_classes,
 )
 from app.models.execution_step import ExecutionStep
 from app.models.generated_code import GeneratedCode
@@ -31,9 +33,41 @@ def heal_svc():
 
 
 @pytest.fixture
+def running_execution(db_session, sample_execution):
+    """自愈写入发生的真实上下文是 running/healing（Seal 前，P0-10）。
+
+    sample_execution 默认 status='completed'（终态/封存），Seal 守卫
+    （guard_not_sealed）会拒绝 HealRecord 写入；此处翻转回 running，
+    表示自愈仍在进行中的合法写入窗口。
+    """
+    sample_execution.status = "running"
+    db_session.commit()
+    db_session.refresh(sample_execution)
+    return sample_execution
+
+
+@pytest.fixture
 def heal_svc_db(db_session):
     """带 DB session 的 HealService"""
     return HealService(db_session)
+
+
+def _freeze_execution(db, case_id, code_id):
+    """模拟 Admission 物化：创建带 runtime_state 冻结代码的 Execution（P0-6）"""
+    from app.models.execution import Execution
+    from app.models.test_case import TestCase
+
+    case = db.query(TestCase).filter(TestCase.id == case_id).first()
+    exec_obj = Execution(
+        project_id=case.project_id if case else 1,
+        total_cases=1,
+        status="running",
+        runtime_state_json=json.dumps({str(case_id): {"active_code_id": code_id}}),
+    )
+    db.add(exec_obj)
+    db.commit()
+    db.refresh(exec_obj)
+    return exec_obj
 
 
 # ═══════════════════════════════════════════════
@@ -142,11 +176,8 @@ class TestValidateHealed:
     """_validate_healed() 代码校验"""
 
     VALID_CODE = (
-        "import asyncio\n"
-        "from datetime import datetime\n\n"
         "async def run_test(safe) -> dict:\n"
         "    steps_result = []\n"
-        "    start_time = datetime.now()\n"
         "    try:\n"
         '        await safe.goto("https://example.com")\n'
         '        await safe.click("h1")\n'
@@ -256,9 +287,9 @@ class TestCallHealAI:
 class TestSaveHealRecord:
     """_save_heal_record() 保存自愈记录"""
 
-    def test_creates_heal_record_with_all_fields(self, db_session, sample_project, sample_test_case, sample_execution):
+    def test_creates_heal_record_with_all_fields(self, db_session, sample_project, sample_test_case, running_execution):
         step = ExecutionStep(
-            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            execution_id=running_execution.id, case_id=sample_test_case.id, step_index=1,
             action="click", status="failed",
         )
         db_session.add(step)
@@ -292,9 +323,9 @@ class TestSaveHealRecord:
 class TestUpdateHealRecord:
     """_update_heal_record() 更新自愈记录状态"""
 
-    def test_updates_retry_status(self, db_session, sample_project, sample_test_case, sample_execution):
+    def test_updates_retry_status(self, db_session, sample_project, sample_test_case, running_execution):
         step = ExecutionStep(
-            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            execution_id=running_execution.id, case_id=sample_test_case.id, step_index=1,
             action="click", status="failed",
         )
         db_session.add(step)
@@ -454,18 +485,33 @@ class TestGetOriginalCode:
     """_get_original_code() 获取原始代码"""
 
     def test_returns_code_when_exists(self, heal_svc_db, sample_generated_code):
-        """有代码记录时返回 code_content"""
-        code = heal_svc_db._get_original_code(sample_generated_code.case_id)
+        """有冻结代码（runtime_state active_code_id）时返回 code_content"""
+        db = heal_svc_db._db
+        exec_obj = _freeze_execution(db, sample_generated_code.case_id, sample_generated_code.id)
+        code = heal_svc_db._get_original_code(exec_obj.id, sample_generated_code.case_id)
         assert "async def run_test" in code
         assert "success" in code
 
-    def test_returns_empty_when_no_code(self, heal_svc_db):
-        """无代码记录时返回空字符串"""
-        code = heal_svc_db._get_original_code(99999)
+    def test_returns_empty_when_no_code(self, heal_svc_db, sample_project):
+        """无冻结代码（runtime_state 缺该 case）时返回空字符串"""
+        from app.models.execution import Execution
+        db = heal_svc_db._db
+        exec_obj = Execution(
+            project_id=sample_project.id, total_cases=1, status="running",
+            runtime_state_json=json.dumps({}),
+        )
+        db.add(exec_obj)
+        db.commit()
+        db.refresh(exec_obj)
+        code = heal_svc_db._get_original_code(exec_obj.id, 99999)
         assert code == ""
 
     def test_returns_empty_when_code_invalid(self, db_session, sample_test_case):
-        """is_valid=0 的代码不会被返回"""
+        """runtime_state 指向不存在的代码 → 返回空字符串。
+
+        P0-6 契约：有效性在 Admission check(9) 把关（冻结码必须过 Validator），
+        运行期 resolver 只读冻结 id，不自行验证有效性。
+        """
         gen = GeneratedCode(
             case_id=sample_test_case.id,
             code_content="invalid code",
@@ -475,7 +521,8 @@ class TestGetOriginalCode:
         db_session.commit()
 
         svc = HealService(db_session)
-        code = svc._get_original_code(sample_test_case.id)
+        exec_obj = _freeze_execution(db_session, sample_test_case.id, 999999)
+        code = svc._get_original_code(exec_obj.id, sample_test_case.id)
         assert code == ""
 
 
@@ -524,14 +571,24 @@ class TestRecrawlElements:
 # _generate_selector
 # ═══════════════════════════════════════════════
 
+def _make_locator_page(count_value=1):
+    """构造唯一性检查用的 mock page（P1-2: page.locator() 同步, locator.count() 异步）"""
+    page = AsyncMock()
+    locator = AsyncMock()
+    locator.count = AsyncMock(return_value=count_value)
+    page.locator = MagicMock(return_value=locator)
+    return page
+
+
 class TestGenerateSelector:
     """_generate_selector() 选择器生成（按优先级）"""
+    # 唯一性检查走 page.locator(sel).count()（Playwright-native）：
+    # count==1 → 该级选择器生效；count!=1 → 继续降级。
 
     @pytest.mark.asyncio
     async def test_selector_by_data_testid(self, heal_svc):
         """优先使用 data-testid"""
-        page = AsyncMock()
-        page.evaluate.return_value = 1  # is_unique → True
+        page = _make_locator_page(count_value=1)  # is_unique → True
 
         raw = {
             "tag": "button", "id": "btn1", "name": "submit",
@@ -545,8 +602,7 @@ class TestGenerateSelector:
     @pytest.mark.asyncio
     async def test_selector_by_id_when_no_testid(self, heal_svc):
         """无 data-testid 时使用 id"""
-        page = AsyncMock()
-        page.evaluate.return_value = 1  # is_unique → True
+        page = _make_locator_page(count_value=1)  # is_unique → True
 
         raw = {
             "tag": "button", "id": "submit-btn", "name": "",
@@ -560,8 +616,7 @@ class TestGenerateSelector:
     @pytest.mark.asyncio
     async def test_selector_by_name(self, heal_svc):
         """无 id 时使用 name"""
-        page = AsyncMock()
-        page.evaluate.return_value = 1
+        page = _make_locator_page(count_value=1)
 
         raw = {
             "tag": "input", "id": "", "name": "username",
@@ -575,8 +630,7 @@ class TestGenerateSelector:
     @pytest.mark.asyncio
     async def test_selector_by_placeholder(self, heal_svc):
         """无 name 时使用 placeholder"""
-        page = AsyncMock()
-        page.evaluate.return_value = 1
+        page = _make_locator_page(count_value=1)
 
         raw = {
             "tag": "input", "id": "", "name": "",
@@ -590,8 +644,7 @@ class TestGenerateSelector:
     @pytest.mark.asyncio
     async def test_selector_by_stable_class(self, heal_svc):
         """无 placeholder 时使用稳定 class"""
-        page = AsyncMock()
-        page.evaluate.return_value = 1
+        page = _make_locator_page(count_value=1)
 
         raw = {
             "tag": "button", "id": "", "name": "",
@@ -605,8 +658,7 @@ class TestGenerateSelector:
     @pytest.mark.asyncio
     async def test_selector_by_text(self, heal_svc):
         """无 stable class 时使用文本"""
-        page = AsyncMock()
-        page.evaluate.return_value = 1
+        page = _make_locator_page(count_value=1)
 
         raw = {
             "tag": "button", "id": "", "name": "",
@@ -618,10 +670,26 @@ class TestGenerateSelector:
         assert 'has-text("Login")' in sel
 
     @pytest.mark.asyncio
-    async def test_selector_fallback_nth_child(self, heal_svc):
-        """所有选择器都不唯一时回退 nth-child"""
+    async def test_selector_fallback_hierarchy(self, heal_svc):
+        """所有选择器都不唯一时回退 nth-of-type 层级路径"""
+        # depth1（target 自身）count=2 不唯一 → depth2（向上扩一级）count=1 → identity 匹配
         page = AsyncMock()
-        page.evaluate.return_value = 0  # is_unique → False
+        counts = [2, 1]
+
+        def _locator(_sel):
+            loc = AsyncMock()
+            loc.count = AsyncMock(return_value=counts.pop(0))
+            return loc
+
+        page.locator = MagicMock(side_effect=_locator)
+
+        identity = AsyncMock()
+        identity.evaluate = AsyncMock(return_value=[
+            {"tag": "html", "idx": 1}, {"tag": "body", "idx": 1},
+            {"tag": "div", "idx": 1}, {"tag": "div", "idx": 3},
+        ])
+        page.evaluate_handle = AsyncMock(return_value=identity)
+        page.evaluate = AsyncMock(return_value=True)  # identity comparison 通过
 
         raw = {
             "tag": "div", "id": "", "name": "",
@@ -630,13 +698,12 @@ class TestGenerateSelector:
         }
 
         sel = await heal_svc._generate_selector(page, raw)
-        assert "nth-child" in sel
+        assert sel == "div:nth-of-type(1) > div:nth-of-type(3)"
 
     @pytest.mark.asyncio
     async def test_selector_fallback_tag_only(self, heal_svc):
-        """无 index 时仅返回 tag"""
-        page = AsyncMock()
-        page.evaluate.return_value = 0
+        """无 index 时退化 XPath"""
+        page = _make_locator_page(count_value=1)
 
         raw = {
             "tag": "span", "id": "", "name": "",
@@ -645,7 +712,7 @@ class TestGenerateSelector:
         }
 
         sel = await heal_svc._generate_selector(page, raw)
-        assert sel == "span"
+        assert sel == "xpath=//span"
 
 
 # ═══════════════════════════════════════════════
@@ -653,13 +720,12 @@ class TestGenerateSelector:
 # ═══════════════════════════════════════════════
 
 class TestIsUnique:
-    """_is_unique() 选择器唯一性检查"""
+    """_is_unique() 选择器唯一性检查（page.locator().count()）"""
 
     @pytest.mark.asyncio
     async def test_unique_selector_returns_true(self):
         """唯一选择器返回 True"""
-        page = AsyncMock()
-        page.evaluate.return_value = 1
+        page = _make_locator_page(count_value=1)
 
         result = await HealService._is_unique(page, "#unique-btn")
         assert result is True
@@ -667,17 +733,16 @@ class TestIsUnique:
     @pytest.mark.asyncio
     async def test_non_unique_selector_returns_false(self):
         """不唯一选择器返回 False"""
-        page = AsyncMock()
-        page.evaluate.return_value = 3
+        page = _make_locator_page(count_value=3)
 
         result = await HealService._is_unique(page, ".many")
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_evaluate_error_returns_false(self):
-        """JS 执行错误返回 False"""
-        page = AsyncMock()
-        page.evaluate.side_effect = Exception("Invalid selector")
+    async def test_locator_count_error_returns_false(self):
+        """locator.count() 错误返回 False"""
+        page = _make_locator_page(count_value=1)
+        page.locator.side_effect = Exception("Invalid selector")
 
         result = await HealService._is_unique(page, ":::bad")
         assert result is False
@@ -1003,11 +1068,8 @@ class TestRetryExecution:
 # ═══════════════════════════════════════════════
 
 HEALED_CODE = (
-    "import asyncio\n"
-    "from datetime import datetime\n\n"
     "async def run_test(safe) -> dict:\n"
     "    steps_result = []\n"
-    "    start_time = datetime.now()\n"
     "    try:\n"
     '        await safe.goto("https://example.com")\n'
     '        await safe.click("#btn")\n'
@@ -1410,10 +1472,10 @@ class TestAndroidElements:
 class TestHealAttempts:
     """_save_heal_record() 和 _update_heal_record() 的 attempt 追踪"""
 
-    def test_attempt_1_created(self, db_session, sample_project, sample_test_case, sample_execution):
+    def test_attempt_1_created(self, db_session, sample_project, sample_test_case, running_execution):
         """第一次保存创建 attempt 1"""
         step = ExecutionStep(
-            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            execution_id=running_execution.id, case_id=sample_test_case.id, step_index=1,
             action="click", status="failed",
         )
         db_session.add(step)
@@ -1435,10 +1497,10 @@ class TestHealAttempts:
         assert attempts[0]["status"] == "retrying"
         assert "await page.click('#new-btn')" in attempts[0]["generated_code"]
 
-    def test_attempt_2_updated(self, db_session, sample_project, sample_test_case, sample_execution):
+    def test_attempt_2_updated(self, db_session, sample_project, sample_test_case, running_execution):
         """第二次更新时 attempts 状态变更"""
         step = ExecutionStep(
-            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            execution_id=running_execution.id, case_id=sample_test_case.id, step_index=1,
             action="click", status="failed",
         )
         db_session.add(step)
@@ -1465,10 +1527,10 @@ class TestHealAttempts:
         assert attempts[0]["status"] == "success"
         assert attempts[0]["error"] == ""
 
-    def test_attempts_order(self, db_session, sample_project, sample_test_case, sample_execution):
+    def test_attempts_order(self, db_session, sample_project, sample_test_case, running_execution):
         """多记录按创建时间有序"""
         step = ExecutionStep(
-            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            execution_id=running_execution.id, case_id=sample_test_case.id, step_index=1,
             action="click", status="failed",
         )
         db_session.add(step)
@@ -1496,10 +1558,10 @@ class TestHealAttempts:
 class TestHealAndroidContext:
     """Android 自愈上下文"""
 
-    def test_android_context_fields(self, db_session, sample_project, sample_test_case, sample_execution):
+    def test_android_context_fields(self, db_session, sample_project, sample_test_case, running_execution):
         """Android 上下文包含所有 9 个必填字段"""
         step = ExecutionStep(
-            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            execution_id=running_execution.id, case_id=sample_test_case.id, step_index=1,
             action="click", status="failed",
         )
         db_session.add(step)
@@ -1594,10 +1656,10 @@ class TestHealAndroidContext:
 class TestHealHistoryPersistence:
     """自愈记录持久化查询"""
 
-    def test_heal_record_persists(self, db_session, sample_project, sample_test_case, sample_execution):
+    def test_heal_record_persists(self, db_session, sample_project, sample_test_case, running_execution):
         """自愈记录保存后可查询回"""
         step = ExecutionStep(
-            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            execution_id=running_execution.id, case_id=sample_test_case.id, step_index=1,
             action="click", status="failed",
         )
         db_session.add(step)
@@ -1622,10 +1684,10 @@ class TestHealHistoryPersistence:
         assert queried.retry_status == "retrying"
         assert queried.retry_count == 1
 
-    def test_heal_records_by_execution(self, db_session, sample_project, sample_test_case, sample_execution):
+    def test_heal_records_by_execution(self, db_session, sample_project, sample_test_case, running_execution):
         """可按 execution_step_id 查询自愈记录"""
         step = ExecutionStep(
-            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            execution_id=running_execution.id, case_id=sample_test_case.id, step_index=1,
             action="click", status="failed",
         )
         db_session.add(step)
@@ -1660,15 +1722,23 @@ class TestHealOriginalCode:
     """自愈过程中原始代码的获取与不变性"""
 
     def test_uses_original_code_from_db(self, heal_svc_db, sample_generated_code):
-        """自愈优先使用 GeneratedCode 表中的原始代码"""
-        code = heal_svc_db._get_original_code(sample_generated_code.case_id)
+        """自愈优先使用 runtime_state 冻结的原始代码（P0-6）"""
+        db = heal_svc_db._db
+        exec_obj = _freeze_execution(db, sample_generated_code.case_id, sample_generated_code.id)
+        code = heal_svc_db._get_original_code(exec_obj.id, sample_generated_code.case_id)
         assert code == sample_generated_code.code_content
         assert "async def run_test" in code
 
-    def test_original_code_unchanged_across_attempts(self, db_session, sample_project, sample_test_case, sample_execution, sample_generated_code):
+    def test_original_code_unchanged_across_attempts(self, db_session, sample_project, sample_test_case, running_execution, sample_generated_code):
         """多次自愈不会修改原始代码"""
+        # P0-6：Execution 需带 runtime_state 冻结代码，供 resolver 读取
+        running_execution.runtime_state_json = json.dumps({
+            str(sample_test_case.id): {"active_code_id": sample_generated_code.id}
+        })
+        db_session.commit()
+
         step = ExecutionStep(
-            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            execution_id=running_execution.id, case_id=sample_test_case.id, step_index=1,
             action="click", status="failed",
         )
         db_session.add(step)
@@ -1677,7 +1747,7 @@ class TestHealOriginalCode:
         svc = HealService(db_session)
 
         # 第一次自愈
-        original = svc._get_original_code(sample_generated_code.case_id)
+        original = svc._get_original_code(running_execution.id, sample_generated_code.case_id)
         assert original == sample_generated_code.code_content
 
         # 模拟两次自愈保存
@@ -1687,7 +1757,7 @@ class TestHealOriginalCode:
         )
 
         # 原始代码不变
-        original_again = svc._get_original_code(sample_generated_code.case_id)
+        original_again = svc._get_original_code(running_execution.id, sample_generated_code.case_id)
         assert original_again == original
 
         # 第二次自愈后原始代码仍不变
@@ -1696,7 +1766,7 @@ class TestHealOriginalCode:
             healed_code="fixed2", prompt="p2", retry_count=2,
         )
 
-        final_original = svc._get_original_code(sample_generated_code.case_id)
+        final_original = svc._get_original_code(running_execution.id, sample_generated_code.case_id)
         assert final_original == sample_generated_code.code_content
         assert "fixed" not in final_original
 
@@ -2251,10 +2321,10 @@ class TestUpdateHealRecordEdgeCases:
         """记录不存在 → 静默跳过"""
         heal_svc_db._update_heal_record(99999, "success")  # 不应抛异常
 
-    def test_invalid_attempts_json(self, db_session, sample_project, sample_test_case, sample_execution):
+    def test_invalid_attempts_json(self, db_session, sample_project, sample_test_case, running_execution):
         """attempts 字段为无效 JSON → 回退为空，不崩溃"""
         step = ExecutionStep(
-            execution_id=sample_execution.id, case_id=sample_test_case.id, step_index=1,
+            execution_id=running_execution.id, case_id=sample_test_case.id, step_index=1,
             action="click", status="failed",
         )
         db_session.add(step)

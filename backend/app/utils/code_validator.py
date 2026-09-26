@@ -112,18 +112,26 @@ class CodeValidator:
 
 
 def _check_imports(tree: ast.AST) -> Optional[str]:
-    """检查 import 语句中的黑名单模块"""
+    """检查 import 语句 — Import / ImportFrom 一律拒绝
+
+    P1-3 升级：不再只看黑名单模块。AI 代码（Web/Android）不允许导入任何
+    模块，所需能力（safe / driver / AppiumBy / sleep / hooks）全部由执行
+    环境注入。runtime 无 __import__（namespace 已移除）为第二道兜底。
+    """
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            for alias in node.names:
-                root = alias.name.split(".")[0]
-                if root in BANNED_MODULES:
-                    return f"禁止导入模块: {root} (行 {node.lineno})"
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                root = node.module.split(".")[0]
-                if root in BANNED_MODULES:
-                    return f"禁止导入模块: {root} (行 {node.lineno})"
+            names = ", ".join(a.name for a in node.names)
+            return (
+                f"禁止导入模块 (行 {node.lineno}): import 语句一律不允许，"
+                f"AI 代码不能导入任何模块（含 {names}）"
+            )
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            names = ", ".join(a.name for a in node.names)
+            return (
+                f"禁止导入模块 (行 {node.lineno}): import 语句一律不允许，"
+                f"AI 代码不能导入任何模块（含 {module}.{names}）"
+            )
     return None
 
 
@@ -310,3 +318,89 @@ def _has_run_test(tree: ast.AST) -> bool:
         if isinstance(node, ast.AsyncFunctionDef) and node.name == "run_test":
             return True
     return False
+
+
+# ═══════════════════════════════════════════════
+# 有效代码获取（validate-on-load）
+# ═══════════════════════════════════════════════
+
+def _resolve_platform(session, case_id: int) -> str:
+    """从 用例→项目 解析执行平台，用于按平台契约重新校验。
+
+    查询失败或项目缺失时回退 web（与 Project 模型默认一致）。
+    """
+    try:
+        from app.models.test_case import TestCase
+        from app.models.project import Project
+        case_row = session.query(TestCase).filter(TestCase.id == case_id).first()
+        if case_row:
+            project_row = session.query(Project).filter(Project.id == case_row.project_id).first()
+            if project_row and project_row.platform:
+                return project_row.platform
+    except Exception:  # noqa: BLE001
+        pass
+    return "web"
+
+
+def get_effective_code(session, case_id: int, expected_steps_hash: str):
+    """获取该 case_id 的唯一有效代码（来源可证明 + 通过当前 Validator）。
+
+    查询顺序【钉死】，禁止向旧版本回退：
+      ① ORDER BY created_at DESC, id DESC 取该 case_id 集合内唯一 latest 一行
+         （禁止跨 Case 选码，禁止把 source_steps_hash 等谓词写进 WHERE）
+      ② 校验 source_steps_hash（NULL 一律视为不匹配）
+      ③ 校验 is_mock=0
+      ④ 用当前 CodeValidator 重新校验（validate-on-load）
+      ⑤ 回写 is_valid / syntax_error
+      ⑥ is_valid!=1 → 返回 None
+      ⑦ 全部通过 → 返回 latest
+      ⑧ 任何一步失败都【不得】继续向旧版本搜索
+
+    Args:
+        session: SQLAlchemy Session
+        case_id: 用例 ID
+        expected_steps_hash: 期望的步骤 SHA-256（来源绑定）
+
+    Returns:
+        effective 的 GeneratedCode 行；无 → None
+    """
+    from app.models.generated_code import GeneratedCode
+
+    # ① 固定在该 case_id 集合内取最新一行（不跨 Case，不按谓词跳过 latest）
+    latest = (
+        session.query(GeneratedCode)
+        .filter(GeneratedCode.case_id == case_id)
+        .order_by(GeneratedCode.created_at.desc(), GeneratedCode.id.desc())
+        .first()
+    )
+    if latest is None:  # ⑧ 无 latest → None
+        return None
+
+    # ② source_steps_hash：NULL 一律视为不匹配
+    if not latest.source_steps_hash or latest.source_steps_hash != expected_steps_hash:
+        return None
+
+    # ③ is_mock=0
+    if latest.is_mock:
+        return None
+
+    # ④ 用当前 Validator 重新校验（validate-on-load）
+    platform = _resolve_platform(session, case_id)
+    error = CodeValidator.validate(latest.code_content, platform=platform)
+
+    # ⑤ 回写 is_valid / syntax_error（仅当被当前 Validator 否掉且原值为 1）
+    if error is not None and latest.is_valid:
+        latest.is_valid = 0
+        latest.syntax_error = error
+        try:
+            session.commit()
+        except Exception:  # noqa: BLE001
+            try:
+                session.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+
+    # ⑥ is_valid!=1 → None；⑦ 全部通过 → 返回 latest
+    if error is not None or latest.is_valid != 1:
+        return None
+    return latest

@@ -7,6 +7,10 @@
 
 > 🎯 **不是又一个 AI 测试框架，而是一个 Excel → 可执行脚本的转化器。**
 
+> 🚨 **运行约束：必须单 uvicorn worker 运行（禁止 `--workers`）**
+>
+> 批量生成 Job 注册表、停止标志（stop flag）、执行期 Heal 串行化锁、`AI_RATE_LIMIT` / `AI_MAX_CONCURRENCY` 计数均为**进程内**实现。多 worker 会导致批次状态查询落到错误进程（`task_lost`/404）、Stop 失效、限流形同虚设。**请勿使用 `--workers 4` 等多进程参数**；多副本/分布式状态迁移属后续阶段（本版本未引入 Redis）。
+
 
 ## 一、项目定位
 
@@ -72,8 +76,8 @@ AutoPilot 构建了完整的自动化工作流，支持 Web 和 Android 双平�
 | 能力 | Web | Android |
 | :--- | :--- | :--- |
 | **元素定位策略** | 7 级降级（data-testid → id → name → placeholder → class → text → nth-child） | 5 级优先级（resource-id → content-desc → text → class+attributes → XPath） |
-| **单条用例端到端耗时** | 标准用例 ≤ 60 秒 | 标准用例 ≤ 60 秒 |
-| **Excel 批量导入** | 单次支持 100 行以上用例无丢失 | 与 Web 共享 |
+| **单条用例端到端耗时** | 标准用例 ≤ 60 秒（实测见 [验收报告](docs/ACCEPTANCE_REPORT.md)；60s 口径以 owner 确认为准） | 标准用例 ≤ 60 秒 |
+| **Excel 批量导入** | 单次支持 100 行以上用例无丢失（实测 120 行端到端，见 [验收报告](docs/ACCEPTANCE_REPORT.md)） | 与 Web 共享 |
 | **执行模型** | 异步 `async def run_test(page)` | 同步 `def run_test(driver)` |
 | **代码风格** | 标准 Playwright Python API | 链式调用 `driver.find_element(...).action()` |
 | **监控注入** | AST 注入 `__monitor_before/after`（异步 await） | AST 注入 `__monitor_before/after`（同步，独立定义） |
@@ -110,7 +114,7 @@ AutoPilot/
 │   │   ├── prompts/                # AI Prompt 模板（代码生成/自愈/页面分析 共 5 个）
 │   │   ├── templates/              # HTML 报告模板
 │   │   └── middlewares/            # 请求日志 + 响应计时
-│   ├── tests/                      # pytest 四层测试套件（980+ 测试，覆盖率 92%）
+│   ├── tests/                      # pytest 四层测试套件（1451 测试 / 1449 passed，覆盖率 90%）
 │   │   ├── conftest.py             # 共享 Fixture（SQLite 内存库 + 全 Mock）
 │   │   ├── factories.py            # 工厂类
 │   │   ├── unit/                   # 单元测试
@@ -130,9 +134,32 @@ AutoPilot/
     │   ├── router/                 # 路由配置
     │   ├── styles/                 # 全局样式
     │   └── views/                  # 视图页面
-    ├── Dockerfile                  # 多阶段构建
-    └── nginx.conf                  # 反向代理 + SPA 回退
+    ├── Dockerfile                    # 多阶段构建
+    └── nginx.conf                    # 反向代理 + SPA 回退
 ```
+
+### 架构事实源（9 事实表 + 两层代码 Resolver）
+
+AutoPilot 的终态语义只从**冻结的事实表**读取，禁止运行期重算或向旧版本回退。9 张事实表（`projects` 为可变配置表，不作为终态事实源——执行期环境只读 Manifest 快照）：
+
+| # | 事实表 | 承载的权威事实 |
+| :-- | :--- | :--- |
+| 1 | `test_cases` | 用例步骤（`steps` + `hash_steps` 规范化哈希，作为执行前 Drift 比对基准） |
+| 2 | `page_elements` | 元素抓取结果（每次 crawl 全量重建） |
+| 3 | `generated_codes` | AI 生成代码（`is_valid` / `source_steps_hash` / `is_mock`，append-only） |
+| 4 | `executions.manifest_json` | Admission 冻结的执行环境与 per-case 快照（target_url / browser_type / execution_mode / ssrf_policy / cases） |
+| 5 | `executions.runtime_state_json` | per-case 运行期与终态事实源（`active_code_id` + `case_status` + `terminal_reason`，Seal 时一次写死） |
+| 6 | `execution_steps` | 步骤级事实（状态 / 截图 / 日志 / `error_type` / `duration_ms`），Seal 后不可变 |
+| 7 | `execution_reports` | 报告事实（`generation_status` + `claim_token` fencing） |
+| 8 | `heal_records` | 自愈事实（`UNIQUE(execution_id, case_id, round_no)` 竞态 claim、round 级记录） |
+| 9 | `batch_cases` / `batch_records` | 生成期逐 Case 终态事实（terminal 后不可变）+ 批级 KPI summary |
+
+**两层代码 Resolver（代码来源钉死，禁止 latest 后门）**
+
+1. **准入层 `get_effective_code`**：仅用于批量生成未覆盖的入口（Execute Only / Manual）——取该 Case 集合内唯一 latest，校验 `source_steps_hash`、`is_mock=0`，并以当前 `CodeValidator` 做 validate-on-load；任何一步失败都**不得**继续向旧版本搜索。
+2. **运行期层 `ExecutionCodeResolver`**：Execution 物化后，执行 / 自愈 / 报告一律只读 `runtime_state[case_id].active_code_id`（Admission 冻结，等于 `manifest.cases[case_id].original_code_id`），禁止回退 latest。
+
+**执行隔离 = 应用级受限执行（非 OS 级容器沙箱）**：AI 生成代码在受限命名空间内执行——白名单 builtins + `SafePlaywright`（`__slots__` + `__getattribute__` 白名单）+ AST 层拦截 `eval` / `exec` / `open` / `import` 与下划线属性。这是应用层的能力收口，不等同于操作系统级隔离（容器沙箱属后续阶段规划）。
 
 
 ## 八、项目价值
@@ -156,7 +183,7 @@ AutoPilot/
 | :--- | :--- | :--- |
 | **V1.0** | ✅ MVP 已发布 | 跑通"抓取 → 导入 → 生成 → 执行 → 容错重试 → 报告"全链路（Web 端） |
 | **V1.1** | ✅ Core 已完成 | 新增 Android 支持（AppiumService、元素抓取、AI 生成、执行、自愈、监控）、Orchestrator 平台分发、Heal History、Report 增强、Project/PageElement 平台隔离 |
-| **V1.2** | 🔧 开发中 | AI 感知页面抓取（goto 失败自动截图分析并执行前置操作）、自愈成本防护（入口健康检查 / 同类错误快速失败 / AI 调用限流熔断）、执行前环境健康检查、执行列表实时聚合、测试覆盖率 92%（983+ 测试） |
+| **V1.2** | 🔧 开发中 | AI 感知页面抓取（goto 失败自动截图分析并执行前置操作）、自愈成本防护（入口健康检查 / 同类错误快速失败 / AI 调用限流熔断）、执行前环境健康检查、执行列表实时聚合、测试覆盖率 90%（1451 测试 / 1449 passed） |
 
 
 ## 十、快速开始
@@ -202,7 +229,7 @@ docker compose up -d
 #   playwright install chromium        # 安装与 playwright==1.56.0 对应的浏览器 revision
 #   (cd frontend && npm ci)            # 前端按 lockfile 精确安装
 
-# 后端（注意：禁止 --reload，避免沙箱拦截 Playwright）
+# 后端（显式单 worker；禁止 --reload —— IDE 沙箱会拦截 Playwright 子进程）
 cd backend
 .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
@@ -227,8 +254,23 @@ cd backend
 
 测试套件采用**四层架构**（unit / services / routers / integration），全部运行于 SQLite 内存数据库、零外部依赖：
 - LLM API、Playwright、Appium、文件系统均通过 Mock 隔离
-- 当前 **1109 passed, 2 skipped**，语句覆盖率 **92%**
+- 当前 **1449 passed, 2 skipped**（collected 1451），语句覆盖率 **91%**（含分支总覆盖率 **90%**）
 - 完整说明见 [tests/README_TEST.md](backend/tests/README_TEST.md)
+
+> **测试数字同源约束**：上述数字来自 **Release R_P2-rc @ commit `7862736`** 的**同一次** `cd backend && python -m pytest` 全量执行，原始输出为 [backend/test_output.txt](backend/test_output.txt)；README 只引用该文件，**不存在多处分别填写**。
+
+### Release 验收（四项量化指标实测）
+
+四项指标（首生成有效率 / 最终执行成功率 / 单条用例端到端耗时 / Excel 批量导入）的实测数字、口径说明、与立项书 3.2 的差距分析详见 **[docs/ACCEPTANCE_REPORT.md](docs/ACCEPTANCE_REPORT.md)**。
+
+| 指标 | 实测（R_P2-rc @ `7862736`） |
+| :--- | :--- |
+| 首生成有效率（工程代理指标） | 99/99 = 100.0%（cohort 覆盖 99/120；另有 21 例因单 Case 生成预算耗尽被剔除） |
+| 最终执行成功率（Case 级） | 68/99 = **68.7%（未达到 85%）** |
+| 单条用例端到端耗时 | 执行阶段步骤耗时 P95 = 31.7s；含自愈 wall-clock ≈ 67.6s/Case（**60s 口径以 owner 确认为准**） |
+| Excel 批量导入 | 120 行端到端（导入 120/120 → 入库 → 生成 → 执行不破坏） |
+
+> 60s 指标的**口径修订仅作为建议**提交项目 owner 决策（见验收报告 §6）；在 owner 确认前，本 README 不改变立项书原口径表述。
 
 > 详细技术文档、API 接口、数据库设计请参阅：
 > - [📁 后端文档](backend/README.md)
@@ -253,8 +295,8 @@ cd backend
 | :--- | :--- |
 | **当前版本** | V1.2（开发中） |
 | **文档版本** | V3.2 |
-| **最后更新** | 2026-08-24 |
-| **后端测试** | 1109 passed / 2 skipped（覆盖率 92%） |
+| **最后更新** | 2026-09-26 |
+| **后端测试** | 1449 passed / 2 skipped（语句覆盖率 91%，含分支 90%）—— Release R_P2-rc @ commit `7862736` |
 | **维护者** | ethan-peng（Mr-6Lawrence） |
 | **Gitee** | https://gitee.com/Mr-6Lawrence/auto-pilot-test |
 | **GitHub** | https://github.com/ZipUp-dot/AutoPilot-Test |

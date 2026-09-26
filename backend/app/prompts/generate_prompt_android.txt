@@ -21,13 +21,18 @@ platform = android
 2. 代码必须是一个完整的 def 函数，函数名为 run_test
 3. 函数签名：def run_test(driver) -> dict:
 4. 返回值必须是 dict：{{ "success": bool, "message": str, "steps": list }}
-5. 每个操作步骤必须包含：截图（driver.save_screenshot）、日志（print）、耗时记录
+5. 每个操作步骤必须包含日志（print）。截图由后台监控器统一负责（每步自动
+   截图，无需 AI 指定）；如确需自截，只能调用受控截图 API
+   driver.save_screenshot(path=...)，路径必须位于 uploads/screenshots/ 子树。
+   步骤耗时由后台监控器（__monitor_before/__monitor_after）统一采集，
+   AI 不得自行计算耗时
 6. 使用 try/except 包裹每个步骤，失败时立即返回错误信息：
    {{ "success": false, "message": "步骤 N 失败: 原因", "steps": [...] }}
 7. 优先使用页面元素上下文中提供的 selector 和 selector_type 字段
 8. 如果步骤中的 target 是中文描述，必须在元素列表中匹配最合适的元素
 9. 所有输入操作前必须确保元素可见
-10. 禁止自行 import Appium 运行时依赖（AppiumBy、WebDriver 等），执行环境已注入
+10. 禁止自行 import 任何模块（AppiumBy、WebDriver 等均已在执行环境注入，
+    import 语句一律被拒绝）
 
 【链式调用契约（必须遵守）】
 - 所有元素操作必须是单语句链式调用，禁止使用中间变量
@@ -51,11 +56,11 @@ platform = android
 【可用 Action 映射】
 click → driver.find_element(AppiumBy.XXX, value).click()
 input → driver.find_element(AppiumBy.XXX, value).send_keys(text)
-wait → time.sleep(秒)
+wait → sleep(秒)（受控睡眠，禁止 import time）
 back → driver.back()
 swipe → driver.swipe(start_x, start_y, end_x, end_y, duration)
 assert_text → text = driver.find_element(AppiumBy.XXX, value).text; assert text in expected
-screenshot → driver.save_screenshot(path)
+screenshot → driver.save_screenshot("uploads/screenshots/xxx.png")（路径必须位于 uploads/screenshots/ 子树）
 
 【不支持的 Action（禁止使用）】
 navigate → Android 不支持浏览器导航，跳过
@@ -64,36 +69,32 @@ select → 移动端选择器与 Web 不同，使用 click 操作
 assert_visible → 使用 is_displayed() 替代
 
 【安全约束】
-1. 禁止导入 os、sys、subprocess、shutil 等系统模块
+1. 禁止任何 import 语句（import 一律被拒绝，所有能力已注入）
 2. 禁止执行 shell 命令
 3. 禁止写入系统文件
 4. 禁止使用 eval、exec、compile、__import__
 5. 禁止访问 __builtins__、__class__、__mro__ 等反射属性
 6. 禁止使用 requests、urllib、socket 等网络库
-7. 禁止使用 open() 读写文件（driver.save_screenshot 除外）
-8. 代码在沙箱中执行，以上限制由后端自动实施，违反将导致代码被拒绝
+7. 禁止使用 open() 读写文件（受控 driver.save_screenshot 除外）
+8. 禁止自行计算耗时（datetime/时间戳），耗时由监控器采集
+9. 代码在应用级受限执行环境中运行，以上限制由后端自动实施，违反将导致代码被拒绝
 
 【操作步骤参考模板】
 def run_test(driver) -> dict:
     steps_result = []
-    start_time = datetime.now()
 
     try:
         # ---- 前置条件: {pre_condition} ----
         print(f"[执行] 开始测试: {case_name}")
-        screenshot_path = f"reports/screenshots/{case_name}_before.png"
-        driver.save_screenshot(screenshot_path)
-        print(f"[截图] 初始页面已保存: {screenshot_path}")
     except Exception as e:
         return {{"success": false, "message": f"前置条件失败: {{e}}", "steps": []}}
 
     # ---- 逐一执行步骤 ----
     # 你需要在以下位置生成具体的步骤代码，参照上面的【可用 Action 映射】
 
-    duration = (datetime.now() - start_time).total_seconds()
     return {{
         "success": true,
-        "message": f"测试通过，共 {{len(steps_result)}} 步，耗时 {{duration:.1f}}s",
+        "message": f"测试通过，共 {{len(steps_result)}} 步",
         "steps": steps_result
     }}
 

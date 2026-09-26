@@ -35,6 +35,28 @@ class Settings(BaseSettings):
     # 兼容旧配置名（保留）；新配置统一使用 AI_RATE_LIMIT
     OPENAI_MAX_CALLS_PER_MIN: int = 30
 
+    # ── AI HTTP 请求超时（四项分离，禁止使用单项总超时）──
+    AI_REQUEST_TIMEOUT_CONNECT: float = 5.0    # 连接
+    AI_REQUEST_TIMEOUT_WRITE: float = 10.0     # 写出请求体
+    AI_REQUEST_TIMEOUT_READ: float = 120.0     # 读取响应
+    AI_REQUEST_TIMEOUT_POOL: float = 5.0       # 连接池排队
+
+    # ── AI 重试 ──
+    AI_RETRY_MAX_ATTEMPTS: int = 3             # 单条用例最多 HTTP attempt 次数
+    AI_RETRY_BASE: float = 1.0                 # 退避基时 base * 2^(attempt) + jitter(0~0.5s)
+    AI_DEADLINE_DEFAULT_SECONDS: float = 120.0 # 未显式传入 case_deadline 时默认 wall-clock 上限
+
+    # ── AI Batch / Case 双层预算（P0-5）──
+    # 命名钉死：claim 前检查的量叫 batch_remaining，claim 后的叫 case_remaining。
+    AI_BATCH_BUDGET_SECONDS: float = 300.0  # 整批 wall-clock 预算（claim 前短路）
+    AI_CASE_BUDGET_SECONDS: float = 120.0   # 单 case 预算（claim 后贯穿 quota/slot/HTTP/backoff）
+
+    # ── AI Heal 独立预算（P0-8）──
+    # Heal Round 拥有独立 deadline，从 Round claim 时刻起算；Batch Generation 的
+    # case_deadline 已过期，禁止复用。Heal 的 quota/slot/HTTP/Retry-After/backoff
+    # 全部受该 deadline 约束。
+    AI_HEAL_BUDGET_SECONDS: float = 120.0
+
     @model_validator(mode="after")
     def _compat_ai_rate_limit(self):
         """向后兼容：若仅设置旧名 OPENAI_MAX_CALLS_PER_MIN，AI_RATE_LIMIT 回退沿用旧值"""
@@ -47,6 +69,12 @@ class Settings(BaseSettings):
     PRE_EXECUTION_CHECK: bool = True     # 执行前目标环境健康检查
     # 执行心跳超时（秒）：服务重启后 running/healing 任务心跳超过该值视为孤儿
     EXECUTION_HEARTBEAT_TIMEOUT: int = 180
+
+    # ── 报告 claim（P0-10）──
+    # 报告 claim 超时阈值（秒）：generating 状态超过该值视为旧 owner 卡死，
+    # 允许 reclaim（生成新 claim_token，旧 token 立即失效）。每次 claim 内部最多
+    # 一次生成尝试，禁止内部自动无限重试（永久故障置 failed 等待人工/monitor 再触发）。
+    REPORT_CLAIM_TIMEOUT_SECONDS: int = 300
 
     # ── Playwright ──
     PLAYWRIGHT_TIMEOUT: int = 30_000

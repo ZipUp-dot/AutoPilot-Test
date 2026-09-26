@@ -65,17 +65,56 @@ class AIRateLimiter:
     # 并发控制（Concurrency Limit）
     # ═══════════════════════════════════════════════
 
-    def acquire_slot(self, timeout: float = CONCURRENCY_WAIT_SECONDS) -> bool:
+    def acquire_slot(self, timeout: Optional[float] = None) -> bool:
         """获取并发槽位（Semaphore），并发已满时阻塞等待
+
+        Args:
+            timeout: 最长等待秒数；None 用 CONCURRENCY_WAIT_SECONDS 默认
 
         Returns:
             True 获取成功；False 等待超时
         """
+        if timeout is None:
+            timeout = CONCURRENCY_WAIT_SECONDS
         return self._semaphore.acquire(timeout=timeout)
 
     def release_slot(self) -> None:
         """释放并发槽位（必须与 acquire_slot 配对，通常置于 finally）"""
         self._semaphore.release()
+
+    # ═══════════════════════════════════════════════
+    # 原子预留（quota + slot）
+    # ═══════════════════════════════════════════════
+
+    def acquire_attempt(self, remaining: Optional[float] = None) -> Optional[str]:
+        """原子预留一次 HTTP attempt 需要的 quota + slot。
+
+        只有 quota 与 slot 都成功才进入 HTTP 阶段；任一失败本次 attempt 不成立：
+          - quota 失败：不消耗 quota（窗口已满），本次不成立
+          - slot 失败：回滚已预留的 quota，本次不成立
+          - 成功：占用 1 quota + 1 slot（slot 由调用方在 HTTP 结束后的 finally
+            release_slot 释放；backoff 睡眠不占用 slot）
+
+        Args:
+            remaining: 剩余预算（秒），用于 slot 等待上限；None 用默认
+
+        Returns:
+            None 表示预留成功；否则返回错误类型（"quota_timeout" | "slot_timeout"）
+        """
+        if not self.acquire():
+            return "quota_timeout"
+        if not self.acquire_slot(timeout=remaining):
+            self._rollback_quota()
+            return "slot_timeout"
+        return None
+
+    def _rollback_quota(self) -> None:
+        """撤销一次刚消耗的 quota（用于 slot 获取失败时回滚预留）"""
+        with self._lock:
+            if self._calls:
+                self._calls.pop()
+            if self._total_calls > 0:
+                self._total_calls -= 1
 
     @property
     def active_count(self) -> int:

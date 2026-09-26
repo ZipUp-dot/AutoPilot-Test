@@ -266,6 +266,53 @@ class TestDuplicateCaseNo:
         assert result.cases[1].case_no == "TC001"
 
 
+class TestStepCountValidation:
+    """步骤数（step_count）一致性校验：声明值与实际解析步骤数须一致"""
+
+    def test_step_count_matches(self):
+        buf = _make_excel(
+            ["用例编号", "用例名称", "操作步骤", "步骤数"],
+            [
+                ["TC001", "用例A", json.dumps([
+                    {"action": "click", "target": "#a"},
+                    {"action": "fill", "target": "#b", "value": "x"},
+                ]), "2"],
+            ],
+        )
+        result = ExcelParser.parse(buf.read(), "test.xlsx")
+        assert result.success == 1
+        assert result.failed == 0
+
+    def test_step_count_mismatch_rejected(self):
+        buf = _make_excel(
+            ["用例编号", "用例名称", "操作步骤", "步骤数"],
+            [
+                ["TC001", "用例A", json.dumps([
+                    {"action": "click", "target": "#a"},
+                    {"action": "fill", "target": "#b", "value": "x"},
+                ]), "3"],
+            ],
+        )
+        result = ExcelParser.parse(buf.read(), "test.xlsx")
+        assert result.success == 0
+        assert result.failed == 1
+        assert any("步骤数校验失败" in e["reason"] for e in result.errors)
+
+    def test_step_count_handles_suffix_text(self):
+        buf = _make_excel(
+            ["用例编号", "用例名称", "操作步骤", "步骤总数"],
+            [
+                ["TC001", "用例A", json.dumps([
+                    {"action": "click", "target": "#a"},
+                    {"action": "fill", "target": "#b", "value": "x"},
+                ]), "2步"],
+            ],
+        )
+        result = ExcelParser.parse(buf.read(), "test.xlsx")
+        assert result.success == 1
+        assert result.failed == 0
+
+
 class TestEmptyFileValidation:
     """Empty file / insufficient rows validation"""
 

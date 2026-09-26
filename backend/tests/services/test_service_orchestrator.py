@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock, AsyncMock, patch, call
 
 import pytest
@@ -51,11 +52,36 @@ def orch(mock_ai, mock_pw, mock_report, mocker):
     """
     import threading
     mocker.patch.object(threading.Thread, "start")
-    return TestOrchestrator(
+
+    # run_full_pipeline 的批量生成用 asyncio.to_thread（默认 ThreadPoolExecutor）。
+    # 上面 patch threading.Thread.start 会同时阻止 executor worker 线程启动，
+    # 导致 to_thread 永不完成而挂起。作为测试 seam，把 to_thread 替换为内联同步执行
+    # （生产代码仍走真实 asyncio.to_thread），既避免线程，又能验证批处理调用链。
+    async def _sync_to_thread(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+    mocker.patch("asyncio.to_thread", _sync_to_thread)
+
+    # P0-6：Execution 改经 ExecutionAdmissionService。注入 mock admission：
+    # admit -> 全通过，materialize -> 42；并把 Pre-start Drift Guard 视为通过。
+    admission = _admission_mock()
+    orch = TestOrchestrator(
         ai_service=mock_ai,
         playwright_service=mock_pw,
         report_service=mock_report,
+        admission_service=admission,
     )
+    mocker.patch.object(orch, "_guard_pre_start_drift", return_value=[])
+    return orch
+
+
+def _admission_mock(execution_id: int = 42):
+    """构造全通过的 admission mock：admit->ok，materialize->execution_id"""
+    admission = MagicMock()
+    admission.admit.return_value = SimpleNamespace(
+        ok=True, project_id=1, case_ids=[1, 2], manifest=[], errors={},
+    )
+    admission.materialize.return_value = execution_id
+    return admission
 
 
 # ── Helper: patch _check_cases_need_generation ──
@@ -65,6 +91,15 @@ def _patch_check_cases(orch, return_value):
     async def _mock(*args, **kwargs):
         return return_value
     orch._check_cases_need_generation = _mock
+
+
+def make_batch_service(summary):
+    """构造 fake BatchGenerateService，create_job + wait_frozen 返回固定 summary"""
+    from unittest.mock import MagicMock
+    svc = MagicMock()
+    svc.create_job.return_value = "batch-x"
+    svc.wait_frozen.return_value = dict(summary)
+    return svc
 
 
 # ── Tests ──
@@ -83,29 +118,53 @@ class TestRunFullPipeline:
         assert result["status"] == "running"
         assert result["generated"] == 0
 
-    def test_need_generation_returns_generated_count(self, orch, mock_ai):
-        """部分用例需要生成 → generated_count > 0"""
+    def test_need_generation_returns_generated_count(self, orch, mocker):
+        """部分用例需要生成且全部成功 → generated_count > 0，进入执行"""
         _patch_check_cases(orch, [3, 4])
-        mock_ai.generate_batch.return_value = [
-            {"case_id": 3, "status": "success", "code_id": 12},
-            {"case_id": 4, "status": "failed", "error": "no elements"},
-        ]
+        orch._batch_generate_service = make_batch_service({
+            "batch_id": "b", "status": "completed", "success": 2, "failed": 0,
+            "skipped": 0, "cases": [
+                {"case_id": 3, "status": "success"},
+                {"case_id": 4, "status": "success"},
+            ],
+        })
 
         result = asyncio.run(orch.run_full_pipeline(1, [3, 4], "headless", "NeedGen"))
 
         assert result["execution_id"] == 42
-        assert result["generated"] == 1  # only 1 success
+        assert result["generated"] == 2  # all-or-none：全部成功才进入执行
+        orch.batch_gen.create_job.assert_called_once_with(1, [3, 4])
+        orch.batch_gen.wait_frozen.assert_called_once_with("batch-x")
 
-    def test_ai_fails_pipeline_continues(self, orch, mock_pw):
-        """AI 生成异常 → 异常隔离，流水线继续，仍返回 execution_id"""
+    def test_generation_partial_failure_blocks_execution(self, orch, mocker):
+        """任一 Case 生成失败/跳过 → all-or-none，不创建执行，抛 ValidationException"""
+        from app.exceptions import ValidationException
+        _patch_check_cases(orch, [3, 4])
+        orch._batch_generate_service = make_batch_service({
+            "batch_id": "b", "status": "failed", "success": 1, "failed": 1,
+            "skipped": 0, "cases": [
+                {"case_id": 3, "status": "success"},
+                {"case_id": 4, "status": "failed"},
+            ],
+        })
+
+        with pytest.raises(ValidationException, match="整体不创建执行"):
+            asyncio.run(orch.run_full_pipeline(1, [3, 4], "headless", "NeedGen"))
+
+        # 未创建执行
+        orch.admission.materialize.assert_not_called()
+
+    def test_generation_infra_failure_blocks_execution(self, orch, mocker):
+        """生成基础设施异常 → all-or-none，不创建执行，抛 ValidationException"""
+        from app.exceptions import ValidationException
         _patch_check_cases(orch, [1])
-        orch.ai_service.generate_batch.side_effect = RuntimeError("AI service down")
+        orch._batch_generate_service = MagicMock()
+        orch._batch_generate_service.create_job.side_effect = RuntimeError("AI service down")
 
-        # 不应抛出异常
-        result = asyncio.run(orch.run_full_pipeline(1, [1], "headless", "BrokenAI"))
+        with pytest.raises(ValidationException):
+            asyncio.run(orch.run_full_pipeline(1, [1], "headless", "BrokenAI"))
 
-        assert result["execution_id"] == 42
-        assert result["generated"] == 0  # generation failed, count stays 0
+        orch.admission.materialize.assert_not_called()
 
 
 class TestRunGenerateOnly:
@@ -189,11 +248,12 @@ class TestEmptyOrchestrator:
 class TestThreadStart:
     """验证 threading.Thread.start 被调用"""
 
-    def test_thread_start_called(self, mock_threading_in_orchestrator, mock_ai):
+    def test_thread_start_called(self, mock_threading_in_orchestrator, mock_ai, mocker):
         """run_execute_only 启动后台线程"""
-        mock_pw = MagicMock()
-        mock_pw.create_execution.return_value = 42
-        orch = TestOrchestrator(ai_service=mock_ai, playwright_service=mock_pw)
+        orch = TestOrchestrator(
+            ai_service=mock_ai, admission_service=_admission_mock(),
+        )
+        mocker.patch.object(orch, "_guard_pre_start_drift", return_value=[])
 
         asyncio.run(orch.run_execute_only(1, [1, 2], "headless", "TestBatch"))
 
@@ -207,14 +267,14 @@ class TestThreadStart:
 class TestClearStopFlag:
     """验证 clear_stop_flag 在执行前被调用"""
 
-    def test_clear_stop_flag_called_before_execution(self, mock_ai):
-        """clear_stop_flag 在创建执行记录后、启动线程前被调用"""
+    def test_clear_stop_flag_called_before_execution(self, mock_ai, mocker):
+        """clear_stop_flag 在 Admission 物化后、启动线程前被调用"""
         from unittest.mock import MagicMock
 
-        mock_pw = MagicMock()
-        mock_pw.create_execution.return_value = 42
-
-        orch = TestOrchestrator(ai_service=mock_ai, playwright_service=mock_pw)
+        orch = TestOrchestrator(
+            ai_service=mock_ai, admission_service=_admission_mock(),
+        )
+        mocker.patch.object(orch, "_guard_pre_start_drift", return_value=[])
 
         with patch("app.services.orchestrator.clear_stop_flag") as mock_clear:
             asyncio.run(orch.run_execute_only(1, [1, 2]))
@@ -231,13 +291,16 @@ class TestRunFullPipelineEdgeCases:
     """run_full_pipeline() 边缘场景 — 覆盖 lines 99-111"""
 
     def test_all_cases_need_generation_all_succeed(self, orch, mock_ai):
-        """所有用例都需要生成且全部成功 → generated 等于用例数"""
+        """所有用例都需要生成且全部成功 → generated 等于用例数，进入执行"""
         _patch_check_cases(orch, [1, 2, 3])
-        mock_ai.generate_batch.return_value = [
-            {"case_id": 1, "status": "success", "code_id": 10},
-            {"case_id": 2, "status": "success", "code_id": 11},
-            {"case_id": 3, "status": "success", "code_id": 12},
-        ]
+        orch._batch_generate_service = make_batch_service({
+            "batch_id": "b", "status": "completed", "success": 3, "failed": 0,
+            "skipped": 0, "cases": [
+                {"case_id": 1, "status": "success"},
+                {"case_id": 2, "status": "success"},
+                {"case_id": 3, "status": "success"},
+            ],
+        })
 
         result = asyncio.run(orch.run_full_pipeline(1, [1, 2, 3], "headless", "AllGen"))
 
@@ -267,15 +330,13 @@ class TestRunFullPipelineEdgeCases:
         mock_pw_svc.return_value.execute.side_effect = RuntimeError("execute failed")
 
         mocker.patch("app.db.database.SessionLocal", return_value=mock_session)
-        mock_dt = mocker.patch("datetime.datetime")
-        mock_dt.utcnow.return_value = "2024-01-01T00:00:00"
 
         # 执行后台线程函数
         target_fn()
 
-        # lines 107-109: 验证兜底逻辑
+        # P0-7: 终态收敛经 ExecutionFinalizer（Finalizer 写真实 utcnow，datetime patch 不再生效）
         assert mock_exec_row.status == "failed"
-        assert mock_exec_row.end_time == "2024-01-01T00:00:00"
+        assert mock_exec_row.end_time is not None
         mock_session.commit.assert_called_once()
         mock_session.close.assert_called_once()
         # clear_stop_flag 被调用 2 次：run_full_pipeline 直接调用 + _run finally 块
@@ -332,13 +393,11 @@ class TestRunExecuteOnlyEdgeCases:
         mock_pw_svc.return_value.execute.side_effect = RuntimeError("execute failed")
 
         mocker.patch("app.db.database.SessionLocal", return_value=mock_session)
-        mock_dt = mocker.patch("datetime.datetime")
-        mock_dt.utcnow.return_value = "2024-01-01T00:00:00"
 
         target_fn()
 
         assert mock_exec_row.status == "failed"
-        assert mock_exec_row.end_time == "2024-01-01T00:00:00"
+        assert mock_exec_row.end_time is not None
         mock_session.commit.assert_called_once()
         mock_session.close.assert_called_once()
         # clear_stop_flag 被调用 2 次：run_execute_only 直接调用 + _run finally 块
@@ -516,8 +575,8 @@ class TestMonitorAndGenerateReport:
         mock_report_svc.return_value.generate.assert_called_once_with(42)
         mock_db.close.assert_called_once()
 
-    def test_stopped_status_skips_report(self, orch, mocker):
-        """状态为 stopped → 跳过报告生成（lines 242-244）"""
+    def test_stopped_status_generates_report(self, orch, mocker):
+        """状态为 stopped → 生成 partial 报告（P0-10：四终态都生成报告）"""
         mocker.patch.object(
             orch, "_get_execution_status", return_value={"status": "stopped"}
         )
@@ -527,10 +586,10 @@ class TestMonitorAndGenerateReport:
         asyncio.run(orch._monitor_and_generate_report(42))
 
         mock_sleep.assert_called_once_with(2)
-        mock_report_svc.return_value.generate.assert_not_called()
+        mock_report_svc.return_value.generate.assert_called_once_with(42)
 
-    def test_failed_status_skips_report(self, orch, mocker):
-        """状态为 failed → 跳过报告生成（lines 242-244）"""
+    def test_failed_status_generates_report(self, orch, mocker):
+        """状态为 failed → 生成 diagnostic 报告（P0-10：四终态都生成报告）"""
         mocker.patch.object(
             orch, "_get_execution_status", return_value={"status": "failed"}
         )
@@ -540,7 +599,7 @@ class TestMonitorAndGenerateReport:
         asyncio.run(orch._monitor_and_generate_report(42))
 
         mock_sleep.assert_called_once_with(2)
-        mock_report_svc.return_value.generate.assert_not_called()
+        mock_report_svc.return_value.generate.assert_called_once_with(42)
 
     def test_db_query_exception_continues_polling(self, orch, mocker):
         """_get_execution_status 抛异常 → 继续轮询，最终 completed（line 219-220）"""
@@ -678,14 +737,17 @@ def mock_appium():
 
 
 @pytest.fixture
-def orch_with_appium(mock_ai, mock_pw, mock_appium, mock_report):
-    """编排器，注入 appium_service"""
-    return TestOrchestrator(
+def orch_with_appium(mock_ai, mock_pw, mock_appium, mock_report, mocker):
+    """编排器，注入 appium_service + admission"""
+    orch = TestOrchestrator(
         ai_service=mock_ai,
         playwright_service=mock_pw,
         appium_service=mock_appium,
         report_service=mock_report,
+        admission_service=_admission_mock(),
     )
+    mocker.patch.object(orch, "_guard_pre_start_drift", return_value=[])
+    return orch
 
 
 class TestGetExecutor:
@@ -720,14 +782,14 @@ class TestRunExecuteOnlyPlatform:
     """run_execute_only() 平台分发"""
 
     def test_run_execute_only_web(self, orch, mock_pw):
-        """platform="web" → 使用 playwright_service"""
+        """platform="web" → 统一走 Admission（materialize 落 Execution）"""
         asyncio.run(orch.run_execute_only(1, [1, 2], platform="web"))
-        mock_pw.create_execution.assert_called_once()
+        orch.admission.materialize.assert_called_once()
 
     def test_run_execute_only_android(self, orch_with_appium, mock_appium):
-        """platform="android" → 使用 appium_service"""
+        """platform="android" → 统一走 Admission（materialize 落 Execution）"""
         asyncio.run(orch_with_appium.run_execute_only(1, [1, 2], platform="android"))
-        mock_appium.create_execution.assert_called_once()
+        orch_with_appium.admission.materialize.assert_called_once()
 
 
 @pytest.mark.usefixtures("mock_monitor_task")
@@ -735,22 +797,22 @@ class TestRunFullPipelinePlatform:
     """run_full_pipeline() 平台分发"""
 
     def test_full_pipeline_web(self, orch, mock_pw, mock_ai):
-        """platform="web" → 使用 playwright_service"""
+        """platform="web" → 统一走 Admission"""
         async def _noop(*args, **kwargs):
             return []
         orch._check_cases_need_generation = _noop
 
         asyncio.run(orch.run_full_pipeline(1, [1, 2], platform="web"))
-        mock_pw.create_execution.assert_called_once()
+        orch.admission.materialize.assert_called_once()
 
     def test_full_pipeline_android(self, orch_with_appium, mock_appium, mock_ai):
-        """platform="android" → 使用 appium_service"""
+        """platform="android" → 统一走 Admission"""
         async def _noop(*args, **kwargs):
             return []
         orch_with_appium._check_cases_need_generation = _noop
 
         asyncio.run(orch_with_appium.run_full_pipeline(1, [1, 2], platform="android"))
-        mock_appium.create_execution.assert_called_once()
+        orch_with_appium.admission.materialize.assert_called_once()
 
 
 # ═══════════════════════════════════════════════
@@ -780,6 +842,7 @@ class TestPreExecutionCheck:
         """Web 目标不可达（httpx 异常）→ 返回错误"""
         mock_project = MagicMock()
         mock_project.target_url = "https://example.com"
+        mock_project.test_path = "/"  # P1-1：pre-check 读 target_url + test_path
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = mock_project
         mocker.patch("app.db.database.SessionLocal", return_value=mock_db)
@@ -796,6 +859,7 @@ class TestPreExecutionCheck:
         """Web 目标可达 → 返回 None"""
         mock_project = MagicMock()
         mock_project.target_url = "https://example.com"
+        mock_project.test_path = "/"  # P1-1：pre-check 读 target_url + test_path
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = mock_project
         mocker.patch("app.db.database.SessionLocal", return_value=mock_db)
@@ -857,4 +921,4 @@ class TestRunExecuteOnlyHealthCheck:
 
         result = asyncio.run(orch.run_execute_only(1, [1, 2], "headless"))
         assert result["execution_id"] == 42
-        mock_pw.create_execution.assert_called_once()
+        orch.admission.materialize.assert_called_once()

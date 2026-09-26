@@ -15,6 +15,8 @@ from .execution import Execution, ExecutionCreate, ExecutionResponse
 from .execution_step import ExecutionStep, ExecutionStepCreate, ExecutionStepResponse
 from .report import Report, ReportCreate, ReportResponse
 from .heal_record import HealRecord, HealRecordCreate, HealRecordResponse
+from .batch_cases import BatchCase, BatchCaseResponse
+from .batch_records import BatchRecord, BatchRecordResponse
 
 __all__ = [
     "Project",
@@ -44,4 +46,8 @@ __all__ = [
     "HealRecord",
     "HealRecordCreate",
     "HealRecordResponse",
+    "BatchCase",
+    "BatchCaseResponse",
+    "BatchRecord",
+    "BatchRecordResponse",
 ]

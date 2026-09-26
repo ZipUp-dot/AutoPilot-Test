@@ -7,6 +7,7 @@
 
 from datetime import datetime, timedelta
 
+import json
 import pytest
 
 from app.models.execution import Execution
@@ -136,10 +137,31 @@ class TestExecutionHeartbeat:
             total_cases=1,
             status="queued",
             start_time=datetime.utcnow(),
+            # P1-1：_execute_async 只读 Manifest，裸 Execution 需补冻结快照
+            manifest_json=json.dumps({
+                "target_url": sample_project.target_url,
+                "test_path": getattr(sample_project, "test_path", "/") or "/",
+                "browser_type": "chromium",
+                "execution_mode": "headless",
+                "ssrf_policy": {"allowed_hosts": [], "allowed_ports": []},
+                "project": {
+                    "name": sample_project.name,
+                    "target_url": sample_project.target_url,
+                    "test_path": getattr(sample_project, "test_path", "/") or "/",
+                },
+            }),
         )
         db_session.add(exec_obj)
         db_session.commit()
         db_session.refresh(exec_obj)
+        # 物化成功步骤，供 Seal 时 Resolver 重算 counters/progress（Derived Cache）
+        from app.models.execution_step import ExecutionStep
+        for idx in (1, 2):
+            db_session.add(ExecutionStep(
+                execution_id=exec_obj.id, case_id=sample_test_case.id,
+                step_index=idx, status="success",
+            ))
+        db_session.commit()
 
         svc = PlaywrightService(db_session)
         await svc._execute_async(sample_project.id, [sample_test_case.id], exec_obj.id, "headless")

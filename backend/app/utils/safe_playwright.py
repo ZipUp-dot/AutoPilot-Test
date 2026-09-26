@@ -96,11 +96,18 @@ class SafePlaywright:
         await expect(page.locator(selector)).to_be_visible()
 
     async def screenshot(self, path: str = "") -> None:
-        """截图（对应 screenshot）"""
+        """截图（对应 screenshot）
+
+        AI 侧路径统一写作 uploads/screenshots/{...}.png；
+        ScreenshotPathPolicy 剥掉前缀后相对 settings.SCREENSHOT_DIR 解析，
+        越界（非截图子树 / ../ / 绝对路径）抛 SecurityError。
+        """
+        from app.utils.screenshot_policy import ScreenshotPathPolicy
+
         page = object.__getattribute__(self, "_page")
         kwargs: dict[str, Any] = {"full_page": True}
         if path:
-            kwargs["path"] = path
+            kwargs["path"] = ScreenshotPathPolicy.resolve_ai_path(path)
         await page.screenshot(**kwargs)
 
     async def wait(self, timeout_ms: int) -> None:
