@@ -105,15 +105,17 @@ class ElementProxy:
 class DriverProxy:
     """受控 Appium driver 代理
 
-    白名单：find_element / find_elements / back / swipe / save_screenshot
+    白名单：find_element / find_elements / back / swipe / save_screenshot / activate_app
       - find_element / find_elements → ElementProxy（禁止原生元素逃逸）
       - save_screenshot → ScreenshotPathPolicy 受控实现（路径限 uploads/screenshots/）
+      - activate_app → 透传 inner 原生 activate_app（AI「打开应用」导航原语）
     """
 
     __slots__ = ("_inner",)
 
     _ALLOWED = frozenset({
         "find_element", "find_elements", "back", "swipe", "save_screenshot",
+        "activate_app",
     })
 
     def __init__(self, inner) -> None:
@@ -142,6 +144,9 @@ class DriverProxy:
 
     def swipe(self, *args):
         return object.__getattribute__(self, "_inner").swipe(*args)
+
+    def activate_app(self, app_id):
+        return object.__getattribute__(self, "_inner").activate_app(app_id)
 
     def save_screenshot(self, path: str):
         """受控截图：AI 侧路径必须位于 uploads/screenshots/ 子树"""

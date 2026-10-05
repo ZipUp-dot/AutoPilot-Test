@@ -730,7 +730,7 @@ class HealService:
             return False
 
         try:
-            result = run_test(page)
+            result = run_test(namespace["driver"])
             success = result.get("success", False) if isinstance(result, dict) else False
             if success:
                 step.status = "success"
@@ -1266,7 +1266,7 @@ class HealRoundService:
             return RerunResult(ok=False, error_type="deadline_exceeded",
                                error_message="heal_deadline_exceeded（rerun 超时）")
         try:
-            result = run_test(driver)
+            result = run_test(namespace["driver"])
         except Exception as e:
             return RerunResult(ok=False, error_type="worker_failed",
                                error_message=f"候选代码 rerun 异常: {str(e)[:200]}")

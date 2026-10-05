@@ -263,6 +263,17 @@ class TestAppiumCodeInjectorEdgeCases:
         assert "__monitor_before" in injected
         assert "navigate" in injected
 
+    def test_inject_driver_activate_app(self):
+        """driver.activate_app(pkg) → navigate 动作"""
+        code = """def run_test(driver):
+    driver.activate_app("com.example.app")
+    return {"success": True, "steps": []}
+"""
+        injected = AppiumCodeInjector.inject(code)
+        assert "__monitor_before" in injected
+        assert "navigate" in injected
+        assert "com.example.app" in injected
+
     def test_inject_driver_implicitly_wait(self):
         """driver.implicitly_wait() → wait 动作"""
         code = """def run_test(driver):

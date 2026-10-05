@@ -148,26 +148,14 @@ class AndroidCrawlService:
         config = project.config_json if isinstance(project.config_json, dict) else json.loads(project.config_json or "{}")
         appium_url = config.get("appium_server_url") or settings.APPIUM_URL
 
-        desired_caps = {
-            "platformName": "Android",
-            "automationName": "UiAutomator2",
-            "noReset": True,
-            "autoGrantPermissions": True,
-        }
+        # 统一构建 desired_caps（含 extra_caps 透传 + 强制 skip caps，见 utils/appium_caps）
+        from app.utils.appium_caps import build_caps
+        desired_caps = build_caps(config)
 
         # 4.1.0 的 Remote 构造：caps 须经 AppiumOptions 传入（options 关键字），
         # 直接传 dict 会被当作 keep_alive 导致 caps 丢失且新版 selenium 报 TypeError
         opts = AppiumOptions()
         opts.load_capabilities(desired_caps)
-
-        # 合并项目 config_json 的 extra_caps（与 appium_service 对齐）
-        extra = config.get("extra_caps")
-        if isinstance(extra, dict):
-            for k, v in extra.items():
-                opts.set_capability(k, v)
-        # 已验证环境跳过组件安装/初始化，防止荣耀安全扫描反复卸载
-        opts.set_capability("skipServerInstallation", True)
-        opts.set_capability("skipDeviceInitialization", True)
 
         driver = appium_webdriver.Remote(appium_url, options=opts)
         driver.implicitly_wait(5000)

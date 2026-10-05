@@ -155,26 +155,9 @@ class AppiumService:
         if project and project.config_json:
             config = json.loads(project.config_json) if isinstance(project.config_json, str) else project.config_json
 
-        # 构建 Appium 连接参数
-        desired_caps = {
-            "platformName": "Android",
-            "automationName": config.get("automation_engine", "UiAutomator2"),
-            "noReset": True,
-            "autoGrantPermissions": True,
-        }
-        # 只添加非空配置项
-        if config.get("app_package"):
-            desired_caps["appPackage"] = config["app_package"]
-        if config.get("app_activity"):
-            desired_caps["appActivity"] = config["app_activity"]
-        if config.get("device_name"):
-            desired_caps["deviceName"] = config["device_name"]
-        if config.get("platform_version"):
-            desired_caps["platformVersion"] = config["platform_version"]
-        # extra_caps：config_json 里显式追加的 Appium capability（如
-        # skipServerInstallation / skipDeviceInitialization），透传覆盖默认值
-        if isinstance(config.get("extra_caps"), dict):
-            desired_caps.update(config["extra_caps"])
+        # 统一构建 desired_caps（含 extra_caps 透传 + 强制 skip caps，见 utils/appium_caps）
+        from app.utils.appium_caps import build_caps
+        desired_caps = build_caps(config)
 
         appium_url = config.get("appium_server_url", settings.APPIUM_URL)
 
@@ -464,21 +447,9 @@ class AppiumService:
                 if project and project.config_json:
                     config = json.loads(project.config_json) if isinstance(project.config_json, str) else project.config_json
 
-                # 连接 Appium
-                desired_caps = {
-                    "platformName": "Android",
-                    "automationName": config.get("automation_engine", "UiAutomator2"),
-                    "noReset": True,
-                    "autoGrantPermissions": True,
-                }
-                if config.get("app_package"):
-                    desired_caps["appPackage"] = config["app_package"]
-                if config.get("app_activity"):
-                    desired_caps["appActivity"] = config["app_activity"]
-                if config.get("device_name"):
-                    desired_caps["deviceName"] = config["device_name"]
-                if config.get("platform_version"):
-                    desired_caps["platformVersion"] = config["platform_version"]
+                # 连接 Appium（统一构建 caps：含 extra_caps 透传 + 强制 skip，见 utils/appium_caps）
+                from app.utils.appium_caps import build_caps
+                desired_caps = build_caps(config)
                 appium_url = config.get("appium_server_url", settings.APPIUM_URL)
                 # 4.1.0 构造签名：caps 须经 AppiumOptions 传入（options 关键字）
                 from appium.webdriver.webdriver import AppiumOptions

@@ -108,6 +108,11 @@ BACK_CODE = """def run_test(driver):
     return {"success": True, "steps": []}
 """
 
+START_ACTIVITY_CODE = """def run_test(driver):
+    driver.activate_app("com.example.app")
+    return {"success": True, "steps": []}
+"""
+
 SCREENSHOT_CODE = """def run_test(driver):
     driver.save_screenshot("uploads/screenshots/step_1.png")
     return {"success": True, "steps": []}
@@ -269,6 +274,19 @@ class TestAppiumExecuteCase:
 
         assert result is True
         mock_driver.back.assert_called_once()
+
+    def test_start_activity(self, db_session, appium_svc, mock_driver, android_project):
+        """driver.activate_app(pkg) → 透传执行（AI 打开应用导航原语）"""
+        case = _create_case_and_code(db_session, android_project, START_ACTIVITY_CODE)
+        exec_obj = _create_execution(db_session, android_project, case=case)
+
+        result = appium_svc._execute_case(mock_driver, exec_obj.id, case.id)
+
+        assert result is True
+        mock_driver.activate_app.assert_called_once()
+        # 位置参数透传（app_id），无路径重写
+        args, _ = mock_driver.activate_app.call_args
+        assert list(args) == ["com.example.app"]
 
     def test_screenshot(self, db_session, appium_svc, mock_driver, android_project):
         """driver.save_screenshot() 受控截图（uploads/screenshots/）→ 执行成功"""

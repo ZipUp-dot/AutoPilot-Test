@@ -123,6 +123,15 @@ class AIService:
 
         # 2. 构建 Prompt
         elements_list = _format_elements(elements, platform=project_platform)
+        # Android：从项目 config_json 取 app_package/app_activity，注入 prompt（供 navigate 原语）
+        app_package, app_activity = "", ""
+        if project_platform == "android" and project and project.config_json:
+            try:
+                cfg = json.loads(project.config_json) if isinstance(project.config_json, str) else project.config_json
+                app_package = str(cfg.get("app_package") or "")
+                app_activity = str(cfg.get("app_activity") or "")
+            except (ValueError, TypeError):
+                pass
         prompt = _build_prompt(
             case_name=case.case_name,
             pre_condition=case.pre_condition or "无",
@@ -131,6 +140,8 @@ class AIService:
             elements_list=elements_list,
             target_url=target_url,
             platform=project_platform,
+            app_package=app_package,
+            app_activity=app_activity,
         )
 
         # 3. 调用 LLM
@@ -342,11 +353,15 @@ def _build_prompt(
     elements_list: str,
     target_url: str = "",
     platform: str = "web",
+    app_package: str = "",
+    app_activity: str = "",
 ) -> str:
     """从文件加载 Prompt 模板并填充变量（每次读取，支持热更新）
 
     Args:
         platform: "web" 或 "android"，选择对应模板
+        app_package / app_activity: Android 项目 config_json 中的应用包名/启动 Activity，
+            仅在 android 平台由调用方传入（供模板里的 navigate 原语与日期断言引导使用）
     """
     if platform == "android":
         template_name = "generate_prompt_android.txt"
@@ -379,6 +394,8 @@ def _build_prompt(
         steps_json=steps_json,
         elements_list=elements_list,
         target_url=target_url,
+        app_package=app_package,
+        app_activity=app_activity,
     )
 
 
