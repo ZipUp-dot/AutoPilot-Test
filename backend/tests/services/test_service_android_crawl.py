@@ -13,6 +13,7 @@ Appium 真实连接被 mock，纯 XML/字符串逻辑全部实测。
 
 import json
 import sys
+import types
 from xml.etree import ElementTree
 
 import pytest
@@ -276,11 +277,30 @@ class TestExtractElements:
         mock_remote = mocker.MagicMock(return_value=driver)
         mock_webdriver = mocker.MagicMock()
         mock_webdriver.Remote = mock_remote
+
+        # appium.webdriver.webdriver 子模块：生产代码经
+        # from appium.webdriver.webdriver import AppiumOptions 构造会话 options
+        class FakeAppiumOptions:
+            def __init__(self):
+                self._caps = {}
+
+            def load_capabilities(self, capabilities):
+                self._caps.update(capabilities)
+                return self
+
+            def set_capability(self, name, value):
+                self._caps[name] = value
+                return self
+
+        fake_wd_module = types.ModuleType("appium.webdriver.webdriver")
+        fake_wd_module.AppiumOptions = FakeAppiumOptions
+
         mock_appium = mocker.MagicMock()
         mock_appium.webdriver = mock_webdriver
         mocker.patch.dict(sys.modules, {
             "appium": mock_appium,
             "appium.webdriver": mock_webdriver,
+            "appium.webdriver.webdriver": fake_wd_module,
         })
         return mock_remote
 
@@ -290,7 +310,8 @@ class TestExtractElements:
         mock_remote = self._mock_appium(mocker, driver)
 
         svc = AndroidCrawlService(db_session)
-        elements = svc._extract_elements()
+        project = _android_project(db_session)
+        elements = svc._extract_elements(project)
 
         mock_remote.assert_called_once()
         driver.implicitly_wait.assert_called_once_with(5000)
@@ -304,7 +325,8 @@ class TestExtractElements:
         self._mock_appium(mocker, driver)
 
         svc = AndroidCrawlService(db_session)
-        assert svc._extract_elements() == []  # quit 异常被吞掉
+        project = _android_project(db_session)
+        assert svc._extract_elements(project) == []  # quit 异常被吞掉
 
 
 # ═══════════════════════════════════════════════

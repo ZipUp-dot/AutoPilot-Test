@@ -171,6 +171,10 @@ class AppiumService:
             desired_caps["deviceName"] = config["device_name"]
         if config.get("platform_version"):
             desired_caps["platformVersion"] = config["platform_version"]
+        # extra_caps：config_json 里显式追加的 Appium capability（如
+        # skipServerInstallation / skipDeviceInitialization），透传覆盖默认值
+        if isinstance(config.get("extra_caps"), dict):
+            desired_caps.update(config["extra_caps"])
 
         appium_url = config.get("appium_server_url", settings.APPIUM_URL)
 
@@ -182,7 +186,12 @@ class AppiumService:
         self._update_execution(execution_id)
 
         try:
-            driver = appium_webdriver.Remote(appium_url, desired_caps)
+            # 4.1.0 的 Remote 构造：caps 须经 AppiumOptions 传入（options 关键字），
+            # 直接传 dict 会被当作 keep_alive 导致 caps 丢失且新版 selenium 报 TypeError
+            from appium.webdriver.webdriver import AppiumOptions
+            opts = AppiumOptions()
+            opts.load_capabilities(desired_caps)
+            driver = appium_webdriver.Remote(appium_url, options=opts)
             driver.implicitly_wait(settings.APPIUM_TIMEOUT / 1000.0)
 
             any_failure = False
@@ -471,7 +480,11 @@ class AppiumService:
                 if config.get("platform_version"):
                     desired_caps["platformVersion"] = config["platform_version"]
                 appium_url = config.get("appium_server_url", settings.APPIUM_URL)
-                driver = appium_webdriver.Remote(appium_url, desired_caps)
+                # 4.1.0 构造签名：caps 须经 AppiumOptions 传入（options 关键字）
+                from appium.webdriver.webdriver import AppiumOptions
+                opts = AppiumOptions()
+                opts.load_capabilities(desired_caps)
+                driver = appium_webdriver.Remote(appium_url, options=opts)
                 driver.implicitly_wait(settings.APPIUM_TIMEOUT / 1000.0)
 
                 heal_service = HealRoundService(db)
@@ -559,6 +572,15 @@ class _SyncMonitorHooks:
         self._step_times: dict[int, float] = {}
         self._screenshot_dir = f"uploads/screenshots/{execution_id}/{case_id}"
         Path(self._screenshot_dir).mkdir(parents=True, exist_ok=True)
+        # 该用例已物化的步骤总数：用于识别"最后一步"，让完全通过用例保留终态 after 作为成功证据
+        self._total_steps = (
+            self._db.query(ExecutionStep.id)
+            .filter(
+                ExecutionStep.execution_id == execution_id,
+                ExecutionStep.case_id == case_id,
+            )
+            .count()
+        )
 
     def on_step_before(self, step_no: int, action: str, target: str, value: str) -> None:
         """步骤执行前：记录时间 + 截图 before + 创建/更新 DB 记录"""
@@ -583,18 +605,37 @@ class _SyncMonitorHooks:
         })
 
     def on_step_after(self, step_no: int, status: str, error_msg: str = "", exception_type: str = "") -> None:
-        """步骤执行后：计算耗时 + 截图 after + 更新 DB 记录"""
+        """步骤执行后：计算耗时 + 截图 + 更新 DB 记录
+
+        截图策略（省磁盘资源）：仅保留失败步骤的截图。
+          - 通过步骤：其 before 无价值 → 删除已落盘的 before 文件并清空记录，不再拍 after；
+          - 失败步骤：保留 on_step_before 落盘的 before，补拍 after（报错页面）。
+        """
         start = self._step_times.get(step_no, time.time())
         duration_ms = int((time.time() - start) * 1000)
 
-        # 截图 after
         screenshot_after = ""
-        try:
-            path = f"{self._screenshot_dir}/step_{step_no}_after.png"
-            self._driver.save_screenshot(path)
-            screenshot_after = path
-        except Exception as e:
-            logger.warning("Appium 截图 after 失败: %s", e)
+        if status != "passed":
+            try:
+                path = f"{self._screenshot_dir}/step_{step_no}_after.png"
+                self._driver.save_screenshot(path)
+                screenshot_after = path
+            except Exception as e:
+                logger.warning("Appium 截图 after 失败: %s", e)
+        else:
+            # 通过步骤：非最后一步的 before 无价值 → 删除文件并清库；
+            # 最后一步补拍 after（终态）作为该用例成功证据。
+            try:
+                os.remove(f"{self._screenshot_dir}/step_{step_no}_before.png")
+            except OSError:
+                pass
+            if step_no == self._total_steps:
+                try:
+                    path = f"{self._screenshot_dir}/step_{step_no}_after.png"
+                    self._driver.save_screenshot(path)
+                    screenshot_after = path
+                except Exception as e:
+                    logger.warning("Appium 截图 after(终态) 失败: %s", e)
 
         # 更新 DB
         update_data = {
@@ -602,6 +643,9 @@ class _SyncMonitorHooks:
             "screenshot_after": screenshot_after,
             "duration_ms": duration_ms,
         }
+        if status == "passed":
+            # 通过步骤的 before 无价值，清空记录
+            update_data["screenshot_before"] = ""
         if status == "failed" and error_msg:
             # 组合 exception_type 与 error_message，确保分类逻辑能匹配异常类型前缀
             error_type = self._classify_appium_error(exception_type, error_msg)
