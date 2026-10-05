@@ -67,6 +67,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("遗留执行状态恢复跳过（不影响启动）: %s", str(e)[:200])
 
+    # 批量代码生成续跑：恢复未完成的批量生成（进程重启不再丢在途任务）
+    # （异常隔离：DB 不可用等不阻塞应用启动）
+    try:
+        from app.services.batch_generate_service import batch_generate_service
+        resumed = batch_generate_service.resume_open_jobs()
+        if resumed:
+            logger.info("重启恢复 %s 个未完成批量生成任务", resumed)
+    except Exception as e:
+        logger.warning("批量生成任务续跑跳过（不影响启动）: %s", str(e)[:200])
+
     # 清理过期报告
     from app.services.report_service import ReportService
     deleted = ReportService.cleanup_old_reports(max_days=30)

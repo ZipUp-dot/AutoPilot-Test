@@ -37,6 +37,19 @@ from app.exceptions import AIException, NotFoundException, ValidationException
 # 显式导入新 Model，确保导入本服务时即注册到 Base.metadata（测试 create_all 可建表）
 from app.models.batch_cases import BatchCase  # noqa: F401
 from app.models.batch_records import BatchRecord  # noqa: F401
+from app.models.batch_job import BatchJobModel  # noqa: F401
+
+# KPI exclusion bucket：priority=pre_attempt 的错误类型（未发生真实 HTTP attempt）
+
+
+def _batch_budget_seconds(case_ids) -> float:
+    """Batch 层预算：按用例数动态放大（整批 max(ceil(total/MAX_WORKERS) 轮 × 单 case 预算,
+    且不低于 AI_BATCH_BUDGET_SECONDS)。与 BatchJob.__init__ 共用，启动续跑时重建同口径。"""
+    rounds_needed = max(1, (len(case_ids) + MAX_WORKERS - 1) // MAX_WORKERS)
+    return max(
+        settings.AI_BATCH_BUDGET_SECONDS,
+        rounds_needed * settings.AI_CASE_BUDGET_SECONDS,
+    )
 
 logger = logging.getLogger("autopilot.batch_generate")
 
@@ -105,11 +118,7 @@ class BatchJob:
         # Batch 层 deadline：claim 前短路（batch_remaining = batch_deadline - now）。
         # 预算按用例数动态放大，保证整批（MAX_WORKERS 并行）能真实跑完而不被固定
         # 墙钟掐断：ceil(total/MAX_WORKERS) 轮 × 单 case 预算，且不低于 AI_BATCH_BUDGET_SECONDS。
-        rounds_needed = max(1, (len(case_ids) + MAX_WORKERS - 1) // MAX_WORKERS)
-        batch_budget = max(
-            settings.AI_BATCH_BUDGET_SECONDS,
-            rounds_needed * settings.AI_CASE_BUDGET_SECONDS,
-        )
+        batch_budget = _batch_budget_seconds(case_ids)
         self.batch_deadline = self.created_at + batch_budget
         self.lock = threading.Lock()
         # 保序 dict：case_id -> BatchCaseSnapshot
@@ -158,6 +167,23 @@ class BatchPersistence:
         """返回历史 Batch 结果（含 project_id），无则 None"""
         raise NotImplementedError
 
+    # ── 运行态元信息（服务重启续跑）──
+    def ensure_job_meta(self, job) -> None:
+        """创建 job 时持久化运行态元信息（batch_jobs 行，status=running）。"""
+        raise NotImplementedError
+
+    def mark_job_status(self, job, status: str, terminal: bool = False) -> None:
+        """更新 batch_jobs 状态；terminal=True 时写 terminal_at。"""
+        raise NotImplementedError
+
+    def open_jobs(self) -> list:
+        """扫描 status=running 的 open job，返回 [{batch_id, project_id, case_ids}]。"""
+        raise NotImplementedError
+
+    def terminal_cases(self, batch_id: str) -> dict:
+        """返回该 batch 已终态化到 batch_cases 的 case_id -> 终态字段 dict。"""
+        raise NotImplementedError
+
 
 class InMemoryBatchPersistence(BatchPersistence):
     """内存 stub 持久化（测试用，不入真实 DB）"""
@@ -178,6 +204,19 @@ class InMemoryBatchPersistence(BatchPersistence):
         with self._lock:
             history = self._store.get(batch_id)
             return dict(history) if history else None
+
+    # InMemory stub 不做运行态持久化；续跑仅对 DB 实现有意义
+    def ensure_job_meta(self, job) -> None:
+        pass
+
+    def mark_job_status(self, job, status: str, terminal: bool = False) -> None:
+        pass
+
+    def open_jobs(self) -> list:
+        return []
+
+    def terminal_cases(self, batch_id: str) -> dict:
+        return {}
 
 
 class DBBatchPersistence(BatchPersistence):
@@ -248,6 +287,93 @@ class DBBatchPersistence(BatchPersistence):
             return json.loads(rec.summary_json)
         except (ValueError, TypeError):
             return None
+
+    # ── 运行态元信息（服务重启续跑）──
+
+    def ensure_job_meta(self, job) -> None:
+        """创建 job 时写 batch_jobs(status=running)；已存在则幂等不覆盖。"""
+        import datetime as _dt
+
+        s = self._session_factory()
+        try:
+            exists = s.query(BatchJobModel).filter(BatchJobModel.batch_id == job.batch_id).first()
+            if exists is None:
+                s.add(BatchJobModel(
+                    project_id=job.project_id,
+                    batch_id=job.batch_id,
+                    case_ids=json.dumps(list(job.cases.keys()), ensure_ascii=False),
+                    status="running",
+                    created_at=_dt.datetime.now(),
+                    updated_at=_dt.datetime.now(),
+                ))
+                s.commit()
+        finally:
+            s.close()
+
+    def mark_job_status(self, job, status: str, terminal: bool = False) -> None:
+        """更新 batch_jobs 状态；terminal=True 时写 terminal_at。"""
+        import datetime as _dt
+
+        s = self._session_factory()
+        try:
+            rec = s.query(BatchJobModel).filter(BatchJobModel.batch_id == job.batch_id).first()
+            if rec is not None:
+                rec.status = status
+                rec.updated_at = _dt.datetime.now()
+                if terminal:
+                    rec.terminal_at = _dt.datetime.now()
+                s.commit()
+        finally:
+            s.close()
+
+    def open_jobs(self) -> list:
+        """扫描 status=running 的 open job（创建但未 finalize 的在途批次）。"""
+        s = self._session_factory()
+        try:
+            rows = (
+                s.query(BatchJobModel)
+                .filter(BatchJobModel.status == "running")
+                .all()
+            )
+        finally:
+            s.close()
+        out = []
+        for r in rows:
+            try:
+                case_ids = json.loads(r.case_ids)
+            except (ValueError, TypeError):
+                case_ids = []
+            out.append({
+                "batch_id": r.batch_id,
+                "project_id": r.project_id,
+                "case_ids": case_ids,
+            })
+        return out
+
+    def terminal_cases(self, batch_id: str) -> dict:
+        """该 batch 已终态化到 batch_cases 的 case_id -> 终态字段 dict（供重启重建跳过）。"""
+        s = self._session_factory()
+        try:
+            rows = (
+                s.query(BatchCase)
+                .filter(BatchCase.batch_id == batch_id)
+                .all()
+            )
+        finally:
+            s.close()
+        return {
+            r.case_id: {
+                "status": r.status,
+                "code_id": r.code_id,
+                "is_valid_at_attempt": r.is_valid_at_attempt,
+                "is_mock_at_attempt": bool(r.is_mock_at_attempt),
+                "error_type": r.error_type,
+                "attempt_count": r.attempt_count or 0,
+                "latency_ms": r.latency_ms or 0,
+                "kpi_eligible": bool(r.kpi_eligible),
+            }
+            for r in rows
+        }
 
 
 class BatchGenerateService:
@@ -332,6 +458,13 @@ class BatchGenerateService:
         with self._registry_lock:
             self._tombstones.pop(batch_id, None)
             self._jobs[batch_id] = job
+
+        # 运行态元信息落库（重启续跑载体）；失败不阻断本次生成，仅日志告警
+        try:
+            self._persistence.ensure_job_meta(job)
+        except Exception as e:  # noqa: BLE001
+            logger.error("batch %s batch_jobs 元信息写失败（本次生成仍继续，但无法重启续跑）: %s",
+                         batch_id, e)
 
         self._launch(job)
         return batch_id
@@ -772,6 +905,11 @@ class BatchGenerateService:
         with job.lock:
             job.terminal_snapshot = summary
             job.status = summary["status"]
+        try:
+            self._persistence.mark_job_status(job, summary["status"], terminal=True)
+        except Exception as e:  # noqa: BLE001
+            logger.error("batch %s batch_jobs 终态写失败（batch_records 已落，历史仍可用）: %s",
+                         job.batch_id, e)
 
     def _persist_summary_with_retry(self, job: BatchJob, summary: dict) -> bool:
         """持久化 batch_records 并阻塞到 COMMIT 成功；尾部重试，最终一致。失败返回 False。"""
@@ -918,6 +1056,71 @@ class BatchGenerateService:
         with self._registry_lock:
             self._jobs.clear()
             self._tombstones.clear()
+
+    # ═══════════════════════════════════════════════
+    # 重启续跑（resume）：服务启动时重建未完成的批量生成
+    # ═══════════════════════════════════════════════
+
+    def resume_open_jobs(self) -> int:
+        """启动时扫描持久化的 open job（status=running）并恢复续跑。
+
+        每次扫描重建内存 BatchJob：
+          - 已终态化进 batch_cases 的 case 重建为 terminal 快照（跳过，不重复生成）；
+          - 未终态 case（pending/孤儿 running）重新投入 worker 消费；
+          - 若全部 case 已 terminal 但尚未 finalize（旧进程死在收口前）→ 直接 finalize。
+        返回本次恢复的 job 数量。已在内存的 job（id 重复）跳过，避免双启 worker。
+        """
+        opened = 0
+        for meta in self._persistence.open_jobs():
+            batch_id = meta["batch_id"]
+            with self._registry_lock:
+                if batch_id in self._jobs:
+                    continue
+            # 重建 BatchJob：fresh batch deadline（续跑给足预算），并恢复已终态快照
+            job = BatchJob(batch_id, meta["project_id"], meta["case_ids"])
+            terminal = self._persistence.terminal_cases(batch_id)
+            self._restore_terminal(job, terminal)
+            with self._registry_lock:
+                self._jobs[batch_id] = job
+
+            has_open = any(s.phase != "terminal" for s in job.cases.values())
+            if has_open:
+                self._launch(job)
+            else:
+                # 全部已终态但 batch_records / batch_jobs 尚未收口 → 直接 finalize
+                try:
+                    self._finalize(job)
+                except Exception as e:  # noqa: BLE001
+                    logger.exception("batch %s 续跑 finalize 异常: %s", batch_id, e)
+            opened += 1
+        return opened
+
+    def _restore_terminal(self, job: BatchJob, terminal: dict) -> None:
+        """把已终态化到 batch_cases 的 case 重建为 terminal 快照（跳过、计入汇总）。"""
+        with job.lock:
+            for cid, t in terminal.items():
+                snap = job.cases.get(cid)
+                if snap is None:
+                    continue
+                snap.phase = "terminal"
+                snap.status = t["status"]
+                snap.error_type = t.get("error_type")
+                snap.code_id = t.get("code_id")
+                snap.is_valid_at_attempt = t.get("is_valid_at_attempt")
+                snap.is_mock_at_attempt = t.get("is_mock_at_attempt", False)
+                snap.attempt_count = t.get("attempt_count", 0)
+                snap.latency_ms = t.get("latency_ms", 0)
+                snap.exclusion_bucket = self._classify_bucket(
+                    t.get("is_mock_at_attempt", False), t.get("error_type"))
+                snap.kpi_eligible = snap.exclusion_bucket == "kpi_eligible"
+                snap.processed = True
+                snap.ai_attempted = snap.exclusion_bucket in ("kpi_eligible", "deadline_excluded")
+                if t["status"] == "success":
+                    job.success += 1
+                elif t["status"] == "failed":
+                    job.failed += 1
+                elif t["status"] == "skipped":
+                    job.skipped += 1
 
 
 # 进程内单例：router 与 orchestrator 双入口收敛到同一 Service 实例

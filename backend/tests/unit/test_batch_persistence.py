@@ -347,3 +347,71 @@ def test_kpi_bucket_counts_mock_deadline_slot_and_valid(file_db, mock_settings):
     assert by_case[7]["exclusion_bucket"] == "kpi_eligible"
     assert by_case[8]["exclusion_bucket"] == "kpi_eligible"
     assert by_case[8]["is_valid_at_attempt"] is False
+
+
+# ═══════════════════════════════════════════════
+# 7. 重启续跑：open job 重新建 + 跳过已终态 + 续跑未终态
+# ═══════════════════════════════════════════════
+
+def test_resume_open_job_skips_terminal_and_regenerates_rest(file_db, mock_settings):
+    eng, sess_factory = file_db
+    mock_settings("OPENAI_API_KEY", "test-key")
+    _seed_project_cases(sess_factory(), 1, [1, 2, 3])
+
+    from app.models.batch_cases import BatchCase
+    from app.models.batch_job import BatchJobModel
+    from app.services.batch_generate_service import (
+        BatchJob,
+        BatchCaseSnapshot,
+        DBBatchPersistence,
+        BatchGenerateService,
+    )
+
+    # 模拟旧进程崩溃现场：batch_jobs 已写(running)，仅 case1 已终态落 batch_cases，
+    # case2/3 仍是 pending（孤儿），且 batch_records 未收口。
+    persistence = DBBatchPersistence(sess_factory)
+    job = BatchJob("resume1", 1, [1, 2, 3])
+    persistence.ensure_job_meta(job)
+    snap = BatchCaseSnapshot(
+        case_id=1, phase="terminal", status="success", code_id=901,
+        is_valid_at_attempt=True, is_mock_at_attempt=False,
+        attempt_count=1, latency_ms=10, kpi_eligible=True,
+        exclusion_bucket="kpi_eligible",
+    )
+    persistence.persist_case(job, snap)
+
+    # 重启：全新 Service 实例 + 同一 DB，对 case1 的 process_case 不可见（已被跳过）
+    processed = []
+    svc = BatchGenerateService(
+        process_case=lambda pid, cid, s, remaining=None: (_ok(900 + cid, True)
+                                                          if processed.append(cid) is None
+                                                          else _ok()),
+        session_factory=sess_factory, persistence=DBBatchPersistence(sess_factory),
+    )
+    opened = svc.resume_open_jobs()
+    assert opened == 1
+
+    summary = svc.wait_frozen("resume1", timeout=20.0)
+    assert summary["status"] == "completed"
+    assert summary["success"] == 3
+    assert sorted(c["case_id"] for c in summary["cases"]) == [1, 2, 3]
+    # case1 由恢复快照计入（未重新生成）；case2/3 才是续跑生成
+    assert sorted(processed) == [2, 3]
+
+    rows = sess_factory().query(BatchCase).filter(BatchCase.batch_id == "resume1").all()
+    assert len(rows) == 3
+    bjm = sess_factory().query(BatchJobModel).filter(
+        BatchJobModel.batch_id == "resume1").one()
+    assert bjm.status == "completed"
+    assert bjm.terminal_at is not None
+
+
+def test_resume_no_open_jobs_returns_zero(file_db, mock_settings):
+    eng, sess_factory = file_db
+    mock_settings("OPENAI_API_KEY", "test-key")
+    from app.services.batch_generate_service import DBBatchPersistence, BatchGenerateService
+    svc = BatchGenerateService(
+        process_case=lambda pid, cid, s, remaining=None: _ok(),
+        session_factory=sess_factory, persistence=DBBatchPersistence(sess_factory),
+    )
+    assert svc.resume_open_jobs() == 0

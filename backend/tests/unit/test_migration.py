@@ -85,11 +85,11 @@ class TestLegacyBridgeBehavior:
             try:
                 insp = inspect(eng)
                 tables = set(insp.get_table_names())
-                assert {"batch_cases", "batch_records"} <= tables, tables
+                assert {"batch_cases", "batch_records", "batch_jobs"} <= tables, tables
                 with eng.connect() as conn:
                     assert conn.execute(text("SELECT name FROM projects WHERE id=1")).scalar() == "p1"
                     v = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-                    assert v == "0002_formal_delta", v
+                    assert v == "0003_batch_jobs", v
             finally:
                 eng.dispose()
         finally:
