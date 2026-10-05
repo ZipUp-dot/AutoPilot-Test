@@ -2215,7 +2215,10 @@ class TestRetryExecutionSync:
     def test_sync_success(self, heal_svc_db, mocker, mock_file_ops):
         """同步重试成功 → step 标记 success"""
         mocker.patch("app.utils.appium_code_injector.AppiumCodeInjector")
-        mocker.patch("app.services.appium_service._build_sync_namespace", return_value={})
+        mocker.patch(
+            "app.services.appium_service._build_sync_namespace",
+            return_value={"driver": "fake_driver"},
+        )
 
         def mock_exec(code, ns):
             ns["run_test"] = lambda driver: {"success": True}
@@ -2290,7 +2293,10 @@ class TestRetryExecutionSync:
         from app.exceptions import SecurityException
         mock_injector = mocker.patch("app.utils.appium_code_injector.AppiumCodeInjector")
         mock_injector.inject.side_effect = SecurityException("inject failed")
-        mocker.patch("app.services.appium_service._build_sync_namespace", return_value={})
+        mocker.patch(
+            "app.services.appium_service._build_sync_namespace",
+            return_value={"driver": "fake_driver"},
+        )
 
         def mock_exec(code, ns):
             ns["run_test"] = lambda driver: {"success": True}
