@@ -1,6 +1,6 @@
 # ============================================================
 # AutoPilot — AI 驱动的自动化测试平台
-# Docker Compose 编排（MySQL + Backend + Frontend）
+# Docker Compose 编排（MySQL + Backend + Frontend + Android）
 # ============================================================
 #
 # 启动:
@@ -10,6 +10,7 @@
 #   - MySQL 自动创建 autopilot 数据库
 #   - Backend 启动时自动执行 schema.sql 建表
 #   - 访问 http://localhost:8080 打开前端界面
+#   - Android 模拟器桌面: http://localhost:6080 (noVNC)
 #
 # 停止:
 #   docker compose down
@@ -140,6 +141,39 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # ═══════════════════════════════════════════════
+  # Android 模拟器（noVNC 网页界面 + ADB）
+  # 桌面访问: http://localhost:6080
+  # ═══════════════════════════════════════════════
+  android-emulator:
+    image: budtmo/docker-android:emulator_11.0
+    container_name: autopilot-android
+    restart: unless-stopped
+    ports:
+      - "6080:6080"
+    networks:
+      - autopilot-network
+    environment:
+      - EMULATOR_DEVICE=Samsung Galaxy S10
+    devices:
+      - "/dev/kvm:/dev/kvm"   # Windows 需 Docker Desktop(WSL2 后端) + BIOS 开启 VT-x
+    depends_on: []             # 不依赖 backend，可独立启动/停止
+
+  # ═══════════════════════════════════════════════
+  # Appium Server（启动时自动 adb connect 上面的模拟器）
+  # AutoPilot Android 项目配置: appium_server_url = http://appium:4723
+  # ═══════════════════════════════════════════════
+  appium:
+    image: appium/appium:latest
+    container_name: autopilot-appium
+    restart: unless-stopped
+    networks:
+      - autopilot-network
+    environment:
+      - ANDROID_DEVICES=android-emulator:5555
+    depends_on:
+      - android-emulator
 
 # ═══════════════════════════════════════════════
 # 持久化数据卷
