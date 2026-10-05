@@ -443,9 +443,12 @@ class ReportService:
             else:
                 skipped += 1
 
-            # 该用例的截图
+            # 该用例的截图：仅保留失败步骤（精准定位报错页），避免全量 before/after 刷屏。
+            # 无失败步骤时回退到最后一步（终态页面）。
+            failed_steps = [s for s in case_steps_list if s.status == "failed"]
+            show_steps = failed_steps if failed_steps else case_steps_list[-1:]
             screenshots = []
-            for s in case_steps_list:
+            for s in show_steps:
                 if s.screenshot_before:
                     screenshots.append({
                         "step_index": s.step_index,
