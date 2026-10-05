@@ -180,6 +180,16 @@ tbody tr.row-failed:hover{background:#FFE4E6}
 .gallery-top .badge-mini{font-size:10px;color:var(--slate-400);background:#fff;border:1px solid var(--slate-200);padding:2px 6px;border-radius:4px}
 .gallery-compare{display:flex;height:160px}
 .gallery-half{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--slate-100),var(--slate-200));overflow:hidden}
+
+/* ===== 截图对比卡（同一 Step 的 Before/After 并排） ===== */
+.screenshot-card{border:1px solid var(--slate-200);border-radius:12px;overflow:hidden;background:#fff;margin-bottom:12px}
+.screenshot-card:last-child{margin-bottom:0}
+.screenshot-head{display:flex;justify-content:space-between;align-items:center;background:var(--slate-50);border-bottom:1px solid var(--slate-100);padding:8px 12px}
+.screenshot-step{font-size:13px;font-weight:600;color:var(--slate-700)}
+.screenshot-tag{font-size:11px;color:var(--slate-400);background:#fff;border:1px solid var(--slate-200);padding:2px 8px;border-radius:9999px}
+.screenshot-before-lbl,.screenshot-after-lbl{position:absolute;top:6px;left:10px;font-size:11px;font-weight:600;color:#fff;padding:2px 8px;border-radius:4px;z-index:2}
+.screenshot-before-lbl{background:var(--danger)}
+.screenshot-after-lbl{background:var(--success)}
 .gallery-half img{width:100%;height:100%;object-fit:cover;cursor:pointer}
 .gallery-half span{position:absolute;bottom:4px;font-size:10px;color:var(--slate-400);background:rgba(255,255,255,.8);padding:0 6px;border-radius:4px}
 .gallery-half .corner{position:absolute;top:8px;left:8px;width:8px;height:8px;border-radius:50%}
@@ -400,17 +410,35 @@ tbody tr.row-failed:hover{background:#FFE4E6}
 
                 {% if case.screenshots %}
                 <div class="detail-section">
-                  <h4>📸 截图对比</h4>
-                  <div class="diff-compare">
-                  {% for ss in case.screenshots %}
-                    <div>
-                      <h5>Step {{ ss.step_index }} — {{ ss.label }}</h5>
-                      <div class="gallery-half" style="height:140px">
-                        <img src="{{ ss.path }}" loading="lazy" onclick="openLightbox(this.src)" alt="Step {{ ss.step_index }} {{ ss.label }}">
+                  <h4>📸 截图对比（Before / After）</h4>
+                  {% for step_no, sgroup in case.screenshots|groupby('step_index') %}
+                  {% set before = sgroup|selectattr('label', 'equalto', 'Before')|list %}
+                  {% set after = sgroup|selectattr('label', 'equalto', 'After')|list %}
+                  <div class="screenshot-card">
+                    <div class="screenshot-head">
+                      <span class="screenshot-step">Step {{ step_no }}</span>
+                      <span class="screenshot-tag">Before vs After</span>
+                    </div>
+                    <div class="gallery-compare">
+                      <div class="gallery-half">
+                        {% if before %}
+                        <span class="screenshot-before-lbl">Before</span>
+                        <img src="{{ before[0].path }}" loading="lazy" onclick="openLightbox(this.src)" alt="Step {{ step_no }} Before">
+                        {% else %}
+                        <span class="screenshot-before-lbl">Before</span><span>无截图</span>
+                        {% endif %}
+                      </div>
+                      <div class="gallery-half">
+                        {% if after %}
+                        <span class="screenshot-after-lbl">After</span>
+                        <img src="{{ after[0].path }}" loading="lazy" onclick="openLightbox(this.src)" alt="Step {{ step_no }} After">
+                        {% else %}
+                        <span class="screenshot-after-lbl">After</span><span>无截图</span>
+                        {% endif %}
                       </div>
                     </div>
-                  {% endfor %}
                   </div>
+                  {% endfor %}
                 </div>
                 {% endif %}
 
