@@ -459,7 +459,10 @@ class TestMonitorHooks:
         assert step.status == "success"
         assert step.duration_ms is not None
         assert step.duration_ms >= 0
+        # fixture 中该 case 仅 1 个步骤(step_index=0)，此处 step 1 被视为"最后一步"，
+        # 通过时补拍终态 after 作为成功证据；before 因通过已清空
         assert step.screenshot_after is not None
+        assert step.screenshot_before == ""
 
     @pytest.mark.asyncio
     async def test_on_step_after_failure(self, db_session, sample_execution, sample_test_case, mock_file_ops):
