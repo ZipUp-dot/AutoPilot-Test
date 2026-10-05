@@ -21,6 +21,16 @@ from app.exceptions import NotFoundException, ValidationException
 logger = logging.getLogger("autopilot.android_crawl")
 
 
+def _bounds_to_json(bounds: str):
+    """把 uiautomator 的 '[l,t][r,b]' 转成 JSON 字符串，匹配 MySQL JSON 列。"""
+    import re
+    m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds or "")
+    if not m:
+        return None
+    l, t, r, b = map(int, m.groups())
+    return json.dumps({"x": l, "y": t, "width": r - l, "height": b - t})
+
+
 @dataclass
 class AndroidCrawledElement:
     """Android 抓取结果的单条元素"""
@@ -82,7 +92,7 @@ class AndroidCrawlService:
 
         start_ts = time.perf_counter()
         try:
-            elements = self._extract_elements()
+            elements = self._extract_elements(project)
         except Exception as e:
             elapsed = int((time.perf_counter() - start_ts) * 1000)
             logger.exception("Android 页面抓取异常")
@@ -112,7 +122,7 @@ class AndroidCrawlService:
                 selector=el.selector,
                 text_content=el.text,
                 is_visible=el.is_visible,
-                bounding_box=el.bounds,
+                bounding_box=_bounds_to_json(el.bounds),
                 platform="android",
                 selector_type=el.selector_type,
                 element_metadata=json.dumps(el.metadata, ensure_ascii=False),
@@ -129,9 +139,14 @@ class AndroidCrawlService:
     # Appium 核心提取
     # ═══════════════════════════════════════════════
 
-    def _extract_elements(self) -> list[AndroidCrawledElement]:
+    def _extract_elements(self, project: Project) -> list[AndroidCrawledElement]:
         """连接 Appium，获取页面 XML 源码，解析并提取元素"""
         from appium import webdriver as appium_webdriver
+        from appium.webdriver.webdriver import AppiumOptions
+
+        # 读取项目 config_json（与 appium_service 对齐：抓取也走项目配置）
+        config = project.config_json if isinstance(project.config_json, dict) else json.loads(project.config_json or "{}")
+        appium_url = config.get("appium_server_url") or settings.APPIUM_URL
 
         desired_caps = {
             "platformName": "Android",
@@ -140,7 +155,21 @@ class AndroidCrawlService:
             "autoGrantPermissions": True,
         }
 
-        driver = appium_webdriver.Remote(settings.APPIUM_URL, desired_caps)
+        # 4.1.0 的 Remote 构造：caps 须经 AppiumOptions 传入（options 关键字），
+        # 直接传 dict 会被当作 keep_alive 导致 caps 丢失且新版 selenium 报 TypeError
+        opts = AppiumOptions()
+        opts.load_capabilities(desired_caps)
+
+        # 合并项目 config_json 的 extra_caps（与 appium_service 对齐）
+        extra = config.get("extra_caps")
+        if isinstance(extra, dict):
+            for k, v in extra.items():
+                opts.set_capability(k, v)
+        # 已验证环境跳过组件安装/初始化，防止荣耀安全扫描反复卸载
+        opts.set_capability("skipServerInstallation", True)
+        opts.set_capability("skipDeviceInitialization", True)
+
+        driver = appium_webdriver.Remote(appium_url, options=opts)
         driver.implicitly_wait(5000)
 
         try:

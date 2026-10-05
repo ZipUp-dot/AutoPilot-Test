@@ -10,6 +10,7 @@
 
 import json
 import sys
+import types
 from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
@@ -44,6 +45,24 @@ def _mock_appium_package():
     mock_common.appiumby = mock_appium_by
     mock_appium.webdriver.common = mock_common
 
+    # appium.webdriver.webdriver 子模块：生产代码走
+    # from appium.webdriver.webdriver import AppiumOptions 构造会话 options。
+    # 假 AppiumOptions 记录 load_capabilities 的 caps，测试可经 .capabilities 断言。
+    class FakeAppiumOptions:
+        def __init__(self):
+            self._caps = {}
+
+        def load_capabilities(self, capabilities):
+            self._caps.update(capabilities)
+            return self
+
+        @property
+        def capabilities(self):
+            return self._caps
+
+    fake_webdriver_module = types.ModuleType("appium.webdriver.webdriver")
+    fake_webdriver_module.AppiumOptions = FakeAppiumOptions
+
     # 写入 sys.modules 后立即从中导入 AppiumService
     existing = {k: v for k, v in sys.modules.items()
                 if k.startswith('appium')}
@@ -54,6 +73,7 @@ def _mock_appium_package():
     sys.modules['appium.webdriver'] = mock_webdriver
     sys.modules['appium.webdriver.common'] = mock_common
     sys.modules['appium.webdriver.common.appiumby'] = mock_appium_by
+    sys.modules['appium.webdriver.webdriver'] = fake_webdriver_module
 
     yield mock_remote
 
@@ -510,8 +530,8 @@ class TestAppiumSessionConfig:
         call_args, call_kwargs = mock_remote.call_args
         # 第一个参数是 appium_url
         assert call_args[0] == "http://custom:4723"
-        # desired_caps 应包含自定义配置
-        caps = call_args[1]
+        # desired_caps 应经 AppiumOptions 传入（4.1.0 构造签名，options 关键字）
+        caps = call_kwargs["options"].capabilities
         assert caps["appPackage"] == "com.example.app"
         assert caps["appActivity"] == ".MainActivity"
         assert caps["deviceName"] == "test-device"
@@ -530,7 +550,7 @@ class TestAppiumSessionConfig:
         svc._execute_sync(android_project.id, [case.id], exec_obj.id, "headless")
 
         call_args, call_kwargs = mock_remote.call_args
-        caps = call_args[1]
+        caps = call_kwargs["options"].capabilities
         assert caps["platformName"] == "Android"
         assert caps["automationName"] == "UiAutomator2"
 
@@ -700,9 +720,9 @@ class TestAppiumExecuteSyncFailures:
         with patch.object(AppiumService, "_start_healing"):
             svc._execute_sync(99999, [case.id], exec_obj.id, "headless")
 
-        # 项目不存在 → config={} → 使用 settings.APPIUM_URL
-        call_args, _ = mock_remote.call_args
-        assert call_args[1]["automationName"] == "UiAutomator2"
+        # 项目不存在 → config={} → 使用 settings.APPIUM_URL，默认 caps 经 AppiumOptions 传入
+        call_args, call_kwargs = mock_remote.call_args
+        assert call_kwargs["options"].capabilities["automationName"] == "UiAutomator2"
 
     @patch("appium.webdriver.Remote")
     def test_case_returns_false_counts_failed(self, mock_remote, db_session, android_project):
