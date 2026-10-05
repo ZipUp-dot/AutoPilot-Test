@@ -75,15 +75,26 @@ navigate → driver.activate_app("{app_package}")
 assert_text → text = driver.find_element(AppiumBy.XXX, value).text; assert text in expected
 screenshot → driver.save_screenshot("uploads/screenshots/xxx.png")（路径必须位于 uploads/screenshots/ 子树）
 
-【关于「打开应用」(navigate) 步骤】
+【关于「打开应用/进入某页面」(navigate) 步骤】
 - 遇到步骤 target 是 "打开...应用"/"进入...页面/视图" 时，先生成
-  driver.activate_app("{app_package}") 把应用拉到前台，
-  再做元素操作与断言。不要因为"打开应用"就跳过该步骤。
+  driver.activate_app("{app_package}") 把应用拉到前台，再做元素操作与断言。
+  不要因为"打开应用"就跳过该步骤。
+- 应用被拉起到前台后可能停在任意子页面（表单、详情、上次残留状态），
+  不等于已经在目标页面。要回到目标视图（如"月视图"）：
+    a. 若元素列表中有"目标页面/视图"的容器元素（如 month 月视图容器
+       resource-id），先 find_element 该容器，找不到则说明不在目标页；
+    b. 再用元素列表中视图切换栏（如 年/月/周/日/日程 tab，clickable 的
+       TextView）中对应"目标视图"的 tab 点击进入，或 driver.back()
+       返回上一级，直到目标页面容器元素可被定位；
+    c. 确认进入后再做断言。
+- 断言目标页面时，优先断言该页面独有的容器元素（resource-id）存在/可见，
+  而不是断言随内容变化的标题文字。
 
 【关于日期/月份断言（重要）】
 - 禁止把某个固定日期串（如 "2026 年 10 月"、"2026/10"）写死进代码里做断言。
 - 日历月视图标题随年月变化，必须用元素定位（resource-id / content-desc / class）
-  找到"当前月份标题"或"天/周/日程"等稳定元素，断言其存在或可见，
+  找到"月视图容器"（如 resource-id 含 month）、"今天按钮"（content-desc 含 今天）、
+  "天/周/日程"视图 tab 等稳定元素，断言其存在或可见，
   而不是断言一个写死的年月文字。
 - 若元素列表没有对应 selector，用 AppiumBy.ID（resource-id）或
   AppiumBy.UIAUTOMATOR("new UiSelector().className(...)") 兜底。
