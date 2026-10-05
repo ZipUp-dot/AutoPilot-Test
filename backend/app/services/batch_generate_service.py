@@ -28,6 +28,7 @@ import uuid
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from math import ceil
 from typing import Any, Callable, Optional
 
 from app.config import settings
@@ -101,8 +102,15 @@ class BatchJob:
         self.project_id = project_id
         self.total = len(case_ids)
         self.created_at = time.monotonic()
-        # Batch 层 deadline：claim 前短路（batch_remaining = batch_deadline - now）
-        self.batch_deadline = self.created_at + settings.AI_BATCH_BUDGET_SECONDS
+        # Batch 层 deadline：claim 前短路（batch_remaining = batch_deadline - now）。
+        # 预算按用例数动态放大，保证整批（MAX_WORKERS 并行）能真实跑完而不被固定
+        # 墙钟掐断：ceil(total/MAX_WORKERS) 轮 × 单 case 预算，且不低于 AI_BATCH_BUDGET_SECONDS。
+        rounds_needed = max(1, (len(case_ids) + MAX_WORKERS - 1) // MAX_WORKERS)
+        batch_budget = max(
+            settings.AI_BATCH_BUDGET_SECONDS,
+            rounds_needed * settings.AI_CASE_BUDGET_SECONDS,
+        )
+        self.batch_deadline = self.created_at + batch_budget
         self.lock = threading.Lock()
         # 保序 dict：case_id -> BatchCaseSnapshot
         self.cases: dict[int, BatchCaseSnapshot] = {

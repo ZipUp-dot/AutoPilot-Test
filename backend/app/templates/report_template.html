@@ -3,432 +3,514 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- 内容安全策略：仅允许内联样式/脚本与同源图片；禁止外联资源/iframe 嵌入/表单提交，
-     防止报告内不可信动态内容（用例名/错误/日志等）外传或执行任意脚本 -->
+<!-- 内容安全策略：仅允许内联样式/脚本与同源图片；禁止外部 CDN 资源，防止报告中
+     不可信动态内容外传或执行任意脚本。视觉风格与 Tailwind/Chart.js 典型实现对齐，
+     但全部资源内联（Tailwind 配色/玻璃卡片/圆角阴影用等价 CSS；图表用原生 canvas）。 -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
 <title>AutoPilot 测试报告 — {{ batch_name }}</title>
 <style>
-/* ===== Base & Reset ===== */
+/* ===== Tailwind 风格色板（内联复刻，避免外网 CDN）===== */
+:root{
+  --primary:#4F46E5; --primary-hover:#4338CA; --primary-soft:#E0E7FF;
+  --success:#10B981; --success-soft:#ECFDF5;
+  --danger:#EF4444;  --danger-soft:#FEF2F2;
+  --warning:#F59E0B; --warning-soft:#FFFBEB;
+  --purple:#8B5CF6;
+  --dark:#1E293B; --slate-50:#F8FAFC; --slate-100:#F1F5F9; --slate-200:#E2E8F0;
+  --slate-300:#CBD5E1; --slate-400:#94A3B8; --slate-500:#64748B; --slate-600:#475569;
+  --slate-700:#334155; --slate-800:#1E293B;
+}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f7fa;color:#333;line-height:1.6;padding:0}
-a{color:#4a90d9;text-decoration:none}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--slate-50);color:var(--slate-800);line-height:1.6;-webkit-font-smoothing:antialiased;padding-bottom:48px}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--slate-300);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--slate-400)}
 
-/* ===== Header ===== */
-.header{background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);color:#fff;padding:24px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
-.header h1{font-size:1.6rem;font-weight:600}
-.header .meta{font-size:.85rem;opacity:.8;margin-top:4px}
-.header .badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:.8rem;font-weight:600;margin-left:8px}
-.header .badge-pass{background:#27ae60}
-.header .badge-fail{background:#e74c3c}
-.header .badge-running{background:#f39c12}
-.no-print{}
+/* ===== 顶栏 ===== */
+.topnav{display:flex;align-items:center;justify-content:space-between;background:#fff;border-bottom:1px solid var(--slate-200);position:sticky;top:0;z-index:50;padding:12px 24px}
+.topnav-brand{display:flex;align-items:center;gap:12px}
+.topnav-logo{width:32px;height:32px;border-radius:8px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;box-shadow:0 4px 6px -1px rgba(79,70,229,.4)}
+.topnav-title{font-weight:700;font-size:18px;letter-spacing:-.025em;color:var(--slate-800)}
+.topnav-title small{color:var(--slate-400);font-weight:400;font-size:13px;margin-left:8px}
+.topnav-meta{display:flex;align-items:center;gap:16px;font-size:13px;color:var(--slate-500)}
+.topnav-av{margin-left:4px;width:32px;height:32px;border-radius:50%;background:var(--slate-200);border:1px solid var(--slate-300)}
 
-/* ===== Container ===== */
-.container{max-width:1280px;margin:0 auto;padding:24px 20px}
+/* ===== 容器 ===== */
+.container{max-width:1280px;margin:0 auto;padding:32px 24px 0}
 
-/* ===== Card ===== */
-.card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:24px;margin-bottom:20px}
-.card h2{font-size:1.15rem;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #eee;display:flex;align-items:center;gap:8px}
-.card h2 .icon{font-size:1.2rem}
+/* ===== 玻璃卡片（参考 glass-card）===== */
+.glass-card{background:rgba(255,255,255,.95);backdrop-filter:blur(10px);border:1px solid rgba(226,232,240,.8);box-shadow:0 4px 6px -1px rgba(0,0,0,.05),0 2px 4px -1px rgba(0,0,0,.03);border-radius:16px}
+.card{padding:24px;margin-bottom:24px}
+.card-title{display:flex;align-items:center;gap:8px;color:var(--slate-700);font-weight:700;font-size:16px;margin-bottom:16px}
 
-/* ===== Stat Grid ===== */
-.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-bottom:20px}
-.stat-card{background:#fff;border-radius:8px;padding:16px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.06);transition:transform .2s}
-.stat-card:hover{transform:translateY(-2px)}
-.stat-card .num{font-size:2rem;font-weight:700}
-.stat-card .lbl{font-size:.8rem;color:#888;margin-top:4px}
-.stat-card.total .num{color:#3498db}
-.stat-card.pass .num{color:#27ae60}
-.stat-card.fail .num{color:#e74c3c}
-.stat-card.skip .num{color:#95a5a6}
-.stat-card.rate .num{color:#8e44ad}
-.stat-card.time .num{color:#e67e22}
+/* ===== 报告头部 ===== */
+.hero{position:relative;overflow:hidden;padding:32px;margin-bottom:24px}
+.hero-deco{position:absolute;top:0;right:0;width:256px;height:256px;background:var(--primary);opacity:.05;border-bottom-left-radius:9999px;pointer-events:none}
+.hero-top{display:flex;justify-content:space-between;align-items:flex-start;position:relative;z-index:1;flex-wrap:wrap;gap:16px}
+.hero h1{font-size:30px;font-weight:800;letter-spacing:-.025em;color:var(--dark);margin-bottom:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:9999px;font-size:13px;font-weight:500;border:1px solid}
+.badge-pass{background:var(--success-soft);color:var(--success);border-color:#A7F3D0}
+.badge-fail{background:var(--danger-soft);color:var(--danger);border-color:#FECACA}
+.badge-running{background:var(--warning-soft);color:var(--warning);border-color:#FDE68A}
+.hero-meta{display:flex;flex-wrap:wrap;gap:24px;font-size:14px;color:var(--slate-500);margin-top:12px}
+.hero-meta .icon{color:var(--primary);margin-right:6px}
+.hero-meta strong{color:var(--slate-700);font-weight:600}
+.hero-actions{display:flex;gap:12px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;transition:all .15s;text-decoration:none}
+.btn:hover{opacity:.88}
+.btn-outline{background:#fff;border-color:var(--slate-300);color:var(--slate-700)}
+.btn-outline:hover{background:var(--slate-50)}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-hover)}
 
-/* ===== Charts ===== */
-.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
-@media(max-width:768px){.chart-row{grid-template-columns:1fr}}
-.chart-box{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.chart-box h3{font-size:.9rem;color:#666;margin-bottom:12px;text-align:center}
-.chart-box canvas{display:block;margin:0 auto;max-width:100%}
+/* ===== 核心指标卡 ===== */
+.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:24px}
+@media(min-width:768px){.stat-grid{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:1024px){.stat-grid{grid-template-columns:repeat(6,1fr)}}
+.stat-card{border-left:4px solid var(--slate-400);padding:20px;position:relative}
+.stat-card.border-success{border-left-color:var(--success)} .stat-card.border-danger{border-left-color:var(--danger)}
+.stat-card.border-warning{border-left-color:var(--warning)} .stat-card.border-primary{border-left-color:var(--primary)}
+.stat-card.border-purple{border-left-color:var(--purple)}
+.stat-card .lbl{font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--slate-500);margin-bottom:4px}
+.stat-card .num{font-size:30px;font-weight:700;color:var(--slate-800)}
+.stat-card .num.success{color:var(--success)} .stat-card .num.danger{color:var(--danger)}
+.stat-card .num.warning{color:var(--warning)} .stat-card .num.primary{color:var(--primary)} .stat-card .num.purple{color:var(--purple)}
+.stat-card .num small{font-size:16px;color:var(--slate-400)}
+.stat-card .deco{position:absolute;right:8px;bottom:-8px;font-size:56px;opacity:.08;pointer-events:none}
 
-/* ===== Table ===== */
-table{width:100%;border-collapse:collapse;font-size:.88rem}
-th,td{padding:10px 14px;text-align:left;border-bottom:1px solid #eee}
-th{background:#f8f9fb;font-weight:600;color:#555;position:sticky;top:0;font-size:.8rem;text-transform:uppercase;letter-spacing:.5px}
-tr:hover{background:#f0f4ff}
-tr.failed-row{background:#fff5f5}
-tr.failed-row:hover{background:#ffe8e8}
-tr.healed-row{background:#fffdf0}
-.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
-.status-dot.pass{background:#27ae60}
-.status-dot.fail{background:#e74c3c}
-.status-dot.skip{background:#95a5a6}
-.status-dot.healed{background:#f39c12}
-.priority-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
-.priority-tag.P0{background:#ffe0e0;color:#c0392b}
-.priority-tag.P1{background:#ffe8cc;color:#e67e22}
-.priority-tag.P2{background:#d5f5e3;color:#27ae60}
-.priority-tag.P3{background:#eaecee;color:#7f8c8d}
+/* ===== AI 自愈高光模块 ===== */
+.heal-module{border:1px solid #C7D2FE;background:linear-gradient(90deg,rgba(238,242,255,.5),#fff);margin-bottom:24px}
+.heal-head{display:flex;align-items:flex-start;gap:16px;padding:24px}
+.heal-icon{width:48px;height:48px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;box-shadow:inset 0 2px 4px rgba(0,0,0,.05)}
+.heal-body{flex:1}
+.heal-title-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px}
+.heal-title-row h3{font-weight:700;font-size:18px;color:var(--dark)}
+.heal-rate-chip{font-size:12px;font-weight:500;background:var(--primary-soft);color:var(--primary);padding:4px 12px;border-radius:9999px}
+.heal-desc{font-size:14px;color:var(--slate-600);margin-bottom:16px}
+.heal-table-wrap{background:#fff;border:1px solid var(--slate-200);border-radius:8px;overflow:hidden;font-size:14px;margin:0 24px 24px}
 
-/* ===== Expandable ===== */
-.case-row{cursor:pointer}
-.expand-icon{font-size:.8rem;transition:transform .2s;display:inline-block}
-.expanded .expand-icon{transform:rotate(90deg)}
+/* ===== 图表区 ===== */
+.chart-row{display:grid;grid-template-columns:1fr;gap:24px;margin-bottom:24px}
+@media(min-width:1024px){.chart-row{grid-template-columns:1fr 1fr}}
+.chart-box{padding:24px}
+.chart-box.wide{grid-column:1/-1}
+.chart-box h3{font-weight:700;color:var(--slate-700);font-size:16px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.chart-box h3 .icon{color:var(--primary)}
+.chart-canvas{width:100%;height:256px;position:relative;display:flex;align-items:center;justify-content:center}
+.chart-canvas canvas{max-width:100%;max-height:100%}
+.donut-center{position:absolute;text-align:center;pointer-events:none;margin-top:16px}
+.donut-center .big{font-size:28px;font-weight:700;color:var(--slate-800)}
+.donut-center .sub{font-size:12px;color:var(--slate-500)}
+.chart-legend{display:flex;justify-content:center;gap:24px;margin-top:16px;font-size:14px;color:var(--slate-600)}
+.legend-dot{display:inline-block;width:12px;height:12px;border-radius:9999px;margin-right:8px;vertical-align:-1px}
+
+/* ===== 表格 ===== */
+.table-card{overflow:hidden;margin-bottom:24px}
+.table-head{padding:20px 24px;border-bottom:1px solid var(--slate-100);background:#fff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.table-head h3{font-weight:700;color:var(--slate-700);display:flex;align-items:center;gap:8px}
+.table-search{display:flex;gap:8px}
+.table-search input{width:256px;padding:6px 12px;font-size:14px;border:1px solid var(--slate-200);border-radius:8px;outline:none;transition:all .15s}
+.table-search input:focus{border-color:var(--primary);box-shadow:0 0 0 2px rgba(79,70,229,.15)}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+thead th{background:var(--slate-50);color:var(--slate-500);text-transform:uppercase;letter-spacing:.05em;font-size:11px;font-weight:600;text-align:left;padding:12px 20px;border-bottom:1px solid var(--slate-200)}
+tbody td{padding:14px 20px;border-bottom:1px solid var(--slate-100);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{background:#fff;transition:background .15s;cursor:pointer}
+tbody tr:hover{background:var(--slate-50)}
+tbody tr.row-healed{border-left:2px solid var(--primary);background:rgba(238,242,255,.4)}
+tbody tr.row-failed{background:var(--danger-soft)}
+tbody tr.row-failed:hover{background:#FFE4E6}
+.step-col{font-size:13px;color:var(--slate-500)}
+.case-name-cell{font-weight:500;color:var(--slate-700)}
+.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+
+/* 状态徽标 */
+.pill{display:inline-flex;align-items:center;gap:6px;font-weight:500;padding:2px 10px;border-radius:9999px;font-size:12px}
+.pill-pass{color:var(--success)} .pill-danger{color:var(--danger)}
+.pill .dot{width:8px;height:8px;border-radius:50%}
+.dot-pass{background:var(--success)} .dot-danger{background:var(--danger)} .dot-skip{background:var(--slate-300)}
+
+/* 优先级标签 */
+.prio{display:inline-block;padding:2px 10px;border-radius:6px;font-size:12px;font-weight:500}
+.prio-P0{background:#FFE0E0;color:#DC2626}
+.prio-P1{background:#FFEDD5;color:#EA580C}
+.prio-P2{background:#D1FAE5;color:#059669}
+.prio-P3{background:var(--slate-100);color:var(--slate-500)}
+
+/* 错误/失败选择器内联样式 */
+.err-code{display:inline-block;padding:2px 6px;border-radius:4px;font-size:12px;font-weight:600}
+.err-code.bad{background:var(--danger-soft);color:var(--danger)}
+.err-code.good{background:var(--success-soft);color:var(--success)}
+
+/* ===== 展开详情 ===== */
 .case-detail{display:none}
 .case-detail.open{display:table-row}
-.case-detail td{padding:0}
-.detail-inner{padding:16px 20px;background:#fafbfc;border-top:2px solid #e0e0e0}
+.case-detail td{padding:0;background:var(--slate-50)}
+.detail-inner{padding:20px 24px}
+.detail-inner h4{font-size:14px;margin-bottom:8px;color:var(--slate-700);display:flex;align-items:center;gap:6px}
+.detail-section{margin-bottom:16px}
+.step-timeline{list-style:none}
+.step-timeline li{display:flex;gap:12px;padding:6px 0 6px 18px;border-left:2px solid var(--slate-200);margin-left:6px;position:relative;font-size:13px}
+.step-timeline li::before{content:'';position:absolute;left:-5px;top:14px;width:8px;height:8px;border-radius:50%;background:var(--primary)}
+.step-timeline li.fail::before{background:var(--danger)}
+.step-timeline li.pass::before{background:var(--success)}
+.step-action{font-weight:600;min-width:76px;color:var(--slate-700)}
+.step-meta{font-size:12px;color:var(--slate-400)}
+.err-box{color:var(--danger);font-size:13px;background:var(--danger-soft);padding:8px 12px;border-radius:6px}
+.log-box,.code-box{background:#1E1E2E;color:#CDD6F4;border-radius:6px;padding:12px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;line-height:1.5;max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+.diff-compare{display:grid;grid-template-columns:1fr;gap:8px}
+@media(min-width:768px){.diff-compare{grid-template-columns:1fr 1fr}}
+.diff-compare h5{font-size:12px;color:var(--slate-400);margin-bottom:4px}
+.code-box.healed{border-left:4px solid var(--success)}
 
-/* ===== Step Timeline ===== */
-.step-timeline{list-style:none;padding:0}
-.step-timeline li{display:flex;gap:12px;padding:8px 0;border-left:2px solid #e0e0e0;margin-left:8px;padding-left:18px;position:relative}
-.step-timeline li::before{content:'';position:absolute;left:-5px;top:14px;width:8px;height:8px;border-radius:50%;background:#3498db}
-.step-timeline li.fail::before{background:#e74c3c}
-.step-timeline li.pass::before{background:#27ae60}
-.step-timeline .step-action{font-weight:600;min-width:80px}
-.step-timeline .step-meta{font-size:.8rem;color:#888}
+/* ===== 失败分析 ===== */
+.error-list{list-style:none}
+.error-list li{display:flex;align-items:center;gap:12px;padding:10px 12px;margin:6px 0;border-radius:8px;background:var(--slate-50);font-size:14px}
+.error-count{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:12px;font-weight:600;color:#fff}
+.err-timeout{background:var(--warning)} .err-element{background:var(--danger)} .err-assert{background:#BE185D}
 
-/* ===== Screenshot compare ===== */
-.ss-compare{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
-.ss-box{flex:1;min-width:200px;max-width:360px;border:1px solid #e0e0e0;border-radius:6px;overflow:hidden}
-.ss-box .ss-label{background:#f0f0f0;padding:4px 10px;font-size:.75rem;color:#666}
-.ss-box img{width:100%;display:block;cursor:pointer;object-fit:cover;max-height:200px}
+/* ===== 截图画廊 ===== */
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:20px}
+.gallery-item{border:1px solid var(--slate-200);border-radius:12px;overflow:hidden;transition:box-shadow .2s;background:#fff}
+.gallery-item:hover{box-shadow:0 8px 20px rgba(0,0,0,.12)}
+.gallery-top{display:flex;justify-content:space-between;align-items:center;background:var(--slate-50);border-bottom:1px solid var(--slate-100);padding:10px 12px}
+.gallery-top .badge-mini{font-size:10px;color:var(--slate-400);background:#fff;border:1px solid var(--slate-200);padding:2px 6px;border-radius:4px}
+.gallery-compare{display:flex;height:160px}
+.gallery-half{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--slate-100),var(--slate-200));overflow:hidden}
+.gallery-half img{width:100%;height:100%;object-fit:cover;cursor:pointer}
+.gallery-half span{position:absolute;bottom:4px;font-size:10px;color:var(--slate-400);background:rgba(255,255,255,.8);padding:0 6px;border-radius:4px}
+.gallery-half .corner{position:absolute;top:8px;left:8px;width:8px;height:8px;border-radius:50%}
+.gallery-half .corner.before{background:var(--danger)}
+.gallery-half .corner.after{background:var(--success)}
 
-/* ===== Code block ===== */
-.code-block{background:#1e1e2e;color:#cdd6f4;border-radius:6px;padding:14px;overflow-x:auto;font-family:"SF Mono","Cascadia Code",Consolas,monospace;font-size:.82rem;line-height:1.5;max-height:400px;overflow-y:auto}
-.code-block.healed{border-left:4px solid #27ae60}
-
-/* ===== Diff ===== */
-.diff-compare{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-.diff-compare>div{flex:1;min-width:280px}
-.diff-compare h4{font-size:.8rem;color:#888;margin-bottom:4px}
-.diff-compare .code-block{max-height:300px;font-size:.75rem}
-
-/* ===== Error list ===== */
-.error-list{list-style:none;padding:0}
-.error-list li{padding:8px 12px;margin:4px 0;border-radius:6px;display:flex;gap:8px;align-items:center}
-.error-list .err-type{font-weight:600;min-width:120px;font-size:.8rem}
-.error-list .err-case{flex:1}
-.error-list .err-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.7rem;font-weight:600}
-.err-badge.timeout{background:#ffe8cc;color:#e67e22}
-.err-badge.element{background:#ffe0e0;color:#e74c3c}
-.err-badge.assert{background:#ffe0f0;color:#c0392b}
-
-/* ===== Gallery ===== */
-.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
-.gallery-item{border:1px solid #e0e0e0;border-radius:6px;overflow:hidden;transition:box-shadow .2s}
-.gallery-item:hover{box-shadow:0 2px 8px rgba(0,0,0,.12)}
-.gallery-item img{width:100%;display:block;cursor:pointer;object-fit:cover;height:120px}
-.gallery-item .gallery-label{padding:4px 8px;font-size:.7rem;color:#888;background:#fafbfc}
-
-/* ===== Lightbox ===== */
-.lightbox{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.9);z-index:9999;justify-content:center;align-items:center;cursor:pointer}
-.lightbox.active{display:flex}
-.lightbox img{max-width:95%;max-height:90%;box-shadow:0 4px 20px rgba(0,0,0,.5)}
-.lightbox .close-btn{position:absolute;top:20px;right:30px;color:#fff;font-size:2rem;cursor:pointer;z-index:1}
-.lightbox .nav-btn{position:absolute;top:50%;transform:translateY(-50%);color:#fff;font-size:2.5rem;cursor:pointer;padding:20px;z-index:1}
-.lightbox .nav-btn.prev{left:10px}
-.lightbox .nav-btn.next{right:10px}
-
-/* ===== Buttons ===== */
-.btn{display:inline-block;padding:8px 18px;border-radius:6px;border:none;font-size:.85rem;cursor:pointer;transition:opacity .2s;text-decoration:none}
-.btn:hover{opacity:.85}
-.btn-primary{background:#3498db;color:#fff}
-.btn-success{background:#27ae60;color:#fff}
-.btn-outline{background:#fff;color:#3498db;border:1px solid #3498db}
-.btn-sm{padding:4px 10px;font-size:.75rem}
-
-/* ===== Section tabs ===== */
-.tabs{display:flex;gap:0;margin-bottom:0;border-bottom:2px solid #e0e0e0}
-.tab-btn{padding:8px 20px;cursor:pointer;border:none;background:none;font-size:.85rem;color:#888;transition:all .2s;border-bottom:2px solid transparent;margin-bottom:-2px}
-.tab-btn.active{color:#3498db;border-bottom-color:#3498db;font-weight:600}
-
-/* ===== Progress bar ===== */
-.progress-bar{height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;margin:8px 0}
-.progress-fill{height:100%;border-radius:4px;transition:width .3s}
-.progress-fill.pass{background:#27ae60}
-.progress-fill.fail{background:#e74c3c}
-
-/* ===== Collapsible ===== */
-.collapsible-header{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;padding:8px 0}
-.collapsible-header::after{content:'\25B6';font-size:.7rem;transition:transform .2s}
-.collapsible-header.open::after{transform:rotate(90deg)}
+/* ===== 折叠 ===== */
+.collapsible-header{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:14px;color:var(--slate-700);font-weight:600}
+.collapsible-header::after{content:'\25BC';font-size:10px;transition:transform .2s;color:var(--slate-400)}
+.collapsible-header.open::after{transform:rotate(180deg)}
 .collapsible-body{display:none;margin-top:8px}
 .collapsible-body.open{display:block}
 
-/* ===== Footer ===== */
-.footer{text-align:center;color:#aaa;font-size:.75rem;padding:20px;border-top:1px solid #eee;margin-top:40px}
+/* ===== Lightbox ===== */
+.lightbox{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.92);z-index:9999;justify-content:center;align-items:center;cursor:pointer}
+.lightbox.active{display:flex}
+.lightbox img{max-width:94%;max-height:90%;box-shadow:0 8px 30px rgba(0,0,0,.5);border-radius:8px}
+.lightbox .close-btn{position:absolute;top:16px;right:28px;color:#fff;font-size:28px;cursor:pointer;line-height:1}
+.lightbox .nav-btn{position:absolute;top:50%;transform:translateY(-50%);color:#fff;font-size:36px;cursor:pointer;padding:20px;user-select:none}
+.lightbox .nav-btn.prev{left:6px}
+.lightbox .nav-btn.next{right:6px}
 
-/* ===== Print styles ===== */
+/* ===== 底部 ===== */
+.footer{text-align:center;color:var(--slate-400);font-size:12px;padding:24px;margin-top:32px}
+
+/* ===== 打印 ===== */
 @media print{
-  .no-print{display:none!important}
+  .topnav,.hero-actions,.no-print,.table-search{display:none!important}
   body{background:#fff;padding:0}
   .container{max-width:100%;padding:0}
-  .card{box-shadow:none;page-break-inside:avoid;margin-bottom:12px;padding:12px 0}
-  .header{background:#fff!important;color:#000!important;padding:12px 0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .header .badge{background:#eee!important;color:#000!important}
-  .case-detail.open{display:table-row!important}
-  .case-row{cursor:default}
-  .code-block{background:#f5f5f5!important;color:#000!important;border:1px solid #ccc}
+  .glass-card{box-shadow:none;page-break-inside:avoid;margin-bottom:12px}
+  .heal-module{background:#fff!important}
+  .code-box,.log-box{background:#F5F5F5!important;color:#000!important;border:1px solid #ccc}
   @page{margin:1.5cm;size:A4}
 }
 </style>
 </head>
-<body>
+<body class="bg-slate-50 antialiased min-h-screen pb-12">
 
-<!-- ===== Header ===== -->
-<div class="header">
-  <div>
-    <h1>AutoPilot 测试报告</h1>
-    <div class="meta">
-      项目: {{ project_name }} | 批次: {{ batch_name }}<br>
-      目标: {{ target_url or "-" }}<br>
-      生成时间: {{ generated_at }} | 执行模式: {{ execution_mode }}
-    </div>
+<!-- ===== 顶部导航 ===== -->
+<nav class="topnav">
+  <div class="topnav-brand">
+    <div class="topnav-logo">A</div>
+    <span class="topnav-title">AutoPilot <small>AI 驱动自动化测试</small></span>
   </div>
-  <div>
-    <span class="badge {% if overall_status == 'completed' %}badge-pass{% elif overall_status == 'failed' %}badge-fail{% else %}badge-running{% endif %}">
-      {{ overall_status.upper() }}
-    </span>
+  <div class="topnav-meta">
+    <span>测试执行报告</span>
+    <div class="topnav-av"></div>
   </div>
-</div>
+</nav>
 
 <div class="container">
 
-<!-- ===== Overview ===== -->
-<div class="card" id="overview">
-  <h2><span class="icon">📊</span> 执行概览</h2>
+  <!-- ===== 报告头部 ===== -->
+  <div class="glass-card hero">
+    <div class="hero-deco"></div>
+    <div class="hero-top">
+      <div>
+        <h1>
+          测试执行报告
+          <span class="badge {% if overall_status == 'completed' %}badge-pass{% elif overall_status == 'failed' %}badge-fail{% else %}badge-running{% endif %}">
+            {% if overall_status == 'completed' %}✓{% elif overall_status == 'failed' %}✕{% else %}◉{% endif %} {{ overall_status|upper }}
+          </span>
+        </h1>
+        <div class="hero-meta">
+          <span><i class="icon">🗂️</i>项目：<strong>{{ project_name }}</strong></span>
+          <span><i class="icon">🗃️</i>批次：<strong>{{ batch_name }}</strong></span>
+          <span><i class="icon">🕐</i>时间：<strong>{{ generated_at }}</strong></span>
+          <span><i class="icon">🖥️</i>模式：<strong>{{ execution_mode }}</strong></span>
+          <span><i class="icon">🎯</i>目标：<strong>{{ target_url or "-" }}</strong></span>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <button class="btn btn-outline" onclick="window.print()">🖨️ 打印报告</button>
+        <button class="btn btn-primary" onclick="exportJSON()">📥 导出报告</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 核心指标卡片 ===== -->
   <div class="stat-grid">
-    <div class="stat-card total"><div class="num">{{ total_cases }}</div><div class="lbl">总用例数</div></div>
-    <div class="stat-card pass"><div class="num">{{ passed }}</div><div class="lbl">通过</div></div>
-    <div class="stat-card fail"><div class="num">{{ failed }}</div><div class="lbl">失败</div></div>
-    <div class="stat-card skip"><div class="num">{{ skipped }}</div><div class="lbl">跳过</div></div>
-    <div class="stat-card rate"><div class="num">{{ pass_rate }}%</div><div class="lbl">通过率</div></div>
-    <div class="stat-card time"><div class="num">{{ duration }}</div><div class="lbl">总耗时(秒)</div></div>
+    <div class="glass-card stat-card"><div class="lbl">总用例数</div><div class="num">{{ total_cases }}</div></div>
+    <div class="glass-card stat-card border-success"><div class="lbl">通过</div><div class="num success">{{ passed }}</div></div>
+    <div class="glass-card stat-card border-danger"><div class="lbl">失败</div><div class="num danger">{{ failed }}</div></div>
+    <div class="glass-card stat-card border-warning"><div class="lbl">跳过</div><div class="num warning">{{ skipped }}</div></div>
+    <div class="glass-card stat-card border-primary"><div class="lbl">通过率</div><div class="num primary">{{ pass_rate }}<small>%</small></div><div class="deco">📈</div></div>
+    <div class="glass-card stat-card border-purple"><div class="lbl">总耗时</div><div class="num purple">{{ duration }}<small>s</small></div></div>
   </div>
 
+  <!-- ===== AI 自愈高光模块 ===== -->
   {% if heal_attempts > 0 %}
-  <div style="margin-top:16px;padding:12px;background:#fffdf0;border-radius:8px;border:1px solid #f0e68c">
-    <strong>🔧 自愈效果:</strong>
-    尝试 {{ heal_attempts }} 次，成功 {{ heal_success }} 次，成功率 {{ heal_rate }}%
-    <div class="progress-bar" style="margin-top:6px">
-      <div class="progress-fill pass" style="width:{{ heal_rate }}%"></div>
+  <div class="heal-module">
+    <div class="heal-head">
+      <div class="heal-icon">✦</div>
+      <div class="heal-body">
+        <div class="heal-title-row">
+          <h3>AI 自愈引擎发挥关键作用</h3>
+          <span class="heal-rate-chip">成功率 {{ heal_rate }}% ({{ heal_success }}/{{ heal_attempts }})</span>
+        </div>
+        <p class="heal-desc">执行过程中，AI 检测到 {{ heal_attempts }} 处 UI 元素定位失效或变更，自动修复定位策略并成功执行 {{ heal_success }} 处，无需人工干预。</p>
+      </div>
     </div>
+
+    {% if heal_details %}
+    <div class="heal-table-wrap">
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr><th>用例</th><th>失败步骤</th><th>重试次数</th><th>状态</th></tr>
+          </thead>
+          <tbody>
+          {% for h in heal_details[:5] %}
+            <tr class="row-healed">
+              <td class="case-name-cell">{{ h.case_name }}</td>
+              <td class="step-col">Step {{ h.step_index }}</td>
+              <td class="step-col">{{ h.retry_count }}</td>
+              <td>
+                <span class="pill {{ 'pill-pass' if h.status == 'success' else 'pill-danger' }}">
+                  <span class="dot {{ 'dot-pass' if h.status == 'success' else 'dot-danger' }}"></span>
+                  {{ '已修复' if h.status == 'success' else h.status }}
+                </span>
+              </td>
+            </tr>
+          {% endfor %}
+          {% if heal_details|length > 5 %}
+            <tr><td class="step-col" colspan="4" style="font-style:italic;color:var(--slate-400)">其他 {{ heal_details|length - 5 }} 条自愈记录已折叠…</td></tr>
+          {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
-</div>
 
-<!-- ===== Charts ===== -->
-<div class="chart-row">
-  <div class="chart-box">
-    <h3>用例状态分布</h3>
-    <canvas id="donutChart" width="240" height="240"></canvas>
-    <div id="donutLegend" style="text-align:center;margin-top:8px;font-size:.8rem;color:#888"></div>
+  <!-- ===== 图表区域 ===== -->
+  <div class="chart-row">
+    <div class="glass-card chart-box">
+      <h3><span class="icon">◔</span> 用例状态分布</h3>
+      <div class="chart-canvas">
+        <canvas id="donutChart" width="260" height="260"></canvas>
+        <div class="donut-center"><div class="big">{{ pass_rate }}%</div><div class="sub">通过率</div></div>
+      </div>
+      <div class="chart-legend">
+        <span><span class="legend-dot" style="background:var(--success)"></span>通过: {{ passed }}</span>
+        <span><span class="legend-dot" style="background:var(--danger)"></span>失败: {{ failed }}</span>
+        <span><span class="legend-dot" style="background:var(--slate-300)"></span>跳过: {{ skipped }}</span>
+      </div>
+    </div>
+    <div class="glass-card chart-box">
+      <h3><span class="icon">▨</span> 优先级分布</h3>
+      <div class="chart-canvas"><canvas id="priorityChart" width="420" height="260"></canvas></div>
+    </div>
+    {% if error_types %}
+    <div class="glass-card chart-box wide">
+      <h3><span class="icon">⚠</span> 错误类型分布</h3>
+      <div class="chart-canvas"><canvas id="errorChart" width="520" height="240"></canvas></div>
+    </div>
+    {% endif %}
   </div>
-  <div class="chart-box">
-    <h3>优先级分布</h3>
-    <canvas id="priorityChart" width="320" height="240"></canvas>
-  </div>
-</div>
-<div class="chart-row">
-  <div class="chart-box" style="grid-column:1/-1">
-    <h3>错误类型分布</h3>
-    <canvas id="errorChart" width="500" height="240"></canvas>
-  </div>
-</div>
 
-<!-- ===== Case Detail Table ===== -->
-<div class="card" id="cases">
-  <h2><span class="icon">📋</span> 用例详情</h2>
-  <table>
-    <thead>
-      <tr>
-        <th style="width:50px">#</th>
-        <th>用例名称</th>
-        <th style="width:60px">优先级</th>
-        <th style="width:80px">状态</th>
-        <th style="width:70px">耗时</th>
-        <th style="width:60px">步骤</th>
-        <th style="width:70px">操作</th>
-      </tr>
-    </thead>
-    <tbody id="case-list">
-    {% for case in cases %}
-      {% set is_failed = case.final_status == 'failed' %}
-      <tr class="case-row {% if is_failed %}failed-row{% endif %} {% if case.is_healed %}healed-row{% endif %}"
-          onclick="toggleDetail(this,'detail-{{ loop.index }}')">
-        <td>{{ loop.index }}</td>
-        <td>
-          {{ case.case_name }}
-          {% if case.is_healed %}<span class="status-dot healed" title="已自愈"></span>{% endif %}
-        </td>
-        <td><span class="priority-tag {{ case.priority }}">{{ case.priority }}</span></td>
-        <td><span class="status-dot {{ 'pass' if case.final_status == 'success' else 'fail' if case.final_status == 'failed' else 'skip' }}"></span>
-            {{ case.final_status }}</td>
-        <td>{{ case.duration_ms }}ms</td>
-        <td>{{ case.step_count }}</td>
-        <td><button class="btn btn-sm btn-outline no-print" onclick="event.stopPropagation();downloadCaseJSON({{ case.case_id }})">导出</button></td>
-      </tr>
-      <tr class="case-detail" id="detail-{{ loop.index }}">
-        <td colspan="7">
-          <div class="detail-inner">
-
-            <!-- Steps Timeline -->
-            <h4 style="margin-bottom:8px">⏱️ 步骤时间轴</h4>
-            <ul class="step-timeline">
-            {% for s in case.steps %}
-              <li class="{{ s.status }}">
-                <span class="step-action">{{ s.action }}</span>
-                <span>{{ s.target }}</span>
-                <span class="step-meta">[{{ s.status }}] {{ s.duration_ms }}ms</span>
-              </li>
-            {% endfor %}
-            </ul>
-
-            <!-- Screenshots -->
-            {% if case.screenshots %}
-            <h4 style="margin-top:16px;margin-bottom:8px">📸 截图对比</h4>
-            <div class="ss-compare">
-              {% for ss in case.screenshots %}
-              <div class="ss-box">
-                <div class="ss-label">Step {{ ss.step_index }} {{ ss.label }}</div>
-                <img src="{{ ss.path }}" loading="lazy" onclick="openLightbox(this.src)" alt="Step {{ ss.step_index }} {{ ss.label }}">
-              </div>
-              {% endfor %}
-            </div>
-            {% endif %}
-
-            <!-- Error message -->
-            {% if case.error_summary %}
-            <h4 style="margin-top:12px;margin-bottom:4px;color:#e74c3c">❌ 错误信息</h4>
-            <p style="color:#e74c3c;font-size:.85rem;background:#fff5f5;padding:8px 12px;border-radius:6px">
-              {{ case.error_summary }}
-            </p>
-            {% endif %}
-
-            <!-- Log -->
-            {% if case.logs %}
-            <div style="margin-top:12px">
-              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
-                <strong>📝 日志输出</strong>
-              </div>
-              <div class="collapsible-body">
-                <pre style="background:#f8f9fb;padding:10px;border-radius:6px;font-size:.8rem;max-height:200px;overflow:auto">{{ case.logs }}</pre>
-              </div>
-            </div>
-            {% endif %}
-
-            <!-- Generated Code -->
-            {% if case.code %}
-            <div style="margin-top:12px">
-              <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
-                <strong>&lt;/&gt; 生成代码</strong>
-              </div>
-              <div class="collapsible-body">
-                <pre class="code-block">{{ case.code }}</pre>
-              </div>
-            </div>
-            {% endif %}
-
-            <!-- Heal diff -->
-            {% if case.healed_code %}
-            <div style="margin-top:12px">
-              <h4 style="color:#27ae60">🔧 自愈修复 (原始 vs 修复后)</h4>
-              <div class="diff-compare">
-                <div>
-                  <h4>原始代码</h4>
-                  <pre class="code-block">{{ case.original_code }}</pre>
+  <!-- ===== 用例详情列表 ===== -->
+  <div class="glass-card table-card">
+    <div class="table-head">
+      <h3>📋 用例执行详情</h3>
+      <div class="table-search no-print">
+        <input type="text" id="searchInput" placeholder="搜索用例…" oninput="filterCases(this.value)">
+        <button class="btn btn-outline" onclick="clearSearch()">✕</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:44px">#</th>
+            <th>用例名称</th>
+            <th style="width:72px">优先级</th>
+            <th style="width:96px">状态</th>
+            <th style="width:96px">耗时</th>
+            <th style="width:64px">步骤</th>
+          </tr>
+        </thead>
+        <tbody id="case-list">
+        {% for case in cases %}
+          {% set is_failed = case.final_status == 'failed' %}
+          <tr class="case-row {% if case.is_healed %}row-healed{% elif is_failed %}row-failed{% endif %}"
+              data-search="{{ (case.case_name or '')|lower }}"
+              onclick="toggleDetail(this,'detail-{{ loop.index }}')">
+            <td class="step-col">{{ loop.index }}</td>
+            <td class="case-name-cell">{{ case.case_name }}{% if case.is_healed %} <span class="pill pill-pass"><span class="dot dot-pass"></span>自愈</span>{% endif %}</td>
+            <td><span class="prio {{ case.priority }}">{{ case.priority }}</span></td>
+            <td>
+              <span class="pill {{ 'pill-pass' if case.final_status == 'success' else 'pill-danger' if case.final_status == 'failed' else '' }}">
+                <span class="dot {{ 'dot-pass' if case.final_status == 'success' else 'dot-danger' if case.final_status == 'failed' else 'dot-skip' }}"></span>
+                {{ {'success':'成功','failed':'失败','skipped':'跳过'}.get(case.final_status, case.final_status) }}
+              </span>
+            </td>
+            <td class="step-col">{{ case.duration_ms }}ms</td>
+            <td class="step-col">{{ case.step_count }}</td>
+          </tr>
+          <tr class="case-detail" id="detail-{{ loop.index }}">
+            <td colspan="6">
+              <div class="detail-inner">
+                {% if case.steps %}
+                <div class="detail-section">
+                  <h4>⏱️ 步骤时间轴</h4>
+                  <ul class="step-timeline">
+                  {% for s in case.steps %}
+                    <li class="{{ s.status }}">
+                      <span class="step-action">{{ s.action }}</span>
+                      <span>{{ s.target }}</span>
+                      <span class="step-meta">[{{ s.status }}] {{ s.duration_ms }}ms</span>
+                    </li>
+                  {% endfor %}
+                  </ul>
                 </div>
-                <div>
-                  <h4>修复后代码</h4>
-                  <pre class="code-block healed">{{ case.healed_code }}</pre>
-                </div>
-              </div>
-            </div>
-            {% endif %}
+                {% endif %}
 
+                {% if case.screenshots %}
+                <div class="detail-section">
+                  <h4>📸 截图对比</h4>
+                  <div class="diff-compare">
+                  {% for ss in case.screenshots %}
+                    <div>
+                      <h5>Step {{ ss.step_index }} — {{ ss.label }}</h5>
+                      <div class="gallery-half" style="height:140px">
+                        <img src="{{ ss.path }}" loading="lazy" onclick="openLightbox(this.src)" alt="Step {{ ss.step_index }} {{ ss.label }}">
+                      </div>
+                    </div>
+                  {% endfor %}
+                  </div>
+                </div>
+                {% endif %}
+
+                {% if case.error_summary %}
+                <div class="detail-section">
+                  <h4>❌ 错误信息</h4>
+                  <div class="err-box">{{ case.error_summary }}</div>
+                </div>
+                {% endif %}
+
+                {% if case.logs %}
+                <div class="detail-section">
+                  <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">📝 日志输出</div>
+                  <div class="collapsible-body"><pre class="log-box">{{ case.logs }}</pre></div>
+                </div>
+                {% endif %}
+
+                {% if case.code %}
+                <div class="detail-section">
+                  <div class="collapsible-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">&lt;/&gt; 生成代码</div>
+                  <div class="collapsible-body"><pre class="code-box">{{ case.code }}</pre></div>
+                </div>
+                {% endif %}
+
+                {% if case.healed_code %}
+                <div class="detail-section">
+                  <h4>🔧 自愈修复（原始 vs 修复后）</h4>
+                  <div class="diff-compare">
+                    <div>
+                      <h5>原始代码</h5>
+                      <pre class="code-box">{{ case.original_code }}</pre>
+                    </div>
+                    <div>
+                      <h5>修复后代码</h5>
+                      <pre class="code-box healed">{{ case.healed_code }}</pre>
+                    </div>
+                  </div>
+                </div>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== 失败分析 ===== -->
+  {% if error_types %}
+  <div class="glass-card card">
+    <h3 class="card-title">🔍 失败分析</h3>
+    <ul class="error-list">
+    {% for et in error_types %}
+      <li>
+        <span class="error-count {{ 'err-timeout' if 'Timeout' in et.type else 'err-element' if 'Element' in et.type else 'err-assert' if 'Assert' in et.type else '' }}">{{ et.count }}</span>
+        <strong style="min-width:120px">{{ et.type }}</strong>
+        <span class="step-col">{{ et.count }} 次</span>
+      </li>
+    {% endfor %}
+    </ul>
+
+    {% if top_selectors %}
+    <h4 style="font-size:14px;margin-top:16px;margin-bottom:8px;color:var(--slate-700)">最常见失败选择器 TOP 5</h4>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:44px">#</th><th>选择器</th><th style="width:96px">失败次数</th></tr></thead>
+        <tbody>
+        {% for sel in top_selectors %}
+          <tr style="cursor:default"><td class="step-col">{{ loop.index }}</td><td><code class="err-code bad">{{ sel.selector }}</code></td><td class="step-col">{{ sel.count }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- ===== 截图画廊 ===== -->
+  {% if gallery %}
+  <div class="glass-card card no-print">
+    <h3 class="card-title">🖼️ 执行截图画廊（Before / After）</h3>
+    <div class="gallery">
+    {% for img in gallery %}
+      <div class="gallery-item">
+        <div class="gallery-top">
+          <span class="case-name-cell" style="font-size:12px">{{ img.label }}</span>
+        </div>
+        <div class="gallery-compare">
+          <div class="gallery-half">
+            <img src="{{ img.path }}" loading="lazy" onclick="openLightbox(this.src)" alt="{{ img.label }}">
+            <div class="corner {{ 'before' if 'Before' in img.label else 'after' }}"></div>
+            <span>{{ 'Before' if 'Before' in img.label else 'After' }}</span>
           </div>
-        </td>
-      </tr>
+        </div>
+      </div>
     {% endfor %}
-    </tbody>
-  </table>
-</div>
-
-<!-- ===== Failure Analysis ===== -->
-{% if error_types %}
-<div class="card" id="failures">
-  <h2><span class="icon">🔍</span> 失败分析</h2>
-
-  <h3 style="font-size:.9rem;margin-bottom:12px">按错误类型分类</h3>
-  <ul class="error-list">
-  {% for et in error_types %}
-    <li>
-      <span class="err-type">{{ et.type }}</span>
-      <span class="err-badge {{ 'timeout' if 'Timeout' in et.type else 'element' if 'Element' in et.type else 'assert' if 'Assert' in et.type else '' }}">{{ et.count }} 次</span>
-    </li>
-  {% endfor %}
-  </ul>
-
-  {% if top_selectors %}
-  <h3 style="font-size:.9rem;margin-top:16px;margin-bottom:8px">最常见失败选择器 TOP 5</h3>
-  <table style="font-size:.82rem">
-    <thead><tr><th>#</th><th>选择器</th><th>失败次数</th></tr></thead>
-    <tbody>
-    {% for sel in top_selectors %}
-      <tr>
-        <td>{{ loop.index }}</td>
-        <td><code style="background:#f0f0f0;padding:2px 6px;border-radius:3px">{{ sel.selector }}</code></td>
-        <td>{{ sel.count }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
-
-  {% if heal_details %}
-  <h3 style="font-size:.9rem;margin-top:16px;margin-bottom:8px">🔧 自愈统计详情</h3>
-  <table style="font-size:.82rem">
-    <thead><tr><th>步骤</th><th>用例</th><th>重试次数</th><th>状态</th></tr></thead>
-    <tbody>
-    {% for h in heal_details %}
-      <tr>
-        <td>Step {{ h.step_index }}</td>
-        <td>{{ h.case_name }}</td>
-        <td>{{ h.retry_count }}</td>
-        <td><span class="status-dot {{ 'pass' if h.status == 'success' else 'fail' }}"></span>{{ h.status }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
-</div>
-{% endif %}
-
-<!-- ===== Screenshot Gallery ===== -->
-{% if gallery %}
-<div class="card no-print" id="gallery">
-  <h2><span class="icon">🖼️</span> 截图画廊</h2>
-  <div class="gallery">
-  {% for img in gallery %}
-    <div class="gallery-item">
-      <img src="{{ img.path }}" loading="lazy" onclick="openLightbox(this.src)" alt="{{ img.label }}">
-      <div class="gallery-label">{{ img.label }}</div>
     </div>
-  {% endfor %}
   </div>
-</div>
-{% endif %}
-
-<!-- ===== Export ===== -->
-<div class="card no-print" id="export">
-  <h2><span class="icon">📥</span> 数据导出</h2>
-  <div style="display:flex;gap:12px;flex-wrap:wrap">
-    <button class="btn btn-primary" onclick="exportJSON()">📄 导出 JSON</button>
-    <button class="btn btn-success" onclick="exportCSV()">📊 导出 CSV</button>
-    <button class="btn btn-outline" onclick="window.print()">🖨️ 打印报告</button>
-  </div>
-</div>
+  {% endif %}
 
 </div><!-- /container -->
 
@@ -450,233 +532,161 @@ tr.healed-row{background:#fffdf0}
 </script>
 
 <script>
-// ===== Data =====
+// ---------- 数据 ----------
 var reportData;
 try { reportData = JSON.parse(document.getElementById('report-data').textContent); }
 catch(e) { reportData = {}; }
 
-// ===== Toggle detail =====
+// ---------- 表格展开/折叠 ----------
 function toggleDetail(row, detailId) {
   row.classList.toggle('expanded');
   document.getElementById(detailId).classList.toggle('open');
 }
 
-// ===== Lightbox =====
-var lightboxImages = [];
-document.querySelectorAll('.gallery img, .ss-box img').forEach(function(img) {
-  lightboxImages.push(img.src);
-});
+// ---------- 搜索 / 筛选 ----------
+function filterCases(kw) {
+  kw = (kw || '').trim().toLowerCase();
+  document.querySelectorAll('#case-list tr.case-row').forEach(function(tr){
+    var hit = !kw || tr.getAttribute('data-search').indexOf(kw) !== -1;
+    tr.style.display = hit ? '' : 'none';
+    if (!hit) {
+      var d = tr.nextElementSibling;
+      if (d && d.classList && d.classList.contains('case-detail')) d.style.display = 'none';
+    }
+  });
+}
+function clearSearch(){ var i=document.getElementById('searchInput'); if(i){i.value='';filterCases('');} }
 
-var currentLightboxIndex = -1;
-
-function openLightbox(src) {
-  currentLightboxIndex = lightboxImages.indexOf(src);
+// ---------- Lightbox ----------
+(function(){
+  var imgs=[];
+  document.querySelectorAll('.gallery-half img, .ss-box img').forEach(function(i){ imgs.push(i.src); });
+  window.__lbImgs = imgs;
+})();
+function openLightbox(src){
+  window.__lbIdx = window.__lbImgs.indexOf(src);
   document.getElementById('lightbox-img').src = src;
   document.getElementById('lightbox').classList.add('active');
   document.body.style.overflow = 'hidden';
 }
-
-function closeLightbox() {
+function closeLightbox(){
   document.getElementById('lightbox').classList.remove('active');
-  document.body.style.overflow = '';
-  currentLightboxIndex = -1;
+  document.body.style.overflow='';
 }
-
-function navigateLightbox(dir) {
-  if (lightboxImages.length === 0) return;
-  currentLightboxIndex = (currentLightboxIndex + dir + lightboxImages.length) % lightboxImages.length;
-  document.getElementById('lightbox-img').src = lightboxImages[currentLightboxIndex];
+function navigateLightbox(dir){
+  if(!window.__lbImgs || window.__lbImgs.length===0) return;
+  var idx = (window.__lbIdx + dir + window.__lbImgs.length) % window.__lbImgs.length;
+  window.__lbIdx = idx;
+  document.getElementById('lightbox-img').src = window.__lbImgs[idx];
 }
-
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeLightbox();
-  if (e.key === 'ArrowLeft') navigateLightbox(-1);
-  if (e.key === 'ArrowRight') navigateLightbox(1);
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape') closeLightbox();
+  if(e.key==='ArrowLeft') navigateLightbox(-1);
+  if(e.key==='ArrowRight') navigateLightbox(1);
 });
 
-// ===== Canvas Charts =====
-
-// Donut chart (status distribution)
-(function() {
-  var canvas = document.getElementById('donutChart');
-  if (!canvas) return;
-  var ctx = canvas.getContext('2d');
-  var d = reportData.overview || {};
-  var total = d.total_cases || 1;
-  var values = [d.passed || 0, d.failed || 0, d.skipped || 0, Math.max(0, total - (d.passed||0) - (d.failed||0) - (d.skipped||0))];
-  var colors = ['#27ae60','#e74c3c','#95a5a6','#bdc3c7'];
-  var labels = ['通过','失败','跳过','未执行'];
-
-  var cx = canvas.width / 2, cy = canvas.height / 2;
-  var outer = Math.min(cx, cy) - 10, inner = outer * 0.58;
-  var startAngle = -Math.PI / 2;
-
-  values.forEach(function(v, i) {
-    if (v <= 0) return;
-    var sliceAngle = (v / total) * Math.PI * 2;
+// ---------- 环形图（通过率） ----------
+(function(){
+  var canvas=document.getElementById('donutChart'); if(!canvas) return;
+  var ctx=canvas.getContext('2d');
+  var o=reportData.overview||{};
+  var total=o.total_cases||1;
+  var vals=[o.passed||0,o.failed||0,o.skipped||0];
+  var colors=['#10B981','#EF4444','#CBD5E1'];
+  var cx=canvas.width/2, cy=canvas.height/2;
+  var outer=Math.min(cx,cy)-12, inner=outer*0.58;
+  var start=-Math.PI/2;
+  vals.forEach(function(v,i){
+    if(v<=0) return;
+    var a=(v/total)*Math.PI*2;
     ctx.beginPath();
-    ctx.arc(cx, cy, outer, startAngle, startAngle + sliceAngle);
-    ctx.arc(cx, cy, inner, startAngle + sliceAngle, startAngle, true);
+    ctx.arc(cx,cy,outer,start,start+a);
+    ctx.arc(cx,cy,inner,start+a,start,true);
     ctx.closePath();
-    ctx.fillStyle = colors[i];
-    ctx.fill();
-    startAngle += sliceAngle;
+    ctx.fillStyle=colors[i]; ctx.fill();
+    start+=a;
   });
-
-  // Center text
-  ctx.fillStyle = '#333';
-  ctx.font = 'bold 20px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(d.pass_rate + '%', cx, cy - 6);
-  ctx.font = '11px sans-serif';
-  ctx.fillStyle = '#888';
-  ctx.fillText('通过率', cx, cy + 14);
-
-  // Legend
-  document.getElementById('donutLegend').innerHTML = labels.map(function(l, i) {
-    return '<span style="display:inline-block;margin:0 8px;color:' + colors[i] + '">&bull; ' + l + ': ' + values[i] + '</span>';
-  }).join('');
+  // 中央文字由 HTML 覆盖，无需再绘
 })();
 
-// Bar chart (priority)
-(function() {
-  var canvas = document.getElementById('priorityChart');
-  if (!canvas) return;
-  var ctx = canvas.getContext('2d');
-  var priorities = reportData.priority_distribution || [];
-  var w = canvas.width, h = canvas.height;
-  var pad = {top:20, right:30, bottom:40, left:40};
-  var cw = w - pad.left - pad.right, ch = h - pad.top - pad.bottom;
-
-  if (priorities.length === 0) return;
-
-  var maxVal = Math.max.apply(null, priorities.map(function(p){ return p.pass + p.fail; }), 1);
-  var barW = Math.min(50, cw / priorities.length * 0.6);
-  var gap = cw / priorities.length;
-
-  // Axes
-  ctx.strokeStyle = '#e0e0e0';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(pad.left, pad.top);
-  ctx.lineTo(pad.left, pad.top + ch);
-  ctx.lineTo(pad.left + cw, pad.top + ch);
-  ctx.stroke();
-
-  priorities.forEach(function(p, i) {
-    var x = pad.left + gap * i + (gap - barW) / 2;
-    var passH = (p.pass / maxVal) * ch;
-    var failH = (p.fail / maxVal) * ch;
-    var y0 = pad.top + ch;
-
-    // Pass bar
-    ctx.fillStyle = '#27ae60';
-    ctx.fillRect(x, y0 - passH, barW * 0.45, passH);
-    // Fail bar
-    ctx.fillStyle = '#e74c3c';
-    ctx.fillRect(x + barW * 0.55, y0 - failH, barW * 0.45, failH);
-
-    // Label
-    ctx.fillStyle = '#555';
-    ctx.font = '11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(p.priority, x + barW / 2, y0 + 18);
-
-    // Count
-    ctx.fillText(p.pass, x + barW * 0.22, y0 - passH - 6);
-    if (p.fail > 0) ctx.fillText(p.fail, x + barW * 0.78, y0 - failH - 6);
-  });
-
-  // Legend
-  ctx.fillStyle = '#27ae60';
-  ctx.fillText('通过', w - 80, 16);
-  ctx.fillStyle = '#e74c3c';
-  ctx.fillText('失败', w - 30, 16);
-})();
-
-// Error type pie chart
-(function() {
-  var canvas = document.getElementById('errorChart');
-  if (!canvas) return;
-  var ctx = canvas.getContext('2d');
-  var errors = reportData.error_types || [];
-  var colors = ['#e74c3c','#e67e22','#9b59b6','#3498db','#1abc9c','#95a5a6'];
-  var w = canvas.width, h = canvas.height;
-  var cx = 160, cy = h / 2, r = Math.min(cx, cy) - 20;
-
-  if (errors.length === 0) {
-    ctx.fillStyle = '#aaa';
-    ctx.font = '16px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('无失败用例', canvas.width / 2, h / 2);
-    return;
-  }
-
-  var total = errors.reduce(function(s, e) { return s + e.count; }, 0);
-  var startAngle = -Math.PI / 2;
-
-  errors.forEach(function(e, i) {
-    var sliceAngle = (e.count / total) * Math.PI * 2;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, r, startAngle, startAngle + sliceAngle);
-    ctx.closePath();
-    ctx.fillStyle = colors[i % colors.length];
-    ctx.fill();
-    startAngle += sliceAngle;
-  });
-
-  // Legend on the right
-  var lx = 340;
-  errors.forEach(function(e, i) {
-    var ly = 30 + i * 30;
-    ctx.fillStyle = colors[i % colors.length];
-    ctx.fillRect(lx, ly - 8, 14, 14);
-    ctx.fillStyle = '#333';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(e.type + ' (' + e.count + ')', lx + 20, ly + 4);
+// ---------- 优先级别柱状图 ----------
+(function(){
+  var canvas=document.getElementById('priorityChart'); if(!canvas) return;
+  var ctx=canvas.getContext('2d');
+  var dist=reportData.priority_distribution||[];
+  if(dist.length===0){ ctx.fillStyle='#94A3B8'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText('暂无优先级分布',canvas.width/2,canvas.height/2); return; }
+  var w=canvas.width,h=canvas.height,pad={top:24,right:20,bottom:40,left:44};
+  var cw=w-pad.left-pad.right,ch=h-pad.top-pad.bottom;
+  var maxVal=Math.max.apply(null,dist.map(function(p){return Math.max(p.pass||0,p.fail||0);}),1);
+  var gap=cw/dist.length;
+  var barW=Math.min(46,gap*0.5);
+  // 网格
+  ctx.strokeStyle='#F1F5F9'; ctx.lineWidth=1;
+  for(var i=0;i<=4;i++){ var y=pad.top+ch-(ch*i/4); ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(pad.left+cw,y); ctx.stroke(); }
+  // 轴
+  ctx.strokeStyle='#E2E8F0'; ctx.beginPath(); ctx.moveTo(pad.left,pad.top); ctx.lineTo(pad.left,pad.top+ch); ctx.lineTo(pad.left+cw,pad.top+ch); ctx.stroke();
+  dist.forEach(function(p,i){
+    var x=pad.left+gap*i+(gap-barW)/2;
+    var passH=(p.pass||0)/maxVal*ch;
+    var failH=(p.fail||0)/maxVal*ch;
+    var y0=pad.top+ch;
+    // 通过（左）
+    ctx.fillStyle='#4F46E5';
+    ctx.fillRect(x,y0-passH,barW*0.45,passH);
+    // 失败（右）
+    ctx.fillStyle='#EF4444';
+    ctx.fillRect(x+barW*0.55,y0-failH,barW*0.45,failH);
+    // 标签与数值
+    ctx.fillStyle='#64748B'; ctx.font='12px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(p.priority||'P?',x+barW/2,y0+18);
+    if(p.pass) ctx.fillText(p.pass,x+barW*0.22,y0-passH-6);
+    if(p.fail) ctx.fillText(p.fail,x+barW*0.78,y0-failH-6);
   });
 })();
 
-// ===== Export =====
-function exportJSON() {
-  var blob = new Blob([JSON.stringify(reportData, null, 2)], {type: 'application/json'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'report_data.json';
-  a.click();
+// ---------- 错误类型柱状分布 ----------
+(function(){
+  var canvas=document.getElementById('errorChart'); if(!canvas) return;
+  var ctx=canvas.getContext('2d');
+  var errs=reportData.error_types||[];
+  var w=canvas.width,h=canvas.height;
+  if(errs.length===0){ ctx.fillStyle='#94A3B8'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText('无失败用例',w/2,h/2); return; }
+  var colors=['#EF4444','#F59E0B','#8B5CF6','#4F46E5','#10B981','#94A3B8'];
+  var pad={top:20,right:60,bottom:40,left:44};
+  var cw=w-pad.left-pad.right,ch=h-pad.top-pad.bottom;
+  var maxVal=Math.max.apply(null,errs.map(function(e){return e.count;}),1);
+  var gap=cw/errs.length;
+  var barW=Math.min(50,gap*0.55);
+  ctx.strokeStyle='#E2E8F0'; ctx.beginPath(); ctx.moveTo(pad.left,pad.top); ctx.lineTo(pad.left,pad.top+ch); ctx.lineTo(pad.left+cw,pad.top+ch); ctx.stroke();
+  errs.forEach(function(e,i){
+    var x=pad.left+gap*i+(gap-barW)/2;
+    var bh=(e.count/maxVal)*ch;
+    ctx.fillStyle=colors[i%colors.length];
+    ctx.fillRect(x,pad.top+ch-bh,barW,bh);
+    ctx.fillStyle='#64748B'; ctx.font='12px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(e.count,x+barW/2,pad.top+ch-bh-6);
+    ctx.fillText((e.type||'').slice(0,10),x+barW/2,pad.top+ch+16);
+  });
+  // 图例
+  errs.forEach(function(e,i){
+    var ly=pad.top+8+i*20;
+    ctx.fillStyle=colors[i%colors.length]; ctx.fillRect(pad.left+cw+8,ly,12,12);
+    ctx.fillStyle='#333'; ctx.font='12px sans-serif'; ctx.textAlign='left';
+    ctx.fillText((e.type||'')+' ('+e.count+')',pad.left+cw+26,ly+11);
+  });
+})();
+
+// ---------- 导出 JSON / CSV ----------
+function exportJSON(){
+  var blob=new Blob([JSON.stringify(reportData,null,2)],{type:'application/json'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='report_data.json'; a.click();
 }
-
-function exportCSV() {
-  var cases = reportData.cases || [];
-  var csv = '\uFEFF用例名称,优先级,状态,耗时(ms),步骤数,错误信息\n';
-  cases.forEach(function(c) {
-    csv += [
-      '"' + (c.case_name || '').replace(/"/g,'""') + '"',
-      c.priority || '',
-      c.final_status || '',
-      c.total_duration_ms || 0,
-      c.step_count || 0,
-      '"' + (c.error_summary || '').replace(/"/g,'""') + '"',
-    ].join(',') + '\n';
-  });
-  var blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'report_data.csv';
-  a.click();
-}
-
-function downloadCaseJSON(caseId) {
-  var c = (reportData.cases || []).find(function(x){ return x.case_id === caseId; });
-  if (!c) return;
-  var blob = new Blob([JSON.stringify(c, null, 2)], {type: 'application/json'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'case_' + caseId + '.json';
-  a.click();
+function exportCSV(){
+  var cases=reportData.cases||[];
+  var csv='\uFEFF用例名称,优先级,状态,耗时(ms),步骤数,错误信息\n';
+  cases.forEach(function(c){ csv += ['"'+((c.case_name||'').replace(/"/g,'""'))+'"',c.priority||'',c.final_status||'',c.total_duration_ms||0,c.step_count||0,'"'+((c.error_summary||'').replace(/"/g,'""'))+'"'].join(',')+'\n'; });
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='report_data.csv'; a.click();
 }
 </script>
 </body>

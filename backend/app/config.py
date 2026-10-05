@@ -48,14 +48,14 @@ class Settings(BaseSettings):
 
     # ── AI Batch / Case 双层预算（P0-5）──
     # 命名钉死：claim 前检查的量叫 batch_remaining，claim 后的叫 case_remaining。
-    AI_BATCH_BUDGET_SECONDS: float = 300.0  # 整批 wall-clock 预算（claim 前短路）
-    AI_CASE_BUDGET_SECONDS: float = 120.0   # 单 case 预算（claim 后贯穿 quota/slot/HTTP/backoff）
+    AI_BATCH_BUDGET_SECONDS: float = 300.0  # 整批 wall-clock 预算下限（claim 前短路）；实际预算按用例数动态放大（见 batch_generate_service.BatchJob）
+    AI_CASE_BUDGET_SECONDS: float = 300.0   # 单 case 预算（claim 后贯穿 quota/slot/HTTP/backoff）
 
     # ── AI Heal 独立预算（P0-8）──
     # Heal Round 拥有独立 deadline，从 Round claim 时刻起算；Batch Generation 的
     # case_deadline 已过期，禁止复用。Heal 的 quota/slot/HTTP/Retry-After/backoff
     # 全部受该 deadline 约束。
-    AI_HEAL_BUDGET_SECONDS: float = 120.0
+    AI_HEAL_BUDGET_SECONDS: float = 300.0
 
     @model_validator(mode="after")
     def _compat_ai_rate_limit(self):
