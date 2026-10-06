@@ -20,6 +20,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import re
 import threading
 import time
@@ -36,7 +37,8 @@ from app.config import settings
 from app.models.execution_step import ExecutionStep
 from app.models.generated_code import GeneratedCode
 from app.models.heal_record import HealRecord
-from app.exceptions import SecurityException
+from app.exceptions import DeadlineExceeded, SecurityException
+from app.services import ai_service
 from app.utils.ai_rate_limiter import get_limiter
 from app.services.element_extractor import (
     extract_elements as _extract_elements_shared,
@@ -75,6 +77,8 @@ class HealService:
     # 主入口 — 自动触发（返回 bool）
     # ═══════════════════════════════════════════════
 
+    # DEPRECATED: 旧逐 step 自愈路径（生产统一走 HealRoundService.heal_case）。
+    # 仅保留兼容旧契约，禁止新增调用方；其 _call_heal_ai 私有 httpx 客户端随此路径冻结。
     async def try_heal(
         self,
         execution_id: int,
@@ -1095,8 +1099,10 @@ class HealRoundService:
 
             prompt = self._heal_svc._build_heal_prompt(error_ctx, original_code_text, root_step, platform=platform)
 
-            # AI 调用（quota/slot/HTTP/Retry-After/backoff 全受 heal deadline 约束）
-            ai_ok, raw_code, ai_err = await self._ai_attempt(prompt, platform, remaining)
+            # AI 调用（单次 HTTP attempt；quota/slot 原子预留；无内部重试）
+            ai_ok, raw_code, ai_err = await self._ai_attempt(
+                prompt, platform, remaining, attempt_no, deadline
+            )
             if not ai_ok:
                 last_ai_error = ai_err
                 attempts.append(self._mk_attempt(
@@ -1107,6 +1113,16 @@ class HealRoundService:
                 if ai_err == "deadline_exceeded":
                     infra_error = ("deadline_exceeded", "heal_deadline_exceeded")
                     break
+                # Round 循环是唯一重试权威：仅 retryable 才 continue 消耗下一次 attempt
+                if ai_err != "ai_request_failed" and ai_err not in ai_service._RETRYABLE_ERROR_TYPES:
+                    break
+                # retryable：退避后再消耗下一次 attempt，避免 429 在毫秒级连烧预算
+                # 仅当仍存在下一次 attempt 时退避（末次 attempt 后退避无意义，只白耗预算）
+                if attempt_no < settings.MAX_HEAL_RETRY:
+                    await asyncio.sleep(min(
+                        2 ** (attempt_no - 1) + random.uniform(0, 0.5),
+                        max(0.0, remaining - 1),
+                    ))
                 continue
 
             candidate_code = self._heal_svc._extract_code(raw_code)
@@ -1162,11 +1178,11 @@ class HealRoundService:
         if any_valid_rerun:
             # 混合失败钉死：至少一个 valid candidate 被实际 rerun 且全部失败（均非基础设施）→ heal_exhausted
             return self._close_round(record, "failed", "heal_exhausted", attempts)
-        # 无可 rerun candidate：『AI 调用最终失败』一律记 ai_request_failed
-        if last_ai_error == "ai_request_failed":
-            return self._close_round(record, "failed", "ai_request_failed", attempts)
-        if last_ai_error == "ai_schema_error":
+        # 无可 rerun candidate：AI 调用最终失败归一到冻结七值
+        if last_ai_error in ("ai_schema_error", "schema_error", "invalid_json"):
             return self._close_round(record, "failed", "ai_schema_error", attempts)
+        if last_ai_error is not None:
+            return self._close_round(record, "failed", "ai_request_failed", attempts)
         return self._close_round(record, "failed", "validation_error", attempts)
 
     # ═══════════════════════════════════════════════
@@ -1658,42 +1674,59 @@ class HealRoundService:
 
     async def _ai_attempt(
         self, prompt: str, platform: str, remaining: float,
+        attempt_no: int, deadline: float,
     ) -> tuple[bool, Optional[str], Optional[str]]:
-        """Heal AI 调用（受全局限流器 + heal deadline 约束）。
+        """Heal AI 单次 attempt（无内部重试；唯一准入点为限流器原子预留）。
 
-        返回 (ok, code, error_type)；error_type ∈ {ai_request_failed, ai_schema_error, deadline_exceeded}。
-        『AI 调用最终失败』（429/5xx/连接重试耗尽/限流）一律记 ai_request_failed。
+        HTTP 由共享 AI 层 ai_service._chat_http_attempt 执行（单次 attempt，
+        无内部重试循环）。是否重试由 Round 循环（_run_round）决定。
+
+        返回 (ok, code, error_type)；失败时 error_type 为共享层原始类型
+        （rate_limited/server_error/connect_error/http_4xx/schema_error/deadline_exceeded 等）。
+        Mock 分支保留不动（不消耗 quota/slot）。
         """
-        start = time.monotonic()
+        if not settings.OPENAI_API_KEY:
+            # Mock 模式不消耗限流额度（保留旧语义）
+            code = self._heal_svc._call_heal_ai(prompt, platform=platform)
+            if not code or "UNABLE_TO_HEAL" in code:
+                return (False, None, "ai_schema_error")
+            return (True, code, None)
+
+        if remaining <= 0:
+            return (False, None, "deadline_exceeded")
+
+        # 唯一准入点：原子预留 quota + slot（任一失败本次 attempt 不成立）
+        reservation = ai_rate_limiter.acquire_attempt(remaining)
+        if reservation in ("quota_timeout", "slot_timeout"):
+            return (False, None, "ai_request_failed")
+
+        if platform == "android":
+            system_msg = "你是 Appium Android 测试修复专家。只返回完整的 def run_test(driver) Python 代码，不含 markdown 标记和解释。"
+        else:
+            system_msg = "你是 Playwright 测试修复专家。只返回完整的 async def run_test(safe) Python 代码，使用 safe.goto / safe.click 等受控 API，不含 markdown 标记和解释。"
+
         try:
-            if not settings.OPENAI_API_KEY:
-                # Mock 模式不消耗限流额度
-                code = self._heal_svc._call_heal_ai(prompt, platform=platform)
-            else:
-                if remaining <= 0:
-                    return (False, None, "deadline_exceeded")
-                if not ai_rate_limiter.acquire():
-                    return (False, None, "ai_request_failed")
-                if not ai_rate_limiter.acquire_slot(timeout=remaining):
-                    ai_rate_limiter._rollback_quota()
-                    return (False, None, "ai_request_failed")
-                try:
-                    code = await asyncio.to_thread(
-                        self._heal_svc._call_heal_ai, prompt, platform=platform
-                    )
-                finally:
-                    ai_rate_limiter.release_slot()
+            result = await ai_service._chat_http_attempt(
+                model=settings.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=4096,
+                attempt=attempt_no,
+                deadline=deadline,
+            )
+        except DeadlineExceeded:
+            return (False, None, "deadline_exceeded")
         except Exception as e:
             logger.error("Heal AI 调用失败: %s", e)
             return (False, None, "ai_request_failed")
+        finally:
+            ai_rate_limiter.release_slot()
 
-        if time.monotonic() - start >= remaining:
-            # 在途请求超 deadline → 本次结果标记 deadline_exceeded（不消费 candidate）
-            return (False, None, "deadline_exceeded")
-
-        if not code or "UNABLE_TO_HEAL" in code:
-            return (False, None, "ai_schema_error")
-        return (True, code, None)
+        if result.error_type is None:
+            return (True, result.content, None)
+        return (False, None, result.error_type)
 
 
 # ═══════════════════════════════════════════════
