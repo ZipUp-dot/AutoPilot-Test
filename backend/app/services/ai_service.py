@@ -495,10 +495,13 @@ async def _chat_http_attempt(
     *, model: str, messages: list, max_tokens: int, attempt: int,
     deadline: float, batch_id=None, case_id=None, vision: bool = False,
 ) -> _HTTPAttempt:
-    """执行一次 HTTP attempt（wall-clock deadline 由 asyncio.wait_for 真正终止请求）。
+    """执行一次 HTTP attempt（wall-clock deadline 由 asyncio.wait + 主动 aclose 真正终止）。
 
-    - 统一 wall-clock deadline：分项 timeout 不保证总时长，任一时刻到期即取消，
-      取消会经 httpx/httpcore 关闭底层连接（真实终止，非伪取消）。
+    - 统一 wall-clock deadline：分项 timeout 不保证总时长，任一到点即触发硬看门狗。
+    - Windows ProactorEventLoop 下 asyncio.wait_for 的 task.cancel() 无法中止已发出的
+      overlapped socket recv（协程会卡在 await recv_future 上永久挂起），因此这里改用
+      asyncio.wait(FIRST_COMPLETED) + 到点主动 client.aclose() 关闭底层连接，真正终止 I/O，
+      且从不 await 被取消的 post_task，杜绝僵尸任务。不同事件循环策略均安全。
     - 返回 _HTTPAttempt；成功时 error_type=None。
     """
     start = time.monotonic()
@@ -509,27 +512,53 @@ async def _chat_http_attempt(
     retryable = False
     content = None
 
-    async with httpx.AsyncClient(timeout=_request_timeout(deadline)) as client:
-        headers = {"Content-Type": "application/json"}
-        if settings.OPENAI_API_KEY:
-            # 空 key 时禁止发送非法头 "Bearer "（尾随空值），否则 httpx 抛 LocalProtocolError
-            headers["Authorization"] = f"Bearer {settings.OPENAI_API_KEY}"
+    # 早期短路：remaining<=0 不发请求（保证既有 posted==0 语义）
+    if _remaining(deadline) <= 0:
+        raise DeadlineExceeded()
+
+    client = httpx.AsyncClient(timeout=_request_timeout(deadline))
+    headers = {"Content-Type": "application/json"}
+    if settings.OPENAI_API_KEY:
+        # 空 key 时禁止发送非法头 "Bearer "（尾随空值），否则 httpx 抛 LocalProtocolError
+        headers["Authorization"] = f"Bearer {settings.OPENAI_API_KEY}"
+
+    remaining = _remaining(deadline)
+    # wall-clock 看门狗：用 loop.call_later 生成定时 future（不经 asyncio.sleep，
+    # 一是避免占被 mock 的 sleep 桩，二是与事件循环 timer 可靠对齐，Proactor 下必然准时）
+    _loop = asyncio.get_event_loop()
+    deadline_fut = _loop.create_future()
+    _deadline_handle = _loop.call_later(remaining, deadline_fut.set_result, True)
+    post_task = asyncio.ensure_future(
+        client.post(
+            f"{settings.OPENAI_BASE_URL}/chat/completions",
+            headers=headers,
+            json={
+                "model": model,
+                "messages": messages,
+                "temperature": 0.1,
+                "max_tokens": max_tokens,
+            },
+        )
+    )
+
+    try:
         try:
-            response = await asyncio.wait_for(
-                client.post(
-                    f"{settings.OPENAI_BASE_URL}/chat/completions",
-                    headers=headers,
-                    json={
-                        "model": model,
-                        "messages": messages,
-                        "temperature": 0.1,
-                        "max_tokens": max_tokens,
-                    },
-                ),
-                timeout=_remaining(deadline),  # HTTP 调用级 wall-clock deadline
+            done, _ = await asyncio.wait(
+                {post_task, deadline_fut},
+                timeout=remaining + 1.0,  # 双保险，仅事件循环被占死时兜底
+                return_when=asyncio.FIRST_COMPLETED,
             )
-        except asyncio.TimeoutError:
-            # wall-clock 到期：wait_for 已取消内部协程 → 底层连接已关闭（真实终止）
+        finally:
+            _deadline_handle.cancel()
+            if not deadline_fut.done():
+                deadline_fut.cancel()
+        if post_task not in done:
+            # 硬看门狗路径：deadline 先到 → 真正中止底层 socket I/O（Proactor 下唯一真终止）
+            post_task.cancel()
+            try:
+                await asyncio.wait_for(client.aclose(), timeout=2.0)
+            except Exception:
+                pass
             error_type = "deadline_exceeded"
             retryable = False
             _log_attempt(batch_id=batch_id, case_id=case_id, attempt=attempt,
@@ -537,60 +566,68 @@ async def _chat_http_attempt(
                          latency_ms=(time.monotonic() - start) * 1000,
                          usage=usage, retry_after=retry_after)
             raise DeadlineExceeded()
-        except DeadlineExceeded:
-            raise
+        response = post_task.result()
+    except DeadlineExceeded:
+        raise
+    except httpx.HTTPStatusError as e:
+        http_status = e.response.status_code
+        retry_after = e.response.headers.get("Retry-After")
+        error_type, retryable = _classify_status(http_status)
+    except httpx.ConnectTimeout:
+        error_type, retryable = "connect_timeout", True
+    except httpx.ReadTimeout:
+        error_type, retryable = "read_timeout", True
+    except httpx.WriteTimeout:
+        error_type, retryable = "write_timeout", True
+    except httpx.PoolTimeout:
+        error_type, retryable = "pool_timeout", True
+    except httpx.ConnectError:
+        error_type, retryable = "connect_error", True
+    except httpx.TimeoutException:
+        error_type, retryable = "timeout", True
+    except httpx.HTTPError:
+        error_type, retryable = "protocol_error", True
+    else:
+        http_status = response.status_code
+        try:
+            response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            http_status = e.response.status_code
             retry_after = e.response.headers.get("Retry-After")
-            error_type, retryable = _classify_status(http_status)
-        except httpx.ConnectTimeout:
-            error_type, retryable = "connect_timeout", True
-        except httpx.ReadTimeout:
-            error_type, retryable = "read_timeout", True
-        except httpx.WriteTimeout:
-            error_type, retryable = "write_timeout", True
-        except httpx.PoolTimeout:
-            error_type, retryable = "pool_timeout", True
-        except httpx.ConnectError:
-            error_type, retryable = "connect_error", True
-        except httpx.TimeoutException:
-            error_type, retryable = "timeout", True
-        except httpx.HTTPError:
-            error_type, retryable = "protocol_error", True
+            error_type, retryable = _classify_status(e.response.status_code)
         else:
-            http_status = response.status_code
+            # 200：解析响应，响应返回后再校 elapsed，超 deadline 一律 deadline_exceeded
+            if _remaining(deadline) <= 0:
+                raise DeadlineExceeded()
             try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                retry_after = e.response.headers.get("Retry-After")
-                error_type, retryable = _classify_status(e.response.status_code)
+                body = response.json()
+            except (ValueError, Exception):  # invalid JSON
+                error_type, retryable = "invalid_json", False
             else:
-                # 200：解析响应，响应返回后再校 elapsed，超 deadline 一律 deadline_exceeded
-                if _remaining(deadline) <= 0:
-                    raise DeadlineExceeded()
-                try:
-                    body = response.json()
-                except (ValueError, Exception):  # invalid JSON
-                    error_type, retryable = "invalid_json", False
+                if not isinstance(body, dict):
+                    error_type, retryable = "schema_error", False
                 else:
-                    if not isinstance(body, dict):
+                    usage = body.get("usage", {}).get("total_tokens")
+                    try:
+                        choices = body["choices"]
+                        content = choices[0]["message"]["content"]
+                    except (KeyError, IndexError, TypeError):
                         error_type, retryable = "schema_error", False
-                    else:
-                        usage = body.get("usage", {}).get("total_tokens")
-                        try:
-                            choices = body["choices"]
-                            content = choices[0]["message"]["content"]
-                        except (KeyError, IndexError, TypeError):
-                            error_type, retryable = "schema_error", False
+    finally:
+        # 无论成功/失败/超时，都关闭 client；DeadlineExceeded 分支已主动 aclose，
+        # 此处二度调用幂等且安全
+        try:
+            await client.aclose()
+        except Exception:
+            pass
 
-        latency_ms = (time.monotonic() - start) * 1000
-        _log_attempt(batch_id=batch_id, case_id=case_id, attempt=attempt,
-                     error_type=error_type, http_status=http_status,
-                     latency_ms=latency_ms, usage=usage, retry_after=retry_after)
+    latency_ms = (time.monotonic() - start) * 1000
+    _log_attempt(batch_id=batch_id, case_id=case_id, attempt=attempt,
+                 error_type=error_type, http_status=http_status,
+                 latency_ms=latency_ms, usage=usage, retry_after=retry_after)
 
-        return _HTTPAttempt(content=content, error_type=error_type,
-                            retryable=retryable, http_status=http_status,
-                            usage=usage, retry_after=retry_after)
+    return _HTTPAttempt(content=content, error_type=error_type,
+                        retryable=retryable, http_status=http_status,
+                        usage=usage, retry_after=retry_after)
 
 
 def _retry_wait(attempt: int, retry_after: Optional[str], deadline: float) -> float:
