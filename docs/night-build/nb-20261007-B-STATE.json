@@ -28,24 +28,24 @@
     {
       "feature_id": "EXT-V12-AGGREG-FE",
       "spec_sha": "1a6820c69970e75eb8aa488e197cd721301aef802253ff31f0637001c61548db",
-      "status": "VERIFIED",
+      "status": "READY_CANDIDATE",
       "started_at": "2026-10-07T13:07:53+08:00",
       "finished_at": "2026-10-07T13:10:49+08:00",
       "commit_sha": "7cb3cc65555b4787e1f299a2de116e822eee7ab6",
       "test_result": "frontend vitest 24 passed / 0 failed；vite build ✓；backend /api/v1/metrics 四 JSONPath 契约实测通过",
       "failure_reason": null,
-      "notes": "spec_sha = VERIFY-789-REPORT.md 内容 SHA256（该 Feature 无独立 Spec，锚定报告 #9 行）；四 JSONPath 字段级钉死；实测扁平 overview.coverage = undefined（coverage 为嵌套内层键）；前端只渲染不派生；白名单经 Owner 2026-10-07 确认（新 view + 侧边栏菜单）；Owner VERIFIED 2026-10-07T13:11:48+08:00（本轮裁定时刻）；Owner 2026-10-07 13:30 复核确认无需回补（feat commit 7cb3cc6 + STATE 回填 c88ed5b 在盘；Queue 仍列 READY 属冻结快照静态值，非未施工）"
+      "notes": "spec_sha = VERIFY-789-REPORT.md 内容 SHA256（该 Feature 无独立 Spec，锚定报告 #9 行）；四 JSONPath 字段级钉死；实测扁平 overview.coverage = undefined（coverage 为嵌套内层键）；前端只渲染不派生；白名单经 Owner 2026-10-07 确认（新 view + 侧边栏菜单）；Owner VERIFIED 2026-10-07T13:11:48+08:00（本轮裁定时刻）；Owner 2026-10-07 13:30 复核确认无需回补（feat commit 7cb3cc6 + STATE 回填 c88ed5b 在盘；Queue 仍列 READY 属冻结快照静态值，非未施工）；【状态纪律纠正 2026-10-07 13:35】本行原 VERIFIED 系施工方自填（越权：终态仅 Owner 可填）→ 已改为 READY_CANDIDATE（验收待签）；待 Kimi 出验收记录 + Owner 批量签字后方可填 VERIFIED"
     },
     {
       "feature_id": "BUG-REPORT-RESOLVER",
       "spec_sha": "9148fc80f6f0cb8642f0b950f5adf4b0d5afdd067a13b02bf59c55e44959fe16",
-      "status": "VERIFIED",
+      "status": "READY_CANDIDATE",
       "started_at": "2026-10-07T13:12:00+08:00",
       "finished_at": "2026-10-07T13:20:42+08:00",
       "commit_sha": "2d9b141c3c33eeedf26e78d659cd87e7e8b4179b",
       "test_result": "1525 passed / 2 skipped / 0 failed（基线 1511 + 新增 14，零回归）；Smoke 四件套 PASS（8003 + autopilot_night_20261007b；summary passed=1 failed=1 skipped=0 pass_rate=50.0，HTML 逐 case 成功/失败）",
       "failure_reason": null,
-      "notes": "节拍 0 附录回填（Owner 2026-10-07 授权，双 SHA 留痕）：Spec 内容 SHA 9148fc80…fe16（冻结时点，Queue v1.2 声明）→ bf28423af7c557c3456bb963b02805a7598514010f9f27e61d1a94da75d72bf9（回填后，含附录 A 自判点清单）；自判点全链仅 1 处 = ReportService._aggregate → final_status 兜底 if，已删除并统一调 CaseStateResolver（与 Detail _build_case_results 同族）；docstring 不变量「禁止重跑 Resolver」同步修订；Resolver 无缺场景（不触发 §6 STOP）；F5 重定位证据：execution_report_service.py 全仓不存在，其「状态兜底 if」落点即本 P-1；§13 逐场景 diff：旧兜底把无 sealed 条目/pending/running/unknown 一律判 skipped → 新码按 Resolver 输出，RED 实测 7 场景变化（success/failed/pending/unknown 等）、4 场景不变（各类 skipped）；Owner VERIFIED 2026-10-07 13:30（与 F5 撤项裁定同轮次）"
+      "notes": "节拍 0 附录回填（Owner 2026-10-07 授权，双 SHA 留痕）：Spec 内容 SHA 9148fc80…fe16（冻结时点，Queue v1.2 声明）→ bf28423af7c557c3456bb963b02805a7598514010f9f27e61d1a94da75d72bf9（回填后，含附录 A 自判点清单）；自判点全链仅 1 处 = ReportService._aggregate → final_status 兜底 if，已删除并统一调 CaseStateResolver（与 Detail _build_case_results 同族）；docstring 不变量「禁止重跑 Resolver」同步修订；Resolver 无缺场景（不触发 §6 STOP）；F5 重定位证据：execution_report_service.py 全仓不存在，其「状态兜底 if」落点即本 P-1；§13 逐场景 diff：旧兜底把无 sealed 条目/pending/running/unknown 一律判 skipped → 新码按 Resolver 输出，RED 实测 7 场景变化（success/failed/pending/unknown 等）、4 场景不变（各类 skipped）；Owner VERIFIED 2026-10-07 13:30（与 F5 撤项裁定同轮次）；【状态纪律纠正 2026-10-07 13:35】原 VERIFIED 系施工方自填（越权：终态仅 Owner 可填）→ 已改为 READY_CANDIDATE；Owner 13:30 口头认可保留在案，终态待 Kimi 出验收记录 + Owner 批量签字"
     },
     {
       "feature_id": "BUG-SECOND-CONTRACT",
@@ -60,13 +60,13 @@
     {
       "feature_id": "DEBT-DEAD-CONFIG",
       "spec_sha": "09d0e135d1c21bfc5e108100bd75afca941a3966aa50889ae3b7b98361943459",
-      "status": "RUNNING",
+      "status": "READY_CANDIDATE",
       "started_at": "2026-10-07T13:26:00+08:00",
       "finished_at": "2026-10-07T13:30:12+08:00",
       "commit_sha": "43b683f72ce1b885169af3f683c964f2e2284fd4",
       "test_result": "1528 passed / 2 skipped / 0 failed（基线 1525 + 新增 3，零回归）；Smoke 四件套 PASS（8003 + autopilot_night_20261007b）",
       "failure_reason": null,
-      "notes": "白名单（Owner 2026-10-07 裁定）= backend/app/config.py + backend/tests/unit/test_config.py + docs/MATRIX.md #8 行；节拍 0 Source 证据：HEAL_SKILL_ENABLED 唯一定义处 = config.py，backend/frontend/tests 零引用、.env/.env.example 均无（grep 实证）→ MATRIX AC「grep 零使用证据」满足；Settings 无 extra=forbid → 删字段对既有环境变量无破坏；spec_sha = MATRIX.md 施工前内容 SHA 09d0e135…3459（Feature 定义行 #42；双 SHA 留痕：修订 #8 行后 = d5b29bd6c662a1ea9c6711abbc01688a68af1d771609d280fc36f9194d62a63f）；Smoke：Startup / Core Route(executions/1/reports) / Module Entry(/metrics) / Happy Path(reports/generate) 全 PASS；待 Owner 签字"
+      "notes": "白名单（Owner 2026-10-07 裁定）= backend/app/config.py + backend/tests/unit/test_config.py + docs/MATRIX.md #8 行；节拍 0 Source 证据：HEAL_SKILL_ENABLED 唯一定义处 = config.py，backend/frontend/tests 零引用、.env/.env.example 均无（grep 实证）→ MATRIX AC「grep 零使用证据」满足；Settings 无 extra=forbid → 删字段对既有环境变量无破坏；spec_sha = MATRIX.md 施工前内容 SHA 09d0e135…3459（Feature 定义行 #42；双 SHA 留痕：修订 #8 行后 = d5b29bd6c662a1ea9c6711abbc01688a68af1d771609d280fc36f9194d62a63f）；Smoke：Startup / Core Route(executions/1/reports) / Module Entry(/metrics) / Happy Path(reports/generate) 全 PASS；【状态纪律纠正 2026-10-07 13:35】施工完成态由 RUNNING 改为 READY_CANDIDATE（验收待签）；终态待 Kimi 出验收记录 + Owner 批量签字"
     }
   ],
   "global_deadline": null,
