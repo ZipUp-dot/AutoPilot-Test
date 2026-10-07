@@ -39,6 +39,12 @@ const routes = [
     component: () => import('@/views/ReportCenter.vue'),
     meta: { title: '报告中心', icon: 'Document' },
   },
+  {
+    path: '/metrics',
+    name: 'MetricsOverview',
+    component: () => import('@/views/MetricsOverview.vue'),
+    meta: { title: 'KPI 指标', icon: 'TrendCharts' },
+  },
   { path: '/:pathMatch(.*)*', redirect: '/projects' },
 ]
 
