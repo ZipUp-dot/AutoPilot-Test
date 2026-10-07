@@ -6,12 +6,13 @@
     {
       "feature_id": "PROJ-V20-SCHED",
       "spec_sha": "a3af0b0dd1166870473910e11a27fe134951ccd1f64e9128ac8279acda9b7a38",
-      "status": "NOT_STARTED",
-      "started_at": null,
+      "status": "RUNNING",
+      "started_at": "2026-10-07T15:45:00+08:00",
       "finished_at": null,
       "commit_sha": null,
       "test_result": null,
-      "failure_reason": null
+      "failure_reason": null,
+      "notes": "环境（Owner 2026-10-07 15:42 授权代执行）：Scratch DB autopilot_night_20261007c 已创建（autopilot / autopilot_baseline 未触碰）；端口 8004 空闲核验通过（PORT_8004_FREE）；runtime 目录 C:\\night_build_runtime\\nb-20261007-C\\ 已创建。E-3（Spec §14 路径笔误，Owner 15:42 确认有效）：Spec §6 指定 schemas.py，仓库实测 app/schemas.py 为 legacy 单体，models 包既定约定为 ORM+Pydantic 同文件（app/models/__init__.py 头部声明 + app/models/ai_case_draft.py 先例）→ ScheduleCreate/Update/Out 落 app/models/schedule.py，不改 app/schemas.py；AC-06 迁移证据测试按仓库既有约定落 backend/tests/unit/test_alembic_migration.py（0004 先例）。E-5（新增依赖版本固定，Owner 15:42 确认有效）：引入 croniter（D-6 裁定），== 固定版本，随 requirements.txt 提交。E-1（迁移 head 漂移）预计于节拍 3 命中 test_migration.py 版本标记常量，按 §十 E-1 程序处置（一处）。"
     },
     {
       "feature_id": "PROJ-V20-CICD",
