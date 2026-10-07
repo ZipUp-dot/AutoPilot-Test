@@ -39,6 +39,10 @@ class _LimiterSpy:
         self.acquire_attempt_calls.append(remaining)
         return self._admission
 
+    async def acquire_attempt_async(self, remaining=None):
+        # DEBT-SLOT-ASYNC：生产入口改为异步版；复用同一记录路径，语义与同步版一致
+        return self.acquire_attempt(remaining)
+
     def release_slot(self):
         self.events.append("release")
         self.release_slot_calls += 1

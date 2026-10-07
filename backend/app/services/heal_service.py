@@ -1696,7 +1696,7 @@ class HealRoundService:
             return (False, None, "deadline_exceeded")
 
         # 唯一准入点：原子预留 quota + slot（任一失败本次 attempt 不成立）
-        reservation = ai_rate_limiter.acquire_attempt(remaining)
+        reservation = await ai_rate_limiter.acquire_attempt_async(remaining)
         if reservation in ("quota_timeout", "slot_timeout"):
             return (False, None, "ai_request_failed")
 

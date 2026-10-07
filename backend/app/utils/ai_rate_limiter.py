@@ -9,6 +9,7 @@
 保证全局并发与速率上限一致 —— 无论多少线程/批次并发，AI 请求并发 ≤ AI_MAX_CONCURRENCY。
 """
 
+import asyncio
 import threading
 import time
 import logging
@@ -115,6 +116,58 @@ class AIRateLimiter:
                 self._calls.pop()
             if self._total_calls > 0:
                 self._total_calls -= 1
+
+    # ═══════════════════════════════════════════════
+    # 异步等槽（DEBT-SLOT-ASYNC）：等待期间不阻塞 event loop
+    # ═══════════════════════════════════════════════
+
+    async def _acquire_slot_async(self, timeout: Optional[float] = None) -> bool:
+        """异步等槽实现：阻塞 acquire 放入默认 executor；取消后迟到获取立即自释放。"""
+        if timeout is None:
+            timeout = CONCURRENCY_WAIT_SECONDS
+
+        loop = asyncio.get_running_loop()
+        cancelled = asyncio.Event()
+
+        def _blocking_acquire() -> bool:
+            # 阻塞带 timeout：超时即返回，线程不会无限挂起
+            acquired = self._semaphore.acquire(timeout=timeout)
+            if acquired and cancelled.is_set():
+                # 迟到获取：等待已被取消，立即自释放，杜绝槽泄漏（不变量 #9）
+                self._semaphore.release()
+                return False
+            return acquired
+
+        future = loop.run_in_executor(None, _blocking_acquire)
+        try:
+            return await future
+        except asyncio.CancelledError:
+            # 标记取消：executor 线程仍在阻塞等待，待其（迟到）获取时自释放
+            cancelled.set()
+            raise
+
+    async def acquire_slot_async(self, timeout: Optional[float] = None) -> bool:
+        """异步等槽：loop 不被阻塞；超时或取消后若迟到获取成功则立即自释放，杜绝泄漏。
+
+        Args:
+            timeout: 最长等待秒数；None 用 CONCURRENCY_WAIT_SECONDS 默认
+
+        Returns:
+            True 获取成功；False 等待超时
+        """
+        return await self._acquire_slot_async(timeout)
+
+    async def acquire_attempt_async(self, remaining: Optional[float] = None) -> Optional[str]:
+        """acquire_attempt 的异步版：quota 同步 + slot 异步等待 + 失败回滚。
+
+        返回语义与同步版完全一致（None=成功 | "quota_timeout" | "slot_timeout"）。
+        """
+        if not self.acquire():
+            return "quota_timeout"
+        if not await self.acquire_slot_async(timeout=remaining):
+            self._rollback_quota()
+            return "slot_timeout"
+        return None
 
     @property
     def active_count(self) -> int:
