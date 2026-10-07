@@ -63,6 +63,12 @@ const routes = [
     component: () => import('@/views/PipelineRuns.vue'),
     meta: { title: '流水线运行', icon: 'Promotion' },
   },
+  {
+    path: '/mock',
+    name: 'MockManage',
+    component: () => import('@/views/MockManage.vue'),
+    meta: { title: 'Mock 服务', icon: 'Connection' },
+  },
   { path: '/:pathMatch(.*)*', redirect: '/projects' },
 ]
 

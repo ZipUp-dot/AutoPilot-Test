@@ -52,6 +52,9 @@ class AdmissionResult:
     target_url: str = ""
     test_path: str = "/"
     ssrf_policy: dict = field(default_factory=dict)
+    # F3（PROJ-V20-MOCK，Owner 2026-10-07 裁定 Option A）：Mock 服务引用随 Admission
+    # 冻结（来源 project.config_json["mock_server_id"]，可空）。执行期只读 Manifest。
+    mock_server_id: Optional[int] = None
 
 
 class ExecutionAdmissionService:
@@ -134,6 +137,11 @@ class ExecutionAdmissionService:
             "allowed_hosts": list(cfg.get("allowed_hosts") or []),
             "allowed_ports": list(cfg.get("allowed_ports") or []),
         }
+        # F3：Mock 服务引用快照（可空；非法值按 None 处理，不阻断 Admission）
+        try:
+            result.mock_server_id = int(cfg["mock_server_id"]) if cfg.get("mock_server_id") else None
+        except (TypeError, ValueError):
+            result.mock_server_id = None
 
         # 5/6/7）每 case 步骤校验与解析
         steps_map: dict[int, list[dict]] = {}
@@ -239,6 +247,8 @@ class ExecutionAdmissionService:
             "browser_type": result.browser_type,
             "execution_mode": result.execution_mode,
             "ssrf_policy": result.ssrf_policy,
+            # F3：Mock 服务引用（Admission 冻结；执行期只读此值，禁止回读 Project）
+            "mock_server_id": result.mock_server_id,
         }
         from app.models.project import Project as _Project
         proj = (

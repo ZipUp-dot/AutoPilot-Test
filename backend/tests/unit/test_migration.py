@@ -78,7 +78,7 @@ class TestLegacyBridgeBehavior:
                 assert conn.execute(text("SELECT name FROM projects WHERE id=1")).scalar() == "p1"
             eng.dispose()
 
-            # upgrade head：只应用 0002/0003/0004/0005/0006 delta，结构正确且数据保留
+            # upgrade head：只应用 0002/0003/0004/0005/0006/0007 delta，结构正确且数据保留
             monkeypatch.setenv("AUTOPILOT_ALEMBIC_URL", url)
             command.upgrade(cfg, "head")
             eng = create_engine(url)
@@ -89,7 +89,8 @@ class TestLegacyBridgeBehavior:
                 with eng.connect() as conn:
                     assert conn.execute(text("SELECT name FROM projects WHERE id=1")).scalar() == "p1"
                     v = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-                    assert v == "0006_pipelines", v
+                    # E-1（迁移 head 漂移）：0006_pipelines → 0007_mock_services（F3 PROJ-V20-MOCK）
+                    assert v == "0007_mock_services", v
             finally:
                 eng.dispose()
         finally:

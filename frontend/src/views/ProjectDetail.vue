@@ -15,6 +15,9 @@
           <el-button v-if="project?.platform === 'android'" size="small" style="margin-left:auto" @click="showAndroidConfig = true">
             Android 配置
           </el-button>
+          <el-button v-if="project && project.platform !== 'android'" size="small" style="margin-left:auto" @click="openWebConfig">
+            Web 执行配置
+          </el-button>
         </div>
       </div>
     </div>
@@ -62,6 +65,35 @@
         <el-button type="primary" :loading="savingConfig" @click="handleSaveAndroidConfig">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- Web 执行配置弹窗（Mock 服务，可空） -->
+    <el-dialog v-model="showWebConfig" title="Web 执行配置" width="520px" destroy-on-close>
+      <el-form :model="webConfig" label-width="140px" v-loading="savingWebConfig">
+        <el-form-item label="Mock 服务">
+          <el-select
+            v-model="webConfig.mock_server_id"
+            placeholder="不使用 Mock（放行真实请求）"
+            clearable
+            style="width:100%"
+          >
+            <el-option
+              v-for="s in mockServers"
+              :key="s.id"
+              :label="`${s.name}（${s.base_path}）`"
+              :value="s.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-alert
+          type="info" :closable="false" show-icon
+          title="Mock 仅注入 Web 执行链；Admission 时冻结进 Manifest，执行期只读快照。"
+        />
+      </el-form>
+      <template #footer>
+        <el-button @click="showWebConfig = false">取消</el-button>
+        <el-button type="primary" :loading="savingWebConfig" @click="handleSaveWebConfig">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -69,12 +101,14 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useProjectStore } from '@/stores/projectStore'
+import { useMockStore } from '@/stores/mock'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
 const pid = computed(() => Number(route.params.id))
 const store = useProjectStore()
+const mockStore = useMockStore()
 const project = computed(() => store.current)
 const loading = ref(false)
 
@@ -90,6 +124,12 @@ const androidConfig = ref({
   automation_engine: 'uiautomator2',
 })
 
+// Web 执行配置（Mock 服务，可空）
+const showWebConfig = ref(false)
+const savingWebConfig = ref(false)
+const mockServers = ref([])
+const webConfig = ref({ mock_server_id: null })
+
 watch(project, (p) => {
   if (p?.config_json) {
     const c = p.config_json
@@ -101,6 +141,7 @@ watch(project, (p) => {
       platform_version: c.platform_version || '',
       automation_engine: c.automation_engine || 'uiautomator2',
     }
+    webConfig.value = { mock_server_id: c.mock_server_id ?? null }
   }
 })
 
@@ -149,6 +190,36 @@ async function handleSaveAndroidConfig() {
     ElMessage.error('保存失败')
   } finally {
     savingConfig.value = false
+  }
+}
+
+async function openWebConfig() {
+  webConfig.value = { mock_server_id: project.value?.config_json?.mock_server_id ?? null }
+  mockServers.value = []
+  showWebConfig.value = true
+  try {
+    mockServers.value = await mockStore.fetchServers(pid.value)
+  } catch {
+    ElMessage.error('获取 Mock 服务列表失败')
+  }
+}
+
+async function handleSaveWebConfig() {
+  savingWebConfig.value = true
+  try {
+    const config = { ...(project.value?.config_json || {}) }
+    if (webConfig.value.mock_server_id) config.mock_server_id = webConfig.value.mock_server_id
+    else delete config.mock_server_id
+    await store.updateProject(pid.value, { config_json: config })
+    await store.fetchProjects()
+    const found = store.projects.find(p => p.id === pid.value)
+    if (found) store.setCurrentProject(found)
+    showWebConfig.value = false
+    ElMessage.success('Web 执行配置已保存')
+  } catch {
+    ElMessage.error('保存失败')
+  } finally {
+    savingWebConfig.value = false
   }
 }
 </script>

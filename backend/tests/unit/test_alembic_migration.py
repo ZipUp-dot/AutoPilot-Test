@@ -339,6 +339,59 @@ class TestSQLiteMigration:
         finally:
             engine.dispose()
 
+    def test_mock_services_0007_upgrade_and_downgrade(self, tmp_path, monkeypatch):
+        """0007_mock_services：upgrade 建 mock_servers + mock_rules + 索引；downgrade 到 0006 精确回退。
+
+        硬边界增补 4：迁移正确性必须由 alembic 级 upgrade+downgrade 证据支撑。
+        """
+        url = self._sqlite_url(tmp_path)
+        _run_upgrade(url, monkeypatch)
+
+        engine = create_engine(url)
+        try:
+            insp = inspect(engine)
+            tables = set(insp.get_table_names())
+            assert {"mock_servers", "mock_rules"} <= tables, tables
+
+            srv_cols = {c["name"] for c in insp.get_columns("mock_servers")}
+            assert {"id", "project_id", "name", "base_path", "enabled",
+                    "created_at"} <= srv_cols, srv_cols
+
+            rule_cols = {c["name"] for c in insp.get_columns("mock_rules")}
+            assert {"id", "server_id", "method", "path_pattern", "status_code",
+                    "response_body", "response_headers", "delay_ms", "enabled",
+                    "created_at"} <= rule_cols, rule_cols
+
+            fks = {
+                (tuple(fk["constrained_columns"]), fk["referred_table"],
+                 fk["options"].get("ondelete"))
+                for fk in insp.get_foreign_keys("mock_rules")
+            }
+            assert (("server_id",), "mock_servers", "RESTRICT") in fks, fks
+
+            srv_fks = {
+                (tuple(fk["constrained_columns"]), fk["referred_table"],
+                 fk["options"].get("ondelete"))
+                for fk in insp.get_foreign_keys("mock_servers")
+            }
+            assert (("project_id",), "projects", "RESTRICT") in srv_fks, srv_fks
+
+            assert "idx_mock_rules_server" in {i["name"] for i in insp.get_indexes("mock_rules")}
+        finally:
+            engine.dispose()
+
+        cfg = _alembic_config()
+        monkeypatch.setenv("AUTOPILOT_ALEMBIC_URL", url)
+        command.downgrade(cfg, "0006_pipelines")
+
+        engine = create_engine(url)
+        try:
+            tables = set(inspect(engine).get_table_names())
+            assert "mock_servers" not in tables
+            assert "mock_rules" not in tables
+        finally:
+            engine.dispose()
+
     def test_sqlite_upgrade_smooth_on_legacy_schema(self, tmp_path, monkeypatch):
         """已应用 legacy baseline（0001）的库 → upgrade head 平滑加 Delta，不报错"""
         url = self._sqlite_url(tmp_path)
