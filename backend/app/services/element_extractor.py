@@ -15,6 +15,7 @@ P1-2 变更（2026-09-26）：
   模块级 extract_elements / generate_selector / is_unique（线程本地实例持有身份上下文）。
 """
 
+import hashlib
 import json
 import logging
 import re
@@ -348,3 +349,56 @@ async def generate_selector(page, raw: dict) -> str:
 
 async def is_unique(page, selector: str) -> bool:
     return await ElementExtractor.is_unique(page, selector)
+
+
+# ═══════════════════════════════════════════════
+# Evidence Snapshot 固化（EXT-AITC-10A §6：抓取链挂 snapshot，改动面最小化）
+# ═══════════════════════════════════════════════
+
+_SNAPSHOT_FIELDS = (
+    "element_type", "tag_name", "element_id", "name",
+    "class_name", "selector", "text_content", "placeholder", "is_visible",
+)
+
+
+def compute_snapshot_hash(elements: list[dict]) -> str:
+    """元素集规范化后的 SHA256（evidence_snapshots.snapshot_hash）
+
+    规范化：仅取稳定字段，按 selector 排序后 JSON 序列化（sort_keys），
+    保证同一证据集重复固化得到同一 hash、元素顺序变化不影响结果。
+    """
+    normalized = [{k: (el or {}).get(k) for k in _SNAPSHOT_FIELDS}
+                  for el in (elements or [])]
+    normalized.sort(key=lambda e: (e.get("selector") or "", e.get("element_type") or ""))
+    blob = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def persist_evidence_snapshot(db, project_id: int, source_url: str,
+                              elements: list[dict], element_rows=None):
+    """固化一次证据集：建 EvidenceSnapshot，并把本次元素行绑定 snapshot_id。
+
+    - snapshot_hash = compute_snapshot_hash(elements)；
+    - element_rows：本次抓取产生的 PageElement ORM 行（历史 legacy 行 NULL 不回填，
+      仅对传入行回填 snapshot_id）；
+    - 仅新增入口，既有 extract_elements 抓取行为零变化。
+    """
+    from datetime import datetime as _dt
+    from app.models.evidence_snapshot import EvidenceSnapshot
+
+    snap = EvidenceSnapshot(
+        project_id=project_id,
+        source_url=(source_url or "")[:512],
+        snapshot_hash=compute_snapshot_hash(elements),
+        element_count=len(elements or []),
+        crawl_timestamp=_dt.utcnow(),
+    )
+    db.add(snap)
+    db.commit()
+    db.refresh(snap)
+
+    if element_rows:
+        for row in element_rows:
+            row.snapshot_id = snap.id
+        db.commit()
+    return snap
