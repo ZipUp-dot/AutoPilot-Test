@@ -292,3 +292,22 @@ class TestProductionSecretKey:
         s = config_module.load_settings()
         assert s.ENV == "production"
         assert s.SECRET_KEY == "explicit-production-secret"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# DEBT-DEAD-CONFIG：死配置 HEAL_SKILL_ENABLED 已移除
+# ═══════════════════════════════════════════════════════════════════
+
+class TestDeadConfigRemoved:
+    """DEBT-DEAD-CONFIG：HEAL_SKILL_ENABLED 全仓零使用（grep 证据）→ 删除定义"""
+
+    def test_heal_skill_enabled_field_removed(self):
+        assert "HEAL_SKILL_ENABLED" not in Settings.model_fields
+
+    def test_settings_has_no_heal_skill_attribute(self):
+        assert not hasattr(Settings(), "HEAL_SKILL_ENABLED")
+
+    def test_other_heal_flags_still_present(self):
+        """删除范围仅死配置：同组自愈开关必须保留"""
+        assert "HEAL_MAX_RETRY_SAME_ERROR" in Settings.model_fields
+        assert "PRE_EXECUTION_CHECK" in Settings.model_fields
