@@ -1,0 +1,69 @@
+{
+  "build_id": "nb-20261007-B",
+  "matrix_source_sha": "35ddafdbf8050d16840615e1e46aba196e55414f",
+  "frozen_at": "2026-10-07T11:25:00+08:00",
+  "features": [
+    {
+      "feature_id": "EXT-AITC-10A",
+      "spec_sha": "a4833b46c32c2b0553e4054041b5bf1776e22406dfdce6842d0288ff24dcf99f",
+      "status": "RUNNING",
+      "started_at": "2026-10-07T11:59:30+08:00",
+      "finished_at": null,
+      "commit_sha": null,
+      "test_result": null,
+      "failure_reason": null
+    },
+    {
+      "feature_id": "EXT-AITC-10B",
+      "spec_sha": "668622c21040719e12f43b7f0c9a71d68a1fef16092bed299e2644973303cafe",
+      "status": "NOT_STARTED",
+      "started_at": null,
+      "finished_at": null,
+      "commit_sha": null,
+      "test_result": null,
+      "failure_reason": null
+    },
+    {
+      "feature_id": "EXT-V12-AGGREG-FE",
+      "spec_sha": null,
+      "status": "NOT_STARTED",
+      "started_at": null,
+      "finished_at": null,
+      "commit_sha": null,
+      "test_result": null,
+      "failure_reason": null
+    },
+    {
+      "feature_id": "BUG-REPORT-RESOLVER",
+      "spec_sha": "9148fc80f6f0cb8642f0b950f5adf4b0d5afdd067a13b02bf59c55e44959fe16",
+      "status": "NOT_STARTED",
+      "started_at": null,
+      "finished_at": null,
+      "commit_sha": null,
+      "test_result": null,
+      "failure_reason": null
+    },
+    {
+      "feature_id": "BUG-SECOND-CONTRACT",
+      "spec_sha": null,
+      "status": "HOLD",
+      "started_at": null,
+      "finished_at": null,
+      "commit_sha": null,
+      "test_result": null,
+      "failure_reason": "标的文件不存在，待重定位"
+    },
+    {
+      "feature_id": "DEBT-DEAD-CONFIG",
+      "spec_sha": null,
+      "status": "NOT_STARTED",
+      "started_at": null,
+      "finished_at": null,
+      "commit_sha": null,
+      "test_result": null,
+      "failure_reason": null
+    }
+  ],
+  "global_deadline": null,
+  "artifacts": []
+}
