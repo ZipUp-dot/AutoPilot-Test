@@ -28,5 +28,10 @@ backend/data/
 # ── 前端构建产物 ──
 frontend/dist/
 
+frontend/clean/
+
+# ── IDE ──
+.idea/
+
 # ── 本地工具 ──
 .secret-scan/
