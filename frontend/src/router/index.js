@@ -22,6 +22,7 @@ const routes = [
       { path: '', redirect: to => `/projects/${to.params.id}/elements` },
       { path: 'elements', name: 'Elements', component: () => import('@/views/project/ElementCapture.vue') },
       { path: 'cases', name: 'Cases', component: () => import('@/views/project/CaseManagement.vue') },
+      { path: 'ai-review', name: 'AiReview', component: () => import('@/views/AiCaseReview.vue') },
       { path: 'executions', name: 'Executions', component: () => import('@/views/project/ExecutionPanel.vue') },
       { path: 'reports', name: 'Reports', component: () => import('@/views/project/ReportViewer.vue') },
     ],
