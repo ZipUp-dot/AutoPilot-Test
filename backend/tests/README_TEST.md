@@ -2,8 +2,8 @@
 
 ## 环境要求
 
-- Python 3.10+
-- 依赖安装：`pip install -r requirements.txt`
+- Python 3.12+（最低 3.10）
+- 依赖安装：`pip install -r requirements-dev.txt`（含 pytest / pytest-asyncio / pytest-cov / pytest-mock 等测试依赖；生产依赖见 `requirements.txt`）
 
 ## 运行方式
 
@@ -58,12 +58,14 @@ pytest --cov=app --cov-report=html
 
 ### 4 层架构
 
-| 层级 | 目录 | 说明 | 外部依赖 |
-|------|------|------|----------|
-| 单元测试 | `tests/unit/` | 基础设施、模型、工具函数 | 纯 Mock |
-| 服务层 | `tests/services/` | 业务逻辑服务 | Mock LLM/Playwright |
-| 路由层 | `tests/routers/` | API 端点集成 | Mock 所有外部服务 |
-| 集成测试 | `tests/integration/` | 端到端业务闭环 | Mock 所有外部依赖 |
+| 层级 | 目录 | 文件数 | 说明 | 外部依赖 |
+|------|------|------|------|----------|
+| 单元测试 | `tests/unit/` | 37 | 基础设施、模型、工具函数、AI 超时/限流、终态语义 | 纯 Mock |
+| 服务层 | `tests/services/` | 33 | 业务逻辑服务（生成 / 执行 / 自愈 / 编排 / Admission / Seal） | Mock LLM/Playwright |
+| 路由层 | `tests/routers/` | 8 | API 端点集成 | Mock 所有外部服务 |
+| 集成测试 | `tests/integration/` | 3 | 端到端业务闭环（含真实 Chromium 金路径，环境开关控制） | Mock 所有外部依赖 |
+
+合计 **81 个测试文件 / 1491 用例**（1489 passed / 2 skipped，覆盖率 90%）。
 
 ### Mock 策略
 
@@ -80,34 +82,39 @@ pytest --cov=app --cov-report=html
 - 每个测试函数独立事务，自动回滚，数据完全隔离
 - 异步测试使用 `pytest-asyncio`，`asyncio_mode = auto` 无需手动标记
 
-## 测试文件清单
+## 测试文件分布
 
-- `tests/unit/test_config.py` — Pydantic Settings 配置解析
-- `tests/unit/test_database.py` — SQLAlchemy 建表 + init() 生命周期
-- `tests/unit/test_dependencies.py` — 分页/项目查询依赖注入
-- `tests/unit/test_exceptions.py` — 6 个自定义异常 + 全局处理器
-- `tests/unit/test_middlewares.py` — Logging/Timing 中间件
-- `tests/unit/test_models.py` — 8 个 ORM 模型 + 级联删除
-- `tests/unit/test_schemas.py` — 23 个 Pydantic Schema 验证
-- `tests/unit/test_utils_excel.py` — Excel 解析（中文列名、3 种步骤格式）
-- `tests/unit/test_utils_validator.py` — AST 语法校验 + 安全黑名单
-- `tests/unit/test_utils_injector.py` — AST 代码注入 `__monitor_before/after`
-- `tests/unit/test_utils_screenshot.py` — 截图路径生成
-- `tests/services/test_service_project.py` — Project CRUD
-- `tests/services/test_service_ai.py` — LLM 代码生成
-- `tests/services/test_service_playwright.py` — 执行引擎 + 沙箱
-- `tests/services/test_service_element.py` — 元素抓取 + 7 级选择器
-- `tests/services/test_service_orchestrator.py` — 全流水线编排
-- `tests/services/test_service_case.py` — Excel 导入 + 用例管理
-- `tests/services/test_service_heal.py` — 自愈修复逻辑
-- `tests/services/test_service_report.py` — HTML 报告 + 过期清理
-- `tests/routers/test_routers_init.py` — router 聚合导入验证
-- `tests/routers/test_routers_projects.py` — 项目 CRUD 路由
-- `tests/routers/test_routers_elements.py` — 元素抓取/查询路由
-- `tests/routers/test_routers_cases.py` — 用例导入/查询路由
-- `tests/routers/test_routers_generate.py` — 代码生成路由
-- `tests/routers/test_routers_executions.py` — 执行管理路由
-- `tests/routers/test_routers_heal.py` — 自愈修复路由
-- `tests/routers/test_routers_reports.py` — 报告生成路由
-- `tests/integration/test_integration_main.py` — 健康检查/CORS/静态文件/生命周期
-- `tests/integration/test_integration_pipeline.py` — 完整 7 步业务闭环 + 异常流水线
+> 完整清单请直接查看目录。以下按层列出**代表性子集**，避免清单随迭代腐化（历史上该清单曾长期滞后于实际目录）。
+
+### 第一层 `tests/unit/`（37 文件）
+
+- `test_config.py` — Pydantic Settings 配置解析
+- `test_database.py` / `test_models.py` — SQLAlchemy 建表 + 生命周期、ORM 模型与级联删除
+- `test_migration.py` / `test_migration_preflight.py` / `test_alembic_migration.py` — 数据库迁移一致性
+- `test_utils_excel.py` / `test_utils_validator.py` / `test_utils_injector.py` / `test_utils_screenshot.py` — 工具层
+- `test_utils_appium_injector.py` / `test_validator_android.py` — Android 侧注入与合约校验
+- `test_element_locator.py` / `test_platform.py` — 元素定位器与平台隔离
+- `test_ai_timeout_no_hang.py` / `test_ai_limiter_semantics.py` / `test_ai_rate_limiter.py` / `test_ai_retry_classification.py` — AI 超时、并发与重试
+- `test_terminal_reason.py` / `test_case_state_resolver.py` / `test_kpi_eligibility.py` — 终态语义与指标归因
+- `test_security_hardening.py` / `test_utils_safe_playwright.py` / `test_utils_url_policy.py` — 安全加固与沙箱
+
+### 第二层 `tests/services/`（33 文件）
+
+- `test_service_project.py` / `test_service_case.py` / `test_service_element.py` — Project / 用例 / 元素抓取
+- `test_service_ai.py` / `test_batch_generate_service.py` — LLM 代码生成与批量生成
+- `test_service_playwright.py` / `test_service_appium.py` / `test_service_android_crawl.py` — 双端执行引擎
+- `test_service_orchestrator.py` — 全流水线编排 + 平台分发
+- `test_service_heal.py` / `test_heal_diagnose.py` / `test_heal_round_guard.py` / `test_heal_finalization.py` / `test_heal_recovery.py` — 自愈链路
+- `test_admission_service.py` / `test_execution_seal.py` / `test_manifest_immutable.py` / `test_no_latest_code_backdoor.py` — Admission / Seal / 代码来源钉死
+- `test_no_import_in_namespace.py` / `test_validator_rejects_all_imports.py` — 命名空间收口与导入拒绝
+- `test_service_report.py` / `test_report_terminal.py` — 报告
+
+### 第三层 `tests/routers/`（8 文件）
+
+`test_routers_{init,projects,elements,cases,generate,executions,heal,reports}.py` — 覆盖全部 API 端点。
+
+### 第四层 `tests/integration/`（3 文件）
+
+- `test_integration_main.py` — 健康检查 / CORS / 静态文件 / 生命周期
+- `test_integration_pipeline.py` — 完整 7 步业务闭环 + 异常流水线
+- `test_golden_path_real_chromium.py` — 真实 Chromium 金路径（环境开关控制，默认跳过）

@@ -43,7 +43,7 @@ backend/
 │   ├── alembic/                 # Alembic 统一迁移（MySQL/SQLite，SQLite render_as_batch）
 │   │   ├── env.py               # 迁移环境：URL 解析 + 方言适配
 │   │   └── versions/            # 迁移脚本（0001_initial_schema）
-│   ├── models/                  # ORM 模型（9 张表）
+│   ├── models/                  # ORM 模型（11 张表 / 12 个模型模块）
 │   │   ├── project.py           # 项目表（含 platform + config_json）
 │   │   ├── element.py           # 页面元素表（含 platform + selector_type + metadata）
 │   │   ├── test_case.py         # 测试用例表
@@ -52,16 +52,21 @@ backend/
 │   │   ├── execution.py         # 执行批次表
 │   │   ├── execution_step.py    # 执行步骤表（含 exception_type）
 │   │   ├── report.py            # 执行报告表
-│   │   └── heal_record.py       # 自愈记录表（含 attempts JSON 数组）
-│   ├── routers/                 # API 路由（7 个）
+│   │   ├── heal_record.py       # 自愈记录表（含 attempts JSON 数组）
+│   │   ├── batch_job.py         # 批量生成运行态任务表
+│   │   ├── batch_cases.py       # 批量生成逐 Case 终态事实表（terminal 后不可变）
+│   │   └── batch_records.py     # 批级 KPI summary 表
+│   ├── routers/                 # API 路由（9 个）
 │   │   ├── projects.py          # 项目 CRUD（含 platform + config_json）
 │   │   ├── elements.py          # 元素抓取 / 列表 / 清空（平台感知）
 │   │   ├── cases.py             # 用例导入 / 列表 / 删除
 │   │   ├── generate.py          # 代码生成（单条 + 批量，平台感知）
 │   │   ├── executions.py        # 执行管理（创建 / 轮询 / 停止，平台分发）
 │   │   ├── reports.py           # 报告生成 / 查询
-│   │   └── heal.py              # 自愈修复（Web / Android 双分支）
-│   ├── services/                # 业务逻辑层（11 个服务）
+│   │   ├── heal.py              # 自愈修复（Web / Android 双分支）
+│   │   ├── files.py             # 受控文件访问（INTERNAL_API_TOKEN + 路径规范化 + 资源 ID 白名单）
+│   │   └── metrics.py           # 只读指标聚合（首生成有效率 / 最终成功率）
+│   ├── services/                # 业务逻辑层（17 个服务）
 │   │   ├── project_service.py   # 项目 CRUD（含 platform 只读保护）
 │   │   ├── element_service.py   # 元素抓取 + 7 级选择器生成 + AI 辅助导航（平台感知）
 │   │   ├── case_service.py      # Excel 解析 + 用例管理
@@ -72,14 +77,30 @@ backend/
 │   │   ├── orchestrator.py      # 执行编排器（平台分发 → 同步/异步线程）
 │   │   ├── heal_service.py      # 自愈修复（Web/Android 双分支）
 │   │   ├── report_service.py    # HTML 报告生成（含异常类型分类）
-│   │   └── execution_state.py   # 执行停止标志共享控制（Web/Android 共用）
-│   ├── utils/                   # 工具模块（6 个）
+│   │   ├── execution_state.py   # 执行停止标志共享控制（Web/Android 共用）
+│   │   ├── batch_generate_service.py # 批量代码生成（双入口统一，2 worker pull 消费）
+│   │   ├── execution_admission_service.py # Admission 统一入口（Manifest + Runtime + Step 物化）
+│   │   ├── execution_code_resolver.py # Execution/Heal/Report 统一代码解析入口
+│   │   ├── execution_finalizer.py # 执行终态收敛（Seal）
+│   │   ├── element_extractor.py # 元素提取 + 选择器生成（抓取与 Heal Recrawl 共享实现）
+│   │   └── metrics_service.py   # 只读指标聚合（70% 首生成有效率 / 85% 最终成功率）
+│   ├── utils/                   # 工具模块（16 个）
 │   │   ├── excel_parser.py      # Excel 智能解析（中文列名）
 │   │   ├── code_validator.py    # AST 语法校验 + 安全审计 + 平台合约检查
 │   │   ├── code_injector.py     # Web 截图/日志注入（异步）
 │   │   ├── appium_code_injector.py # Android 监控注入（同步，独立定义）
 │   │   ├── ai_rate_limiter.py   # AI 调用滑动窗口限流器（熔断防烧 Token）
-│   │   └── screenshot.py        # 截图工具类
+│   │   ├── screenshot.py        # 截图工具类
+│   │   ├── screenshot_policy.py # 截图路径策略（AI 侧截屏路径口径钉死）
+│   │   ├── safe_playwright.py   # SafePlaywright 受限 page 包装器（__slots__ + 白名单）
+│   │   ├── appium_proxy.py      # Appium 受控代理（DriverProxy / ElementProxy / AppiumByProxy）
+│   │   ├── appium_caps.py       # Appium desired capabilities 统一构建
+│   │   ├── case_state_resolver.py # 用例状态唯一计算真源
+│   │   ├── step_canonicalizer.py # 步骤标准化（单一 hash 计算入口）
+│   │   ├── terminal_reason.py   # terminal_reason 全局映射（六类）
+│   │   ├── seal_guard.py        # Seal 守卫（终态 Execution 禁止后续写）
+│   │   ├── url_builder.py       # URL 构建（target_url + test_path 唯一入口）
+│   │   └── url_policy.py        # URL 策略 / SSRF 双层防护
 │   ├── prompts/                 # AI Prompt 模板（5 个）
 │   │   ├── generate_prompt.txt   # Web 代码生成 Prompt
 │   │   ├── generate_prompt_android.txt # Android 代码生成 Prompt
@@ -91,49 +112,23 @@ backend/
 │   ├── middlewares/              # 中间件
 │   │   ├── logging.py            # 请求日志（method/path/status/duration/ip）
 │   │   └── timing.py             # 响应时间头
-├── tests/                       # pytest 测试套件（4 层架构，1454 测试 / 1452 passed，覆盖率 90%）
+├── tests/                       # pytest 测试套件（4 层 / 81 文件 / 1491 用例：1489 passed / 2 skipped，覆盖率 90%）
 │   ├── conftest.py              # 共享 Fixture（SQLite 内存库 + 外部依赖 Mock）
 │   ├── factories.py             # 工厂类
 │   ├── README_TEST.md           # 测试运行说明
-│   ├── unit/                    # 第一层：单元测试（15 文件）
-│   │   ├── test_config.py
-│   │   ├── test_database.py
-│   │   ├── test_dependencies.py
-│   │   ├── test_exceptions.py
-│   │   ├── test_middlewares.py
-│   │   ├── test_models.py
-│   │   ├── test_migration.py             # 数据库迁移测试
-│   │   ├── test_utils_excel.py
-│   │   ├── test_utils_validator.py
-│   │   ├── test_utils_injector.py
-│   │   ├── test_utils_screenshot.py
-│   │   ├── test_utils_appium_injector.py # Appium 代码注入测试
-│   │   ├── test_validator_android.py     # Android 合约校验测试
-│   │   ├── test_element_locator.py       # 元素定位器测试
-│   │   └── test_platform.py              # 平台隔离测试
-│   ├── services/                # 第二层：服务层测试（10 文件）
-│   │   ├── test_service_project.py
-│   │   ├── test_service_ai.py
-│   │   ├── test_service_playwright.py
-│   │   ├── test_service_appium.py        # Appium 执行引擎测试
-│   │   ├── test_service_android_crawl.py # Android 元素抓取测试（XML 解析 + 选择器）
-│   │   ├── test_service_element.py
-│   │   ├── test_service_orchestrator.py  # 平台分发编排测试
-│   │   ├── test_service_case.py
-│   │   ├── test_service_heal.py
-│   │   └── test_service_report.py
+│   ├── unit/                    # 第一层：单元测试（37 文件）— 配置 / 模型 / 迁移 / 工具 / AST 沙箱 / 限流 / 终态
+│   │   ├── test_config.py · test_database.py · test_models.py · test_migration*.py
+│   │   ├── test_utils_*.py      # Excel 解析、校验器、注入、截图、Appium 注入、URL 策略
+│   │   └── test_ai_*.py · test_terminal_*.py · test_security_hardening.py
+│   ├── services/                # 第二层：服务层测试（33 文件）— 生成 / 执行 / 自愈 / 编排 / Admission / Seal
+│   │   ├── test_service_*.py    # Project / AI / Playwright / Appium / Case / Element / Heal / Report
+│   │   ├── test_heal_*.py       # 自愈诊断、Round 守卫、收敛、恢复
+│   │   └── test_admission_service.py · test_execution_seal.py · test_manifest_immutable.py
 │   ├── routers/                 # 第三层：路由集成测试（8 文件）
-│   │   ├── test_routers_init.py
-│   │   ├── test_routers_projects.py
-│   │   ├── test_routers_elements.py
-│   │   ├── test_routers_cases.py
-│   │   ├── test_routers_generate.py
-│   │   ├── test_routers_executions.py
-│   │   ├── test_routers_heal.py
-│   │   └── test_routers_reports.py
-│   └── integration/             # 第四层：端到端集成测试（2 文件）
-│       ├── test_integration_main.py
-│       └── test_integration_pipeline.py
+│   │   └── test_routers_{init,projects,elements,cases,generate,executions,heal,reports}.py
+│   └── integration/             # 第四层：端到端集成测试（3 文件）
+│       ├── test_integration_main.py · test_integration_pipeline.py
+│       └── test_golden_path_real_chromium.py  # 真实 Chromium 金路径（环境开关控制）
 ├── data/                        # 数据目录
 ├── uploads/                     # 上传文件
 │   ├── screenshots/             # 执行截图（按 execution_id/case_id 组织）
@@ -473,7 +468,7 @@ projects (1)
 
 **级联规则**：删除项目 → 级联删除所有关联数据（元素、用例、执行、报告、自愈记录）
 
-### 9 张表
+### 11 张表
 
 | 表名 | 说明 | 核心字段 |
 |------|------|----------|
@@ -485,6 +480,13 @@ projects (1)
 | `execution_steps` | 执行步骤 | action, target_selector, screenshot_before/after, status, exception_type |
 | `execution_reports` | 执行报告 | report_html, report_summary(JSON), download_url |
 | `heal_records` | 自愈记录 | original_code, healed_code, retry_status, retry_count, attempts(TEXT) |
+| `batch_jobs` | 批量生成运行态元信息 | project_id, batch_id(UNIQUE), case_ids(JSON), status(running/finalizing/completed/failed) |
+| `batch_cases` | 批量生成逐 Case 终态事实（terminal 后不可变） | batch_id + case_id(UNIQUE), status, code_id, is_valid_at_attempt, is_mock_at_attempt, kpi_eligible |
+| `batch_records` | 批级 KPI summary | project_id, batch_id(UNIQUE), batch_status, summary_json(10 项 KPI + 逐 Case 明细) |
+
+> **说明**：`batch_jobs` / `batch_cases` / `batch_records` 三张表由 **Alembic 迁移创建**
+> （`0003_batch_jobs` 等），**禁止写入 `schema.sql`**；且其外键均为 `ON DELETE RESTRICT`
+> （batch 历史保护），不参与上述"删除项目 → 级联删除"链路——项目存在批量生成历史时删除会被拒绝。
 
 **V1.1 新增字段**：
 - `projects.platform` — 项目平台（web/android），创建后只读
@@ -785,20 +787,20 @@ pytest --cov=app --cov-report=html           # HTML 报告（htmlcov/index.html�
 
 | 指标 | 数值 | 目标 |
 |------|------|------|
-| 测试用例 | 1452 passed / 2 skipped（collected 1454） | 全通过 |
-| **语句覆盖率** | **91%**（7363 语句 / 634 未覆盖） | ≥ 90% ✅ |
-| **含分支总覆盖率** | **90%**（2098 分支 / 215 partial） | ≥ 80% ✅ |
+| 测试用例 | 1489 passed / 2 skipped（collected 1491） | 全通过 |
+| **语句覆盖率** | **91%**（7605 语句 / 651 未覆盖） | ≥ 90% ✅ |
+| **含分支总覆盖率** | **90%**（2144 分支 / 225 partial） | ≥ 80% ✅ |
 
-> 数字来自 **Release R_P2-rc @ commit `8bfba07`** 的同一次 `python -m pytest` 全量执行，原始输出见 [test_output.txt](test_output.txt)（与根 [README](../README.md) 同源）。四项量化指标实测见 [../docs/ACCEPTANCE_REPORT.md](../docs/ACCEPTANCE_REPORT.md)。
+> 数字来自 **`main` @ commit `5b1c903`（基线标签 `baseline/20261007`）** 的同一次 `python -m pytest` 全量执行，原始输出见 [test_output.txt](test_output.txt)（与根 [README](../README.md) 同源）。四项量化指标实测见 [../docs/ACCEPTANCE_REPORT.md](../docs/ACCEPTANCE_REPORT.md)（该项锚定 Release R_P2-rc @ `8bfba07`，与本节测试数字**非同一批次**）。
 
 ### 各层覆盖情况
 
 | 层级 | 目录 | 覆盖内容 |
 |------|------|----------|
-| 单元测试 | `tests/unit/`（15 文件） | 配置、数据库、依赖、异常、中间件、ORM 模型、数据库迁移、Excel 解析、AST 校验/注入、Appium 注入、Android 合约、元素定位器、平台隔离、截图 |
-| 服务层 | `tests/services/`（10 文件） | Project CRUD、LLM 生成 + Vision + 限流熔断、Web 执行引擎、Appium 执行引擎、Android 元素抓取、元素抓取 + 7 级选择器 + AI 辅助导航、编排器 + 平台分发 + 执行前健康检查、Excel 导入、自愈 + Android 分支 + 快速失败、报告 + 异常分类 |
+| 单元测试 | `tests/unit/`（37 文件） | 配置、数据库、依赖、异常、中间件、ORM 模型、数据库迁移、Excel 解析、AST 校验/注入、Appium 注入、Android 合约、元素定位器、平台隔离、截图、AI 超时/重试/限流、终态语义与归因、KPI 资格、安全加固 |
+| 服务层 | `tests/services/`（33 文件） | Project CRUD、LLM 生成 + Vision + 限流熔断、Web/Appium 执行引擎、Android 元素抓取、元素抓取 + 7 级选择器 + AI 辅助导航、编排器 + 平台分发、Excel 导入、自愈（诊断 / Round 守卫 / 收敛 / 恢复 + Android 分支）、报告 + 异常分类、Admission/Seal/Manifest 不可变、批量生成、停止语义、无 latest 后门 |
 | 路由层 | `tests/routers/`（8 文件） | 项目/元素/用例/生成/执行/自愈/报告全部 API 端点（含跨项目保护、实时聚合、状态分类） |
-| 集成测试 | `tests/integration/`（2 文件） | 健康检查/CORS/静态文件/生命周期 + 完整 7 步业务闭环 + 异常流水线 |
+| 集成测试 | `tests/integration/`（3 文件） | 健康检查/CORS/静态文件/生命周期 + 完整 7 步业务闭环 + 异常流水线 + 真实 Chromium 金路径（环境开关控制） |
 
 详细运行说明见 [tests/README_TEST.md](tests/README_TEST.md)。
 

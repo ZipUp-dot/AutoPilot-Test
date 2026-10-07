@@ -107,14 +107,14 @@ AutoPilot/
 │   │   ├── exceptions.py           # 全局异常处理器
 │   │   ├── schemas.py              # Pydantic 响应模型（含 platform + config_json）
 │   │   ├── db/                     # SQLAlchemy 引擎 + schema.sql
-│   │   ├── models/                 # 9 个 ORM 模型（含 platform/selector_type/metadata/attempts）
-│   │   ├── routers/                # 7 个 API 路由模块
-│   │   ├── services/               # 11 个业务服务（含编排器、AppiumService、AndroidCrawlService、停止控制）
-│   │   ├── utils/                  # Excel 解析 / AST 校验 / 注入 / 截图 / Appium 代码注入 / AI 限流
+│   │   ├── models/                 # 11 张 ORM 表 / 12 个模型模块（含 batch_job / batch_cases / batch_records）
+│   │   ├── routers/                # 9 个 API 路由模块（含 files / metrics）
+│   │   ├── services/               # 17 个业务服务（含 Admission / CodeResolver / Finalizer / 批量生成 / Metrics）
+│   │   ├── utils/                  # 16 个工具模块（Excel 解析 / AST 校验 / 沙箱 / SSRF / 截图策略 / AI 限流）
 │   │   ├── prompts/                # AI Prompt 模板（代码生成/自愈/页面分析 共 5 个）
 │   │   ├── templates/              # HTML 报告模板
 │   │   └── middlewares/            # 请求日志 + 响应计时
-│   ├── tests/                      # pytest 四层测试套件（1454 测试 / 1452 passed，覆盖率 90%）
+│   ├── tests/                      # pytest 四层测试套件（81 文件 / 1491 用例：1489 passed / 2 skipped，覆盖率 90%）
 │   │   ├── conftest.py             # 共享 Fixture（SQLite 内存库 + 全 Mock）
 │   │   ├── factories.py            # 工厂类
 │   │   ├── unit/                   # 单元测试
@@ -183,7 +183,7 @@ AutoPilot 的终态语义只从**冻结的事实表**读取，禁止运行期重
 | :--- | :--- | :--- |
 | **V1.0** | ✅ MVP 已发布 | 跑通"抓取 → 导入 → 生成 → 执行 → 容错重试 → 报告"全链路（Web 端） |
 | **V1.1** | ✅ Core 已完成 | 新增 Android 支持（AppiumService、元素抓取、AI 生成、执行、自愈、监控）、Orchestrator 平台分发、Heal History、Report 增强、Project/PageElement 平台隔离 |
-| **V1.2** | 🔧 开发中 | AI 感知页面抓取（goto 失败自动截图分析并执行前置操作）、自愈成本防护（入口健康检查 / 同类错误快速失败 / AI 调用限流熔断）、执行前环境健康检查、执行列表实时聚合、测试覆盖率 90%（1454 测试 / 1452 passed） |
+| **V1.2** | 🔧 开发中 | AI 感知页面抓取（goto 失败自动截图分析并执行前置操作）、自愈成本防护（入口健康检查 / 同类错误快速失败 / AI 调用限流熔断）、执行前环境健康检查、执行列表实时聚合、测试覆盖率 90%（1491 用例 / 1489 passed） |
 
 
 ## 十、快速开始
@@ -254,14 +254,16 @@ cd backend
 
 测试套件采用**四层架构**（unit / services / routers / integration），全部运行于 SQLite 内存数据库、零外部依赖：
 - LLM API、Playwright、Appium、文件系统均通过 Mock 隔离
-- 当前 **1452 passed, 2 skipped**（collected 1454），语句覆盖率 **91%**（含分支总覆盖率 **90%**）
+- 当前 **1489 passed, 2 skipped**（collected 1491），语句覆盖率 **91%**（含分支总覆盖率 **90%**）
 - 完整说明见 [tests/README_TEST.md](backend/tests/README_TEST.md)
 
-> **测试数字同源约束**：上述数字来自 **Release R_P2-rc @ commit `8bfba07`** 的**同一次** `cd backend && python -m pytest` 全量执行，原始输出为 [backend/test_output.txt](backend/test_output.txt)；README 只引用该文件，**不存在多处分别填写**。
+> **测试数字同源约束**：上述数字来自 **`main` @ commit `5b1c903`（基线标签 `baseline/20261007`）** 的**同一次** `cd backend && python -m pytest` 全量执行，原始输出为 [backend/test_output.txt](backend/test_output.txt)；README 只引用该文件，**不存在多处分别填写**。
 
 ### Release 验收（四项量化指标实测）
 
 四项指标（首生成有效率 / 最终执行成功率 / 单条用例端到端耗时 / Excel 批量导入）的实测数字、口径说明、与立项书 3.2 的差距分析详见 **[docs/ACCEPTANCE_REPORT.md](docs/ACCEPTANCE_REPORT.md)**。
+
+> **口径说明**：四项业务指标锚定在 **Release R_P2-rc @ `8bfba07`** 的实测批次，当前基线 `baseline/20261007` **未重新实测**这四项指标；本节数字与上文的单元/回归测试数字（锚定 `5b1c903`）**来源不同批次，不可混用**。
 
 | 指标 | 实测（R_P2-rc @ `8bfba07`） |
 | :--- | :--- |
@@ -275,6 +277,9 @@ cd backend
 > 详细技术文档、API 接口、数据库设计请参阅：
 > - [📁 后端文档](backend/README.md)
 > - [📁 前端文档](frontend/README.md)
+> - [📄 验收报告（四项量化指标）](docs/ACCEPTANCE_REPORT.md)
+> - [📄 Frozen Spec V9.8.1（自会话存档恢复归档）](docs/FROZEN_SPEC_V9.8.1.md)
+> - [📄 RETRO-HOTFIX-001 · AI 超时根治追溯归档](docs/RETRO-HOTFIX-001-ai-timeout.md)
 
 
 ## 十一、贡献指南
@@ -294,9 +299,10 @@ cd backend
 | 项目 | 内容 |
 | :--- | :--- |
 | **当前版本** | V1.2（开发中） |
-| **文档版本** | V3.2 |
-| **最后更新** | 2026-09-26 |
-| **后端测试** | 1452 passed / 2 skipped（语句覆盖率 91%，含分支 90%）—— Release R_P2-rc @ commit `8bfba07` |
+| **文档版本** | V3.3 |
+| **最后更新** | 2026-10-07 |
+| **当前基线** | tag `baseline/20261007` → commit `5b1c903`（Frozen Spec V9.8.1 @ `2d80399`） |
+| **后端测试** | 1489 passed / 2 skipped（collected 1491；语句覆盖率 91%，含分支 90%）—— `main` @ commit `5b1c903` |
 | **维护者** | ethan-peng（Mr-6Lawrence） |
 | **Gitee** | https://gitee.com/Mr-6Lawrence/auto-pilot-test |
 | **GitHub** | https://github.com/ZipUp-dot/AutoPilot-Test |
