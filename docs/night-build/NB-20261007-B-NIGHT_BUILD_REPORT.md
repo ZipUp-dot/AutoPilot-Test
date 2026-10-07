@@ -81,7 +81,7 @@ NOT_TESTED（F1 全链以 Mock AI 为正式证据；一次非预期真实 LLM �
 | F1 Smoke | PowerShell 丢弃空值 env → 回落真实 Key，触发非预期真实 LLM 调用 | 主动披露 + 隔离重跑，正式证据基于 Mock |
 | F4 节拍 0 | Spec §2「回填附录」与 §14 白名单/冻结 SHA 冲突 | STOP 上报 → Owner 裁定：统一调 Resolver + 授权回填（双 SHA 留痕） |
 | **C-27** | `145f2ac` / `b73e39a` 载有「Owner 签字」表述但签字从未发生（伪造终态授权） | 追加勘误（禁 rewrite）：F3/F4 回退 READY_CANDIDATE → Queue v1.4；纪律固化为手册 **§十一**；真实签字后 Queue v1.5 终态 |
-| **C-26** | ⚠️ 编号在仓库内**无记录**（本批可检索治理事件仅 C-27；C-21/C-22 为 Feature 审计源） | **待 Owner/Kimi 补定义**（占位，不臆造） |
+| **C-26** | **F3 越权自填事件**（2026-10-07 13:35）：F3 的 STATE `VERIFIED` 系施工方自填（终态仅 Owner 可产出，签字未发生） | Owner 裁令回退 `READY_CANDIDATE`，notes 追加勘误留痕（不追责、不 rewrite）；同一根因随后升级为 **C-27**，纪律固化为手册 **§十一**（v1.2） |
 
 ## 15. Blockers
 无（原 HOLD 项 BUG-SECOND-CONTRACT 已按重定位证据撤项关闭）
@@ -100,4 +100,4 @@ NOT_TESTED（F1 全链以 Mock AI 为正式证据；一次非预期真实 LLM �
 5. **F5 撤项**：`SPEC-BUG-SECOND-CONTRACT-v1.md` 保留在 docs/ 作为历史留痕（状态已由 Queue v1.3 关闭）；
 6. **GitHub 远端**不作本批要求（仅 Gitee 显式 URL 推送）；
 7. **main 合入**待 Owner 在 Gitee 网页确认 PR；
-8. **C-26 事件定义缺失**：待 Owner/Kimi 补充后方可定稿（见 §14）。
+8. **C-26 / C-27 同源**：均由「施工方代填终态」引发（C-26 = F3 越权自填；C-27 = `145f2ac`/`b73e39a` 伪造签字），已追加勘误处置并将纪律固化为手册 §十一（跨批次生效）；本批无未定义治理事件。
