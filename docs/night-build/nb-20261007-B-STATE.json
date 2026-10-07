@@ -6,12 +6,13 @@
     {
       "feature_id": "EXT-AITC-10A",
       "spec_sha": "a4833b46c32c2b0553e4054041b5bf1776e22406dfdce6842d0288ff24dcf99f",
-      "status": "RUNNING",
+      "status": "VERIFIED",
       "started_at": "2026-10-07T11:59:30+08:00",
       "finished_at": "2026-10-07T12:40:47+08:00",
       "commit_sha": "972977cdb821bd5fd1358c4d697e689de91275bd",
       "test_result": "1511 passed / 2 skipped / 0 failed",
-      "failure_reason": null
+      "failure_reason": null,
+      "notes": "E-1 parity：迁移 head 漂移处置（test_migration.py 版本标记常量 0003_batch_jobs→0004_ai_case_drafts + 紧随注释，未动行为断言）；Amendment v1.4 留痕；Owner VERIFIED 2026-10-07 12:50"
     },
     {
       "feature_id": "EXT-AITC-10B",
