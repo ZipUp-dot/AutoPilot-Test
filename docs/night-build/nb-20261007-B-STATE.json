@@ -28,13 +28,13 @@
     {
       "feature_id": "EXT-V12-AGGREG-FE",
       "spec_sha": "1a6820c69970e75eb8aa488e197cd721301aef802253ff31f0637001c61548db",
-      "status": "RUNNING",
+      "status": "VERIFIED",
       "started_at": "2026-10-07T13:07:53+08:00",
       "finished_at": "2026-10-07T13:10:49+08:00",
       "commit_sha": "7cb3cc65555b4787e1f299a2de116e822eee7ab6",
       "test_result": "frontend vitest 24 passed / 0 failed；vite build ✓；backend /api/v1/metrics 四 JSONPath 契约实测通过",
       "failure_reason": null,
-      "notes": "spec_sha = VERIFY-789-REPORT.md 内容 SHA256（该 Feature 无独立 Spec，锚定报告 #9 行）；四 JSONPath 字段级钉死；实测扁平 overview.coverage = undefined（coverage 为嵌套内层键）；前端只渲染不派生；白名单经 Owner 2026-10-07 确认（新 view + 侧边栏菜单）"
+      "notes": "spec_sha = VERIFY-789-REPORT.md 内容 SHA256（该 Feature 无独立 Spec，锚定报告 #9 行）；四 JSONPath 字段级钉死；实测扁平 overview.coverage = undefined（coverage 为嵌套内层键）；前端只渲染不派生；白名单经 Owner 2026-10-07 确认（新 view + 侧边栏菜单）；Owner VERIFIED 2026-10-07T13:11:48+08:00（本轮裁定时刻）"
     },
     {
       "feature_id": "BUG-REPORT-RESOLVER",
