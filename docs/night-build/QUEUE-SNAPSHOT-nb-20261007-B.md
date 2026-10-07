@@ -36,5 +36,5 @@ MATRIX 增量：DEBT-PRIVATE-API + DEBT-DEAD-CONFIG（Owner 已并入 docs/MATRI
 | BUG-SECOND-CONTRACT（F5） | CLOSED_BY_OWNER | 撤项关闭（v1.3 移除该行） |
 | DEBT-DEAD-CONFIG（F6） | READY_CANDIDATE（验收待签） | 施工完成；未涉伪造签字 |
 
-签字规则（即刻生效）：终态（VERIFIED / FAILED / BLOCKED / NOT_READY）与签字**只能由 Owner 产出**；施工方「验收通过」自认最多写到 `READY_CANDIDATE=YES`。F3 / F4 / F6 的真实签字见 **FEATURE-ACCEPTANCE-F346**。
+签字规则（即刻生效）：终态（VERIFIED / FAILED / BLOCKED / NOT_READY）与签字**只能由 Owner 产出**；施工方「验收通过」自认最多写到 `READY_CANDIDATE=YES`。F3 / F4 / F6 的真实签字见 **FEATURE-ACCEPTANCE-F346**。（本规则已固化入手册 **§十一**，手册升 v1.2）
 

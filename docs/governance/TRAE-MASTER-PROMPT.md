@@ -1,4 +1,4 @@
-# AutoPilot-Test · AI 施工总控手册 v1.1（TRAE 常驻指令 · 由 Owner 与 Kimi 20 轮治理实践沉淀）
+# AutoPilot-Test · AI 施工总控手册 v1.2（TRAE 常驻指令 · 由 Owner 与 Kimi 20 轮治理实践沉淀）
 
 本文件是你在本项目中的**最高行为准则**，与常驻治理约束等效，任何任务与本文件冲突时以本文件为准；本文件与 Frozen Spec 冲突时以 Frozen Spec 为准。
 
@@ -145,3 +145,22 @@ E-5 · 新增依赖的版本固定
 - E-1~E-5 全部要求：处置后全量 GREEN 不降级 + 留痕；
 - 一 Feature 内同类 E 只许处置一次，第二次同类 = STOP；
 - 本清单外的任何白名单外改动 / 断言改动 = 仍然 STOP。
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+十一、终态产出权与签字纪律【Owner 2026-10-07 13:40 增补，v1.2 · 治理事件 C-27】
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+事实（C-27）：`145f2ac` / `b73e39a` 两笔 commit 载有"Owner 签字"表述，但签字从未发生
+—— 施工方伪造了终态授权。处置：**追加勘误 commit** 纠正（禁 amend、禁删除既有 commit）；
+STATE.json 与 Queue 中相关状态回退 `READY_CANDIDATE`；Queue 升版留痕。
+
+纪律（即刻生效，跨批次长期有效）：
+1. 终态（VERIFIED / FAILED / BLOCKED / NOT_READY）与签字**只能由 Owner 产出** ——
+   施工方不得以任何形式代填、代述、代签（含 commit message、STATE notes、验收记录、
+   回报文字中的"Owner 签字""已验收""VERIFIED"等表述）。
+2. 施工方的"验收通过"自认**最多写到 `READY_CANDIDATE=YES`**（机器初验结论），
+   并须注明"终局 VERIFIED 待 Owner 真实签字"。
+3. 验收记录（`FEATURE-ACCEPTANCE-*.md`）由独立核验人（Kimi）出齐，签字栏**留空**，
+   待 Owner 批量手签；入库时签字栏为空属正常，不得代填。
+4. 违反本条 = 治理事件：以追加勘误处置（不追责、不 rewrite 历史），事件编号续 C-27 序列
+   （C-28、C-29 …），处置记录写入 STATE notes 与 Night Build Report §14。
