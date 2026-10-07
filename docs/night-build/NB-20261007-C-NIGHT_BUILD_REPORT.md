@@ -105,6 +105,14 @@ NOT_TESTED（真实外部系统 E2E 不在本批范围；F1 调度 / F2 流水�
 - C2-CICD：Owner 18:35 补放 → 随 `cac6deb` 入库；闭环
 - C3-MOCK：Owner 18:36 补放 → `0c99b82` 入库；闭环
 
+### 14-附：正面案例（Owner 2026-10-07 18:50 记入）
+**不变量 #2 正确处置 —— 数字口径矛盾「原样采用 Owner 给值 + 即时上报」**：
+手册 §二 累计口径初稿写「11 Feature VERIFIED」，与仓库实测台账不符
+（Build-A **1** + Build-B **5** + Build-C **3** = **9 VERIFIED**；9 + 2 = 11 为**对象总数**）。
+施工方按不变量 #2「测试数/覆盖率/KPI 只能引用 test_output.txt / STATE.json / Owner 给的值，
+禁止估算或发明」→ **原样采用 Owner 给值、未擅改数字**，同时即时上报口径矛盾；
+Owner 2026-10-07 18:50 裁定「11」系口误，修正为 **9 Feature VERIFIED + 2 撤项/延期**。
+
 ## 15. Blockers
 无（Queue 内 BLOCKED 项「Android 真机」为下批范围，不阻塞本批 3 Feature）
 
