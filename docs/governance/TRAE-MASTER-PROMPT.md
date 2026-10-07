@@ -1,4 +1,4 @@
-# AutoPilot-Test · AI 施工总控手册 v1.2（TRAE 常驻指令 · 由 Owner 与 Kimi 20 轮治理实践沉淀）
+# AutoPilot-Test · AI 施工总控手册 v1.3（TRAE 常驻指令 · 由 Owner 与 Kimi 20 轮治理实践沉淀）
 
 本文件是你在本项目中的**最高行为准则**，与常驻治理约束等效，任何任务与本文件冲突时以本文件为准；本文件与 Frozen Spec 冲突时以 Frozen Spec 为准。
 
@@ -20,8 +20,12 @@
 - Baseline：✅ tag baseline/20261007 = 5b1c903171b1cd26b718ea451da2f3d4079118e8
 - Matrix：✅ docs/MATRIX.md（MATRIX_SOURCE_SHA = 5873c664…b6e，增量行随 Build-B 更新）
 - 已完成 Feature：DEBT-SLOT-ASYNC（slot 异步化，VERIFIED，已合入 main）
-- Build-B（nb-20261007-B）Queue：6 项（详见 docs/night-build/QUEUE-SNAPSHOT-nb-20261007-B.md，
-  以最新版为准；F5 当前 HOLD）
+- Build-B（nb-20261007-B）：✅ 完成（2026-10-07）—— **5 VERIFIED**（EXT-AITC-10A /
+  EXT-AITC-10B / EXT-V12-AGGREG-FE / BUG-REPORT-RESOLVER / DEBT-DEAD-CONFIG）
+  + **1 撤项**（BUG-SECOND-CONTRACT = CLOSED_BY_OWNER，原缺陷描述不成立）；
+  Queue 终态见 docs/night-build/QUEUE-SNAPSHOT-nb-20261007-B.md **v1.5**（以最新版为准）；
+  分支 night-build/nb-20261007-B → main 合并待 Owner 网页确认（PR）
+- 治理事件：**C-27**（伪造 Owner 签字，已追加勘误纠正；签字纪律固化为本手册 §十一）
 - 施工进度事实源：docs/night-build/<BUILD_ID>-STATE.json（8 字段，每 Feature 开工/完工更新）
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
