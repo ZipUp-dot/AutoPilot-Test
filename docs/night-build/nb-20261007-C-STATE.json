@@ -1,0 +1,39 @@
+{
+  "build_id": "nb-20261007-C",
+  "matrix_source_sha": "5873c664b278f4361e52e12b11eeb35dfdb01b6e",
+  "frozen_at": "2026-10-07T15:25:00+08:00",
+  "features": [
+    {
+      "feature_id": "PROJ-V20-SCHED",
+      "spec_sha": "a3af0b0dd1166870473910e11a27fe134951ccd1f64e9128ac8279acda9b7a38",
+      "status": "NOT_STARTED",
+      "started_at": null,
+      "finished_at": null,
+      "commit_sha": null,
+      "test_result": null,
+      "failure_reason": null
+    },
+    {
+      "feature_id": "PROJ-V20-CICD",
+      "spec_sha": "5be226ba75c79c68933d13c07938b7e9b4f3635df391e2b4a5ae5371fbb1379b",
+      "status": "NOT_STARTED",
+      "started_at": null,
+      "finished_at": null,
+      "commit_sha": null,
+      "test_result": null,
+      "failure_reason": null
+    },
+    {
+      "feature_id": "PROJ-V20-MOCK",
+      "spec_sha": "1f8f42d237de876c5c552d84ea2f3d2a265d7ffcff59085a9a73023b00be0a45",
+      "status": "NOT_STARTED",
+      "started_at": null,
+      "finished_at": null,
+      "commit_sha": null,
+      "test_result": null,
+      "failure_reason": null
+    }
+  ],
+  "global_deadline": null,
+  "artifacts": []
+}
