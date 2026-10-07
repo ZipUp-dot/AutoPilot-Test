@@ -20,6 +20,14 @@ from .heal_record import HealRecord, HealRecordCreate, HealRecordResponse
 from .batch_cases import BatchCase, BatchCaseResponse
 from .batch_records import BatchRecord, BatchRecordResponse
 from .schedule import Schedule, ScheduleCreate, ScheduleUpdate, ScheduleResponse
+from .pipeline import (
+    Pipeline,
+    PipelineCreate,
+    PipelineUpdate,
+    PipelineResponse,
+    PipelineRun,
+    PipelineRunResponse,
+)
 
 __all__ = [
     "Project",
@@ -61,4 +69,10 @@ __all__ = [
     "ScheduleCreate",
     "ScheduleUpdate",
     "ScheduleResponse",
+    "Pipeline",
+    "PipelineCreate",
+    "PipelineUpdate",
+    "PipelineResponse",
+    "PipelineRun",
+    "PipelineRunResponse",
 ]

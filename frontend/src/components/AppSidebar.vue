@@ -28,6 +28,10 @@
         <el-icon><Timer /></el-icon>
         <span>定时执行</span>
       </el-menu-item>
+      <el-menu-item index="/pipelines">
+        <el-icon><Promotion /></el-icon>
+        <span>CI/CD 流水线</span>
+      </el-menu-item>
     </el-menu>
     <div class="collapse-btn" @click="$emit('toggle')">
       <el-icon :size="18"><component :is="collapsed ? 'Expand' : 'Fold'" /></el-icon>
@@ -49,6 +53,7 @@ const activeRoute = computed(() => {
   if (route.path.startsWith('/reports')) return '/reports'
   if (route.path.startsWith('/metrics')) return '/metrics'
   if (route.path.startsWith('/schedules')) return '/schedules'
+  if (route.path.startsWith('/pipelines')) return '/pipelines'
   return '/dashboard'
 })
 </script>

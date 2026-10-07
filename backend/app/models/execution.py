@@ -41,6 +41,11 @@ class Execution(Base):
     runtime_state_json = Column(Text)                # {case_id: {"active_code_id": int}}
     # P0-9 Stop 权威字段（Schema Delta）：NULL = 无 Stop 意图；非 NULL = 已请求停止
     stop_requested_at = Column(DateTime, nullable=True)
+    # F2（0006）：流水线触发的执行归属。NULL = 非流水线触发（历史行不回填）。
+    # 仅作归属标注：execution 事实仍由 Admission 创建，此处不构成第二 Contract。
+    pipeline_run_id = Column(Integer,
+                             ForeignKey("pipeline_runs.id", ondelete="RESTRICT"),
+                             nullable=True)
     created_at = Column(DateTime, default=func.now())
 
 

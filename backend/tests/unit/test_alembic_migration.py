@@ -281,6 +281,64 @@ class TestSQLiteMigration:
         finally:
             engine.dispose()
 
+    def test_pipelines_0006_upgrade_and_downgrade(self, tmp_path, monkeypatch):
+        """0006_pipelines：upgrade 建 pipelines + pipeline_runs + executions.pipeline_run_id；
+        downgrade 到 0005 精确回退。
+
+        硬边界增补 4：迁移正确性必须由 alembic 级 upgrade+downgrade 证据支撑。
+        """
+        url = self._sqlite_url(tmp_path)
+        _run_upgrade(url, monkeypatch)
+
+        engine = create_engine(url)
+        try:
+            insp = inspect(engine)
+            tables = set(insp.get_table_names())
+            assert {"pipelines", "pipeline_runs"} <= tables, tables
+
+            pipe_cols = {c["name"] for c in insp.get_columns("pipelines")}
+            assert {"id", "project_id", "name", "trigger_config_json",
+                    "stages_json", "enabled", "created_at"} <= pipe_cols, pipe_cols
+
+            run_cols = {c["name"] for c in insp.get_columns("pipeline_runs")}
+            assert {"id", "pipeline_id", "trigger_type", "trigger_detail",
+                    "status", "started_at", "finished_at"} <= run_cols, run_cols
+
+            assert "pipeline_run_id" in {c["name"] for c in insp.get_columns("executions")}
+
+            fks = {
+                (tuple(fk["constrained_columns"]), fk["referred_table"],
+                 fk["options"].get("ondelete"))
+                for fk in insp.get_foreign_keys("pipeline_runs")
+            }
+            assert (("pipeline_id",), "pipelines", "RESTRICT") in fks, fks
+
+            exec_fks = {
+                (tuple(fk["constrained_columns"]), fk["referred_table"],
+                 fk["options"].get("ondelete"))
+                for fk in insp.get_foreign_keys("executions")
+            }
+            assert (("pipeline_run_id",), "pipeline_runs", "RESTRICT") in exec_fks, exec_fks
+
+            assert "idx_pipe_project" in {i["name"] for i in insp.get_indexes("pipelines")}
+            assert "idx_prun_pipeline" in {i["name"] for i in insp.get_indexes("pipeline_runs")}
+        finally:
+            engine.dispose()
+
+        cfg = _alembic_config()
+        monkeypatch.setenv("AUTOPILOT_ALEMBIC_URL", url)
+        command.downgrade(cfg, "0005_schedules")
+
+        engine = create_engine(url)
+        try:
+            insp = inspect(engine)
+            tables = set(insp.get_table_names())
+            assert "pipelines" not in tables
+            assert "pipeline_runs" not in tables
+            assert "pipeline_run_id" not in {c["name"] for c in insp.get_columns("executions")}
+        finally:
+            engine.dispose()
+
     def test_sqlite_upgrade_smooth_on_legacy_schema(self, tmp_path, monkeypatch):
         """已应用 legacy baseline（0001）的库 → upgrade head 平滑加 Delta，不报错"""
         url = self._sqlite_url(tmp_path)

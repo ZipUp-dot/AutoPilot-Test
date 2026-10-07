@@ -35,6 +35,7 @@ from app.routers import (
 )
 from app.routers.ai_drafts import router as ai_drafts_router
 from app.routers.schedules import router as schedules_router
+from app.routers.pipelines import router as pipelines_router
 
 # ── 日志 ──
 logging.basicConfig(
@@ -154,6 +155,7 @@ app.include_router(reports_router, prefix=api)
 app.include_router(metrics_router, prefix=api)
 app.include_router(ai_drafts_router, prefix=api)
 app.include_router(schedules_router, prefix=api)
+app.include_router(pipelines_router, prefix=api)
 
 # ── 健康检查（无前缀） ──
 
