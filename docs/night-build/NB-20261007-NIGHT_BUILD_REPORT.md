@@ -29,7 +29,9 @@ Smoke 用项目 nb-smoke-20261007（写入 Scratch DB，HTTP 入口走 https://e
 ## 9. Feature Status
 | feature_id | runtime | final | 说明 |
 |---|---|---|---|
-| DEBT-SLOT-ASYNC | COMPLETED | **VERIFIED（建议，待 Owner 签字）** | 1 次增补（v1.1），0 次 INTERRUPTION |
+| DEBT-SLOT-ASYNC | COMPLETED | **VERIFIED**（Owner 签字 2026-10-07 11:45） | AI 侧委托评审 READY_CANDIDATE = YES；1 次增补（v1.1），0 次 INTERRUPTION |
+
+> `final` 列仅 Owner 可填（VERIFIED / FAILED / BLOCKED / NOT_READY）；本次 `VERIFIED` 依据 Owner 于 2026-10-07 11:45 +08:00 的签字。
 
 ## 10. Commit
 3d4c7fa test(RED) → 08418a2 feat（+53 limiter / 3 处一行调用 / +4 替身委托）；分支已推 Gitee

@@ -48,8 +48,23 @@
 2. `run_in_executor` 用默认线程池（D-3 已裁定）：等待线程最长挂起 = remaining，无饥饿风险；
 3. manifest 的 spec_source_sha 指向 v1.1 增补 commit（在 main 上），分支内未含治理文档——治理文档与施工代码分离，符合"每 Feature 一个 commit"的边界。
 
-## 机器初验结论
+## 委托评审结论（AI 侧 · 附 A）
 
-**Feature Status 建议：VERIFIED**（E2E 项以 Known Limitation 挂账，非 BLOCKED）
+| 字段 | 值 |
+|---|---|
+| DELEGATED_REVIEW_RESULT | **READY_CANDIDATE = YES**（已由 Owner 签字生效，见下节） |
+| DELEGATED_REVIEWER | AI（TRAE · 机器初验） |
+| DELEGATED_REVIEW_AT | 2026-10-07（nb-20261007 施工日） |
+| DELEGATED_FINDINGS | AC-01~05 全 PASS；E2E = NOT_TESTED（转 Known Limitation 挂账） |
 
-Owner 签字：____________________  日期：__________
+> 委托评审通过 **≠** Owner 批准。AI 不具 Approval Authority；本记录中的终局状态由 Owner 签字写入。
+
+## Owner 终局裁定（已签字）
+
+| 字段 | 值 |
+|---|---|
+| FINAL_OUTCOME | **VERIFIED** |
+| APPROVED_BY | **OWNER** |
+| APPROVED_AT | **2026-10-07 11:45 +08:00** |
+
+Owner 签字：OWNER（口头追认 2026-10-07 11:45 +08:00）  日期：2026-10-07

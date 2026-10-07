@@ -1,0 +1,18 @@
+{
+  "build_id": "nb-20261007",
+  "frozen_at": "2026-10-07T09:51:50+08:00",
+  "features": [
+    {
+      "feature_id": "DEBT-SLOT-ASYNC",
+      "spec_sha": "8e3375652e3ee9cae11acbe15285d33fd2cd8baa067c1c998c6081228f5a6c5f",
+      "status": "VERIFIED",
+      "started_at": "2026-10-07T09:56:39+08:00",
+      "finished_at": "2026-10-07T10:02:19+08:00",
+      "commit_sha": "08418a22c6d9fcc9dbefdb28801c9965c8fe554c",
+      "test_result": "1492 passed / 2 skipped / 0 failed",
+      "failure_reason": null
+    }
+  ],
+  "global_deadline": null,
+  "artifacts": []
+}
