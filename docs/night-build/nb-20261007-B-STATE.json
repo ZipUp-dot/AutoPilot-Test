@@ -50,12 +50,12 @@
     {
       "feature_id": "BUG-SECOND-CONTRACT",
       "spec_sha": null,
-      "status": "HOLD",
+      "status": "CLOSED_BY_OWNER",
       "started_at": null,
       "finished_at": null,
       "commit_sha": null,
       "test_result": null,
-      "failure_reason": "标的文件不存在，待重定位"
+      "failure_reason": "原缺陷描述不成立，实际载体已由 F4 处置"
     },
     {
       "feature_id": "DEBT-DEAD-CONFIG",
