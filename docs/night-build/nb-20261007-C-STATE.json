@@ -1,0 +1,42 @@
+{
+  "build_id": "nb-20261007-C",
+  "matrix_source_sha": "5873c664b278f4361e52e12b11eeb35dfdb01b6e",
+  "frozen_at": "2026-10-07T15:25:00+08:00",
+  "features": [
+    {
+      "feature_id": "PROJ-V20-SCHED",
+      "spec_sha": "a3af0b0dd1166870473910e11a27fe134951ccd1f64e9128ac8279acda9b7a38",
+      "status": "VERIFIED",
+      "started_at": "2026-10-07T15:45:00+08:00",
+      "finished_at": "2026-10-07T17:55:00+08:00",
+      "commit_sha": "79144887828c1cefc491a58dbea24532fa1165a2",
+      "test_result": "1575 passed / 2 skipped / 0 failed (coverage 89%)",
+      "failure_reason": null,
+      "notes": "环境（Owner 2026-10-07 15:42 授权代执行）：Scratch DB autopilot_night_20261007c 已创建（autopilot / autopilot_baseline 未触碰）；端口 8004 空闲核验通过（PORT_8004_FREE），Smoke 用毕已释放（PORT_8004_RELEASED）；runtime 目录 C:\\night_build_runtime\\nb-20261007-C\\ 已创建。E-3（Spec §14 路径笔误，Owner 15:42 确认有效）：Spec §6 指定 schemas.py，仓库实测 app/schemas.py 为 legacy 单体，models 包既定约定为 ORM+Pydantic 同文件（app/models/__init__.py 头部声明 + app/models/ai_case_draft.py 先例）→ ScheduleCreate/Update/Out 落 app/models/schedule.py，不改 app/schemas.py；AC-06 迁移证据测试按仓库既有约定落 backend/tests/unit/test_alembic_migration.py（0004 先例）。E-5（新增依赖版本固定，Owner 15:42 确认有效）：引入 croniter==6.2.4（D-6 裁定），随 requirements.txt 提交。E-1（迁移 head 漂移，本次 1 处）：backend/tests/unit/test_migration.py 版本标记常量 0004_ai_case_drafts→0005_schedules + 紧随 delta 说明注释，未动行为断言（E-1 parity）。节拍 1 RED 证据：3 collection error + 11 failed。节拍 3：1575 passed / 2 skipped / 0 failed（基线 1528 + 新增 47）。AC-06 双级证据：① SQLite alembic 级 upgrade+downgrade（test_schedules_0005_upgrade_and_downgrade）；② Scratch MySQL autopilot_night_20261007c 实测 upgrade head→downgrade 0004_ai_case_drafts→upgrade head，schedules 表 12 列 / 2 索引 / 2 FK（project_id→projects RESTRICT、last_execution_id→executions RESTRICT）。节拍 4 Smoke 四件套（8004）：/health 200；POST /projects/ 200；POST /projects/1/schedules 200（next_run_at 回填）；GET 列表 200；disable（enabled=False + stop_requested_at 写入）→ enable 200；坏 cron（60 * * * * / 6 段）均 422；delete 200 后 GET 404；lifespan 实测调度器 task running（tick=30s），shutdown 后 task=None。Owner 真实签字：F1 PROJ-V20-SCHED = VERIFIED（2026-10-07 17:55，验收记录 FEATURE-ACCEPTANCE-C1-SCHED：AC-01~06 全 PASS，Kimi 独立核验通过）。conflict（2026-10-07 17:48，施工方实测）：Owner 宣称验收记录已放入 docs/night-build/，但工作区实测该文件缺失——已于 2026-10-07 17:56 由 Owner 补放（docs/night-build/FEATURE-ACCEPTANCE-C1-SCHED.md，Kimi 机器初验件、签字栏按 §十一 留空），单独 commit a174721 入库；conflict 闭环。"
+    },
+    {
+      "feature_id": "PROJ-V20-CICD",
+      "spec_sha": "5be226ba75c79c68933d13c07938b7e9b4f3635df391e2b4a5ae5371fbb1379b",
+      "status": "VERIFIED",
+      "started_at": "2026-10-07T17:48:00+08:00",
+      "finished_at": "2026-10-07T18:15:00+08:00",
+      "commit_sha": "d8673546f3dd25f6af073bfb362ccea9f30b3c71",
+      "test_result": "1604 passed / 2 skipped / 0 failed (coverage 88%)",
+      "failure_reason": null,
+      "notes": "Spec 核验：docs/SPEC-PROJ-V20-CICD-v1.md SHA256 = 5be226ba75c79c68933d13c07938b7e9b4f3635df391e2b4a5ae5371fbb1379b（与 Owner 声明一致，MATCH）。Spec 内部冲突（§6 Seal 钩子要求 execution→run 可定位 / §3 pipeline_runs 列清单无该字段 / §10 限定「两表+索引」）→ 按 §八 STOP 上报，Owner 2026-10-07 裁定 Option A：executions 增列 pipeline_run_id（INT nullable，FK→pipeline_runs.id RESTRICT）+ idx_exec_pipeline_run；0006 delta = pipelines + pipeline_runs 两表 + executions 加 1 列（§10 字面扩 1 列，Owner 追认）。E-1（迁移 head 漂移，本次 1 处）：test_migration.py 版本标记常量 0005_schedules→0006_pipelines + 紧随 delta 说明注释，未动行为断言。E-3（迁移证据测试落位）：AC-06 按仓库既有约定落 backend/tests/unit/test_alembic_migration.py（0004/0005 先例），未改 app/schemas.py。MySQL 陷阱修正（0006 downgrade）：首版先 drop_index 导致 ERR 1553「Cannot drop index idx_exec_pipeline_run: needed in a foreign key constraint」→ 改为「先删 FK 约束 → 再删索引 → 最后删列」，SQLite+MySQL 双通过（0004 注释同款警示）。§6 汇总钩子处置：§14 白名单未含 execution_finalizer.py（开工即 STOP 条件 ⑦），故汇总任务以「触发后 + 读时重算」实现同一派生语义（PipelineService.refresh_run_status 为唯一 writer，不新增状态出口）——请 Owner 知悉，如需真 Seal 钩子请授权扩白名单。节拍 1 RED 证据：14 failed + 1 collection error。节拍 3：1604 passed / 2 skipped / 0 failed（F1 基线 1575 + 新增 29）。AC-06 双级证据：① SQLite alembic 级 upgrade+downgrade（test_pipelines_0006_upgrade_and_downgrade）；② Scratch MySQL autopilot_night_20261007c 实测 upgrade head→downgrade 0005_schedules→upgrade head：pipelines 7 列、pipeline_runs 7 列、executions.pipeline_run_id 存在且 FK→pipeline_runs RESTRICT、索引 idx_pipe_project / idx_prun_pipeline。节拍 4 Smoke 四件套（8004）：/health 200；POST /projects/1/pipelines 200；GET 列表 200；手动触发 200（run #1 queued）；webhook 缺失/错误 token 均 401；带正确 token 触发 → 409「已有运行中的实例（run #1），禁止重入」；runs 列表 + run 详情（stage0=smoke）200；删除守卫（有 run→409，无 run→200）。Owner 裁定（2026-10-07 18:05，三处处置全部追认，无新增 STOP）：① Option A 追认有效——executions.pipeline_run_id 性质 = 事实表追加式可空引用列（不改既有列语义/不写路径），符合 7.6 不变量；记入 Spec §3 附录（Owner 补档，施工方不改 FROZEN Spec；注意补档将变更 SPEC-PROJ-V20-CICD-v1.md 内容 SHA，spec_sha 需 Owner 重新声明）；② Seal 钩子改用「refresh_run_status 唯一 writer + 读时重算」批准——派生语义等价、不扩白名单、不新增状态出口（不变量 #7/#8 保持），AC-04 等价成立；③ MySQL downgrade 顺序修复（先删 FK → 再删索引 → 最后删列）批准，0004 同款警示注释的延续，记入本 notes。Owner 真实签字：F2 PROJ-V20-CICD = VERIFIED（2026-10-07 18:15，验收记录 FEATURE-ACCEPTANCE-C2-CICD：AC-01~06 全 PASS + 三红线 diff 核验通过）。conflict（2026-10-07 18:03，施工方实测）：Owner 宣称验收记录 FEATURE-ACCEPTANCE-C2-CICD.md 已放入 docs/night-build/，但工作区实测该文件不存在（Get-ChildItem docs/night-build 仅见 FEATURE-ACCEPTANCE-C1-SCHED.md 等既有件；全仓 glob FEATURE-ACCEPTANCE-*C2* 零命中）——已于 2026-10-07 18:35 由 Owner 补放（docs/night-build/FEATURE-ACCEPTANCE-C2-CICD.md，Kimi 机器初验件、签字栏按 §十一 留空未代填），随 F3 收口令 commit 入库；conflict 闭环。"
+    },
+    {
+      "feature_id": "PROJ-V20-MOCK",
+      "spec_sha": "1f8f42d237de876c5c552d84ea2f3d2a265d7ffcff59085a9a73023b00be0a45",
+      "status": "VERIFIED",
+      "started_at": "2026-10-07T18:15:00+08:00",
+      "finished_at": "2026-10-07T18:35:00+08:00",
+      "commit_sha": "1155f59f168275788108c073cc05249bcba42211",
+      "test_result": "1670 passed / 2 skipped / 0 failed (coverage 88%)",
+      "failure_reason": null,
+      "notes": "Spec 核验：docs/SPEC-PROJ-V20-MOCK-v1.md SHA256 = 1f8f42d237de876c5c552d84ea2f3d2a265d7ffcff59085a9a73023b00be0a45（与 Owner 声明一致，MATCH）。数据源裁定（§5/§6/§7 mock_server_id 承载点 / §14 白名单 / P1-1 不变量三角冲突）→ 按 §八 STOP 上报，Owner 2026-10-07 裁定 Option A：Manifest 承载（来源 project.config_json[\"mock_server_id\"] → Admission 冻结进 Manifest → 执行期只读 Manifest，禁止回读 Project；白名单扩 1 文件 backend/app/services/execution_admission_service.py）。AC-05（硬边界，开工即核验 diff）：backend/app/services/appium_service.py SHA256 = d758ef947f14d74eb839d1d565f10b34400e06923eeb6da118fadc8485cf8ca6（与基线一致），git diff 空 = 零改动。实现要点：Mock 由 Playwright context.route 拦截（**无新端口、无新进程**，MockServer 仅逻辑命名空间），glob = **{base_path}/**；未匹配路径 → route.fallback() 交回既有 SSRF 策略链放行真实请求（禁用 continue_ 以免跳过先注册的 SSRF handler 形成绕过）；仅 Web 执行链注入（主链 + 自愈回跑同环境），Android/Appium 链不涉及（不变量 #3）。E-1（迁移 head 漂移，本次 1 处）：backend/tests/unit/test_migration.py 版本标记常量 0006_pipelines→0007_mock_services + 紧随 delta 说明注释，未动行为断言（E-1 parity）。节拍 1 RED 证据：15 failed + 3 collection error。节拍 3：1670 passed / 2 skipped / 0 failed（F2 基线 1604 + 新增 66，coverage 88%）；前端 vitest 24 passed + vite build 成功（MockManage chunk 已产出）。AC-06 双级证据：① SQLite alembic 级 upgrade+downgrade（test_mock_services_0007_upgrade_and_downgrade）；② Scratch MySQL autopilot_night_20261007c 实测 upgrade 0006→0007 → 结构核验（mock_servers 6 列 + FK project_id→projects RESTRICT；mock_rules 10 列 + FK server_id→mock_servers RESTRICT + 索引 idx_mock_rules_server(server_id,enabled)）→ downgrade 0007→0006（两表删除）→ upgrade head（回 0007_mock_services）。节拍 4 Smoke 四件套（8004）：/health healthy；POST /api/v1/projects/{id}/mock-servers 200（base_path \"mock\" 归一化为 \"/mock\"）；GET 列表 200 total=1；建规则 200；dry-run 命中 matched=True rule_id=1；未命中 matched=False；非法模板 422；非法方法 422；有规则删除守卫 409；规则/服务删除 200。Owner 真实签字：F3 PROJ-V20-MOCK = VERIFIED（2026-10-07 18:35，验收记录 FEATURE-ACCEPTANCE-C3-MOCK：AC-01~06 全 PASS + Manifest 承载/单点注入/appium 零改动 diff 级核验通过）。conflict（2026-10-07 18:35，施工方实测）：Owner 宣称验收记录 FEATURE-ACCEPTANCE-C3-MOCK.md 已放入 docs/night-build/，但工作区实测该文件不存在（Get-ChildItem docs/night-build 未见；全仓 glob FEATURE-ACCEPTANCE-*C3* 零命中）——已于 2026-10-07 18:36 由 Owner 补放（docs/night-build/FEATURE-ACCEPTANCE-C3-MOCK.md，Kimi 机器初验件、签字栏按 §十一 留空未代填），单独 commit 入库；conflict 闭环。"
+    }
+  ],
+  "global_deadline": null,
+  "artifacts": []
+}

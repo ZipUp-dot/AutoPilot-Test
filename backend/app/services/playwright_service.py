@@ -90,6 +90,8 @@ def _env_from_manifest(manifest: dict) -> dict:
         "headless": execution_mode != "headed",
         "allowed_hosts": list(ssrf.get("allowed_hosts") or []),
         "allowed_ports": list(ssrf.get("allowed_ports") or []),
+        # F3（PROJ-V20-MOCK）：Mock 服务引用由 Admission 冻结（可空）
+        "mock_server_id": manifest.get("mock_server_id"),
     }
 
 
@@ -248,6 +250,8 @@ class PlaywrightService:
                 context = await browser.new_context(**context_options)
                 # BrowserContext 级网络拦截：HTTP/HTTPS/WebSocket + 重定向/iframe/popup/资源
                 await install_network_policy(context, policy)
+                # F3：Mock 拦截（仅 Manifest 冻结了 mock_server_id 时注册；未匹配 fallback 回策略链）
+                await self._install_mock_if_configured(context, env)
                 page = await context.new_page()
                 page.set_default_timeout(settings.PLAYWRIGHT_TIMEOUT)
 
@@ -494,6 +498,19 @@ class PlaywrightService:
         Path(path).mkdir(parents=True, exist_ok=True)
         return path
 
+    async def _install_mock_if_configured(self, context, env: dict) -> int:
+        """F3（PROJ-V20-MOCK）：Manifest 冻结了 mock_server_id 时注册 Playwright route 拦截。
+
+        实现 = context.route（**无新端口、无新进程**）；未匹配规则由 handler
+        以 route.fallback() 交回既有 SSRF 策略链放行真实请求。
+        仅 Web 链（Playwright）注入；Android/Appium 链不涉及（不变量 #3）。
+        """
+        mock_server_id = (env or {}).get("mock_server_id")
+        if not mock_server_id:
+            return 0
+        from app.services.mock_service import install_mock_for_execution
+        return await install_mock_for_execution(context, self._db, mock_server_id)
+
     def _start_healing(self, execution_id: int, case_ids: list[int]) -> None:
         """启动后台自愈线程 — 重新启动浏览器，逐 failed case 触发 Case 级 HealRound"""
         def _heal():
@@ -561,6 +578,8 @@ class PlaywrightService:
                             service_workers="block",
                         )
                         await install_network_policy(context, policy)
+                        # F3：自愈回跑同环境 → 同样注入 Mock（同一注入 helper）
+                        await self._install_mock_if_configured(context, env)
                         page = await context.new_page()
                         page.set_default_timeout(settings.PLAYWRIGHT_TIMEOUT)
 

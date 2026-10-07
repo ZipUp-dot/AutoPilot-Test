@@ -45,6 +45,30 @@ const routes = [
     component: () => import('@/views/MetricsOverview.vue'),
     meta: { title: 'KPI 指标', icon: 'TrendCharts' },
   },
+  {
+    path: '/schedules',
+    name: 'ScheduleManage',
+    component: () => import('@/views/ScheduleManage.vue'),
+    meta: { title: '定时执行', icon: 'Timer' },
+  },
+  {
+    path: '/pipelines',
+    name: 'PipelineManage',
+    component: () => import('@/views/PipelineManage.vue'),
+    meta: { title: 'CI/CD 流水线', icon: 'Promotion' },
+  },
+  {
+    path: '/pipelines/:id/runs',
+    name: 'PipelineRuns',
+    component: () => import('@/views/PipelineRuns.vue'),
+    meta: { title: '流水线运行', icon: 'Promotion' },
+  },
+  {
+    path: '/mock',
+    name: 'MockManage',
+    component: () => import('@/views/MockManage.vue'),
+    meta: { title: 'Mock 服务', icon: 'Connection' },
+  },
   { path: '/:pathMatch(.*)*', redirect: '/projects' },
 ]
 
