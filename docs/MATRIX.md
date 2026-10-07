@@ -31,3 +31,13 @@
 
 - Master Plan v1.4 不存在（Owner 确认功能为即兴提出），以本表 + 立项书共同构成需求全集；
 - #7/#8/#9 的 current_state 仅做了存在性扫描（grep 级证据），施工前需逐行核验实现完整度——届时以 Source Evidence 更新 current_state。
+
+## Build-B 增量（Owner 2026-10-07 11:45 并入，MATRIX_SOURCE_SHA 随提交 commit 更新）
+
+| feature_id | source | 需求 | current_state | gap | dependency | acceptance |
+|---|---|---|---|---|---|---|
+| EXT-V12-AGGREG-FE | Extension | 执行列表 KPI 聚合前端接线 | 后端✅ metrics_service / 前端❌ 零引用 | 前端接线 | 无 | 四 JSONPath 渲染一致（VERIFY-789 #9） |
+| BUG-REPORT-RESOLVER | Bugfix(C-21) | Report 状态解释统一走 CaseStateResolver | Derived 证据，待节拍 0 定位 | 自判分支清理 | 无 | Spec §11 AC-01~03 |
+| BUG-SECOND-CONTRACT | Bugfix(C-22) | 第二 Execution Contract 处置 | HOLD：原标的文件不存在，待 F4 重定位 | 重定位后修订 Spec | F4 dual-task | 修订后定 |
+| DEBT-DEAD-CONFIG | TechDebt | 删除死配置 HEAL_SKILL_ENABLED | Source 证据：config.py 定义处，全仓零使用 | 删除 | 无 | grep 零使用证据 |
+| DEBT-PRIVATE-API | TechDebt | _chat_http_attempt 私有名跨模块复用治理 | Source：多模块引用私有名 | 下批处理 | — | 下批定 |
