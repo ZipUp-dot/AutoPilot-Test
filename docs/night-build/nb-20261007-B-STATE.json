@@ -39,12 +39,13 @@
     {
       "feature_id": "BUG-REPORT-RESOLVER",
       "spec_sha": "9148fc80f6f0cb8642f0b950f5adf4b0d5afdd067a13b02bf59c55e44959fe16",
-      "status": "NOT_STARTED",
-      "started_at": null,
-      "finished_at": null,
-      "commit_sha": null,
-      "test_result": null,
-      "failure_reason": null
+      "status": "RUNNING",
+      "started_at": "2026-10-07T13:12:00+08:00",
+      "finished_at": "2026-10-07T13:20:42+08:00",
+      "commit_sha": "2d9b141c3c33eeedf26e78d659cd87e7e8b4179b",
+      "test_result": "1525 passed / 2 skipped / 0 failed（基线 1511 + 新增 14，零回归）；Smoke 四件套 PASS（8003 + autopilot_night_20261007b；summary passed=1 failed=1 skipped=0 pass_rate=50.0，HTML 逐 case 成功/失败）",
+      "failure_reason": null,
+      "notes": "节拍 0 附录回填（Owner 2026-10-07 授权，双 SHA 留痕）：Spec 内容 SHA 9148fc80…fe16（冻结时点，Queue v1.2 声明）→ bf28423af7c557c3456bb963b02805a7598514010f9f27e61d1a94da75d72bf9（回填后，含附录 A 自判点清单）；自判点全链仅 1 处 = ReportService._aggregate → final_status 兜底 if，已删除并统一调 CaseStateResolver（与 Detail _build_case_results 同族）；docstring 不变量「禁止重跑 Resolver」同步修订；Resolver 无缺场景（不触发 §6 STOP）；F5 重定位证据：execution_report_service.py 全仓不存在，其「状态兜底 if」落点即本 P-1；§13 逐场景 diff：旧兜底把无 sealed 条目/pending/running/unknown 一律判 skipped → 新码按 Resolver 输出，RED 实测 7 场景变化（success/failed/pending/unknown 等）、4 场景不变（各类 skipped）；待 Owner 签字"
     },
     {
       "feature_id": "BUG-SECOND-CONTRACT",
