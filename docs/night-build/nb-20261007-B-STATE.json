@@ -8,9 +8,9 @@
       "spec_sha": "a4833b46c32c2b0553e4054041b5bf1776e22406dfdce6842d0288ff24dcf99f",
       "status": "RUNNING",
       "started_at": "2026-10-07T11:59:30+08:00",
-      "finished_at": null,
-      "commit_sha": null,
-      "test_result": null,
+      "finished_at": "2026-10-07T12:40:47+08:00",
+      "commit_sha": "972977cdb821bd5fd1358c4d697e689de91275bd",
+      "test_result": "1511 passed / 2 skipped / 0 failed",
       "failure_reason": null
     },
     {
