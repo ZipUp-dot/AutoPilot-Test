@@ -59,13 +59,14 @@
     },
     {
       "feature_id": "DEBT-DEAD-CONFIG",
-      "spec_sha": null,
-      "status": "NOT_STARTED",
-      "started_at": null,
-      "finished_at": null,
-      "commit_sha": null,
-      "test_result": null,
-      "failure_reason": null
+      "spec_sha": "09d0e135d1c21bfc5e108100bd75afca941a3966aa50889ae3b7b98361943459",
+      "status": "RUNNING",
+      "started_at": "2026-10-07T13:26:00+08:00",
+      "finished_at": "2026-10-07T13:30:12+08:00",
+      "commit_sha": "43b683f72ce1b885169af3f683c964f2e2284fd4",
+      "test_result": "1528 passed / 2 skipped / 0 failed（基线 1525 + 新增 3，零回归）；Smoke 四件套 PASS（8003 + autopilot_night_20261007b）",
+      "failure_reason": null,
+      "notes": "白名单（Owner 2026-10-07 裁定）= backend/app/config.py + backend/tests/unit/test_config.py + docs/MATRIX.md #8 行；节拍 0 Source 证据：HEAL_SKILL_ENABLED 唯一定义处 = config.py，backend/frontend/tests 零引用、.env/.env.example 均无（grep 实证）→ MATRIX AC「grep 零使用证据」满足；Settings 无 extra=forbid → 删字段对既有环境变量无破坏；spec_sha = MATRIX.md 施工前内容 SHA 09d0e135…3459（Feature 定义行 #42；双 SHA 留痕：修订 #8 行后 = d5b29bd6c662a1ea9c6711abbc01688a68af1d771609d280fc36f9194d62a63f）；Smoke：Startup / Core Route(executions/1/reports) / Module Entry(/metrics) / Happy Path(reports/generate) 全 PASS；待 Owner 签字"
     }
   ],
   "global_deadline": null,
