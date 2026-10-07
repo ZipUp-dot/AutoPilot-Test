@@ -661,7 +661,7 @@ async def _call_openai_async(
         if remaining <= 0:
             raise DeadlineExceeded()
         # 原子预留 quota + slot；任一失败本次 attempt 不成立（不计 attempt，不 backoff）
-        reservation = ai_rate_limiter.acquire_attempt(remaining)
+        reservation = await ai_rate_limiter.acquire_attempt_async(remaining)
         if reservation == "quota_timeout":
             raise AIException(
                 f"AI 调用熔断：每分钟最多 {settings.AI_RATE_LIMIT} 次，请稍后重试",
@@ -741,7 +741,7 @@ async def _call_openai_vision_async(
         remaining = _remaining(deadline)
         if remaining <= 0:
             return ""
-        reservation = ai_rate_limiter.acquire_attempt(remaining)
+        reservation = await ai_rate_limiter.acquire_attempt_async(remaining)
         if reservation in ("quota_timeout", "slot_timeout"):
             logger.warning("Vision 调用受限(%s)，跳过本次分析", reservation)
             return ""
