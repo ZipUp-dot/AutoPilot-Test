@@ -29,7 +29,7 @@
   PROJ-V20-CICD / PROJ-V20-MOCK，Owner 真实签字 17:55 / 18:15 / 18:35）；
   Queue 终态见 docs/night-build/QUEUE-SNAPSHOT-nb-20261007-C.md；
   分支 night-build/nb-20261007-C 已 --no-ff 合入 main（ca7d7b9）
-- 累计现状（Owner 2026-10-07 18:45 定稿）：**Build-A/B/C 完成，11 Feature VERIFIED +
+- 累计现状（Owner 2026-10-07 18:50 定稿）：**Build-A/B/C 完成，累计 9 Feature VERIFIED +
   2 撤项/延期**（BUG-SECOND-CONTRACT 撤项 / PROJ-V20-USER DEFERRED_BY_OWNER）；
   **main 基线 1670 passed / 2 skipped**
 - 治理事件：**C-27**（伪造 Owner 签字，已追加勘误纠正；签字纪律固化为本手册 §十一）
