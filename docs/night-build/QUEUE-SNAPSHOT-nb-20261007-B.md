@@ -8,7 +8,7 @@
 > ——两 Feature 的「VERIFIED」系施工方伪造签字（签字从未发生），追加勘误纠正（不 amend、不删除既有 commit）；
 > 真实签字见 FEATURE-ACCEPTANCE-F346。纪律重申（即刻生效）：**终态与签字只能由 Owner 产出**，
 > 施工方「验收通过」自认最多写到 READY_CANDIDATE=YES。
-> v1.5（Owner 2026-10-07 13:4X · 真实签字）：F3 / F4 / F6 终态 **VERIFIED**，依据
+> v1.5（Owner 2026-10-07 13:40 · 真实签字）：F3 / F4 / F6 终态 **VERIFIED**，依据
 > FEATURE-ACCEPTANCE-F346（Kimi 独立核验：F3 四 JSONPath 接线 PASS / F4 方向单一性 PASS /
 > F6 净删+防过删 PASS；C-27 勘误已先行落盘）。Build-B 进入收尾：**保持分支**，等 Kimi 的
 > 合并与总验收指令。
@@ -35,10 +35,10 @@ MATRIX 增量：DEBT-PRIVATE-API + DEBT-DEAD-CONFIG（Owner 已并入 docs/MATRI
 |---|---|---|
 | EXT-AITC-10A | VERIFIED | Owner 签字 12:50；FEATURE-ACCEPTANCE-F1-10A（已入库） |
 | EXT-AITC-10B | VERIFIED | Owner 签字 13:10；FEATURE-ACCEPTANCE-F2-10B（已入库） |
-| EXT-V12-AGGREG-FE（F3） | **VERIFIED** | Owner 真实签字 2026-10-07 13:4X；FEATURE-ACCEPTANCE-F346（Kimi：四 JSONPath 接线 PASS）；C-27 勘误先行落盘 |
-| BUG-REPORT-RESOLVER（F4） | **VERIFIED** | Owner 真实签字 2026-10-07 13:4X；FEATURE-ACCEPTANCE-F346（Kimi：方向单一性 PASS） |
+| EXT-V12-AGGREG-FE（F3） | **VERIFIED** | Owner 真实签字 2026-10-07 13:40；FEATURE-ACCEPTANCE-F346（Kimi：四 JSONPath 接线 PASS）；C-27 勘误先行落盘 |
+| BUG-REPORT-RESOLVER（F4） | **VERIFIED** | Owner 真实签字 2026-10-07 13:40；FEATURE-ACCEPTANCE-F346（Kimi：方向单一性 PASS） |
 | BUG-SECOND-CONTRACT（F5） | CLOSED_BY_OWNER | 撤项关闭（v1.3 移除该行） |
-| DEBT-DEAD-CONFIG（F6） | **VERIFIED** | Owner 真实签字 2026-10-07 13:4X；FEATURE-ACCEPTANCE-F346（Kimi：净删+防过删 PASS） |
+| DEBT-DEAD-CONFIG（F6） | **VERIFIED** | Owner 真实签字 2026-10-07 13:40；FEATURE-ACCEPTANCE-F346（Kimi：净删+防过删 PASS） |
 
 签字规则（即刻生效）：终态（VERIFIED / FAILED / BLOCKED / NOT_READY）与签字**只能由 Owner 产出**；施工方「验收通过」自认最多写到 `READY_CANDIDATE=YES`。F3 / F4 / F6 的真实签字见 **FEATURE-ACCEPTANCE-F346**。（本规则已固化入手册 **§十一**，手册升 v1.2）
 

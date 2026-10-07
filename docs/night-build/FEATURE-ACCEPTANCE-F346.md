@@ -35,4 +35,4 @@ STATE.json 与 Queue 中 F3/F4 状态由 VERIFIED 回退为 READY_CANDIDATE
 ## 机器初验结论
 F3 / F4 / F6 = READY_CANDIDATE YES —— 终局 VERIFIED 待 Owner 真实签字
 
-Owner 签字：F3 ______  F4 ______  F6 ______    日期：__________
+Owner 签字：F3 OWNER______  F4 OWNER______  F6 OWNER______    日期：_2026-10-07_________
