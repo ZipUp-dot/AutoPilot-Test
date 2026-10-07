@@ -17,12 +17,13 @@
     {
       "feature_id": "EXT-AITC-10B",
       "spec_sha": "668622c21040719e12f43b7f0c9a71d68a1fef16092bed299e2644973303cafe",
-      "status": "NOT_STARTED",
-      "started_at": null,
-      "finished_at": null,
-      "commit_sha": null,
-      "test_result": null,
-      "failure_reason": null
+      "status": "RUNNING",
+      "started_at": "2026-10-07T12:50:00+08:00",
+      "finished_at": "2026-10-07T13:00:04+08:00",
+      "commit_sha": "75e2f12bd97d2409096382df5ea1025846b8751d",
+      "test_result": "frontend vitest 16 passed / 0 failed；vite build ✓；backend 1511 passed / 2 skipped / 0 failed（零改动复核）",
+      "failure_reason": null,
+      "notes": "E-5：引入 vitest 2.1.9（精确锁定，依赖 vite ^5.0.0，匹配本项目 vite ^5.2.0）；D-4=A 仅 mock 级测试，未引入 @vue/test-utils/jsdom"
     },
     {
       "feature_id": "EXT-V12-AGGREG-FE",
