@@ -16,3 +16,5 @@ openpyxl==3.1.5
 playwright==1.56.0
 appium-python-client==4.1.0
 httpx==0.28.1
+# PROJ-V20-SCHED（F1）：cron 表达式解析（Owner 决策 D-6，版本固定）
+croniter==6.2.4

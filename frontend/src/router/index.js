@@ -45,6 +45,12 @@ const routes = [
     component: () => import('@/views/MetricsOverview.vue'),
     meta: { title: 'KPI 指标', icon: 'TrendCharts' },
   },
+  {
+    path: '/schedules',
+    name: 'ScheduleManage',
+    component: () => import('@/views/ScheduleManage.vue'),
+    meta: { title: '定时执行', icon: 'Timer' },
+  },
   { path: '/:pathMatch(.*)*', redirect: '/projects' },
 ]
 

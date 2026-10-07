@@ -240,6 +240,47 @@ class TestSQLiteMigration:
         finally:
             engine.dispose()
 
+    def test_schedules_0005_upgrade_and_downgrade(self, tmp_path, monkeypatch):
+        """0005_schedules：upgrade 建 schedules 表 + 2 索引 + 2 FK；downgrade 到 0004 精确回退
+
+        硬边界增补 4：迁移正确性必须由 alembic 级 upgrade+downgrade 证据支撑，
+        create_all 的 GREEN 不构成迁移正确性证明。
+        """
+        url = self._sqlite_url(tmp_path)
+        _run_upgrade(url, monkeypatch)
+
+        engine = create_engine(url)
+        try:
+            insp = inspect(engine)
+            assert "schedules" in set(insp.get_table_names())
+            cols = {c["name"] for c in insp.get_columns("schedules")}
+            assert {
+                "id", "project_id", "name", "cron_expr", "exec_config_json",
+                "enabled", "last_run_at", "next_run_at", "last_execution_id",
+                "stop_requested_at", "created_at", "updated_at",
+            } <= cols, cols
+            idx = {i["name"] for i in insp.get_indexes("schedules")}
+            assert {"idx_sched_project", "idx_sched_next"} <= idx, idx
+            fks = {
+                (tuple(fk["constrained_columns"]), fk["referred_table"],
+                 fk["options"].get("ondelete"))
+                for fk in insp.get_foreign_keys("schedules")
+            }
+            assert (("project_id",), "projects", "RESTRICT") in fks, fks
+            assert (("last_execution_id",), "executions", "RESTRICT") in fks, fks
+        finally:
+            engine.dispose()
+
+        cfg = _alembic_config()
+        monkeypatch.setenv("AUTOPILOT_ALEMBIC_URL", url)
+        command.downgrade(cfg, "0004_ai_case_drafts")
+
+        engine = create_engine(url)
+        try:
+            assert "schedules" not in set(inspect(engine).get_table_names())
+        finally:
+            engine.dispose()
+
     def test_sqlite_upgrade_smooth_on_legacy_schema(self, tmp_path, monkeypatch):
         """已应用 legacy baseline（0001）的库 → upgrade head 平滑加 Delta，不报错"""
         url = self._sqlite_url(tmp_path)

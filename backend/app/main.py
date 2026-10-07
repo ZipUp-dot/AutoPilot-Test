@@ -34,6 +34,7 @@ from app.routers import (
     metrics_router,
 )
 from app.routers.ai_drafts import router as ai_drafts_router
+from app.routers.schedules import router as schedules_router
 
 # ── 日志 ──
 logging.basicConfig(
@@ -83,7 +84,27 @@ async def lifespan(app: FastAPI):
     deleted = ReportService.cleanup_old_reports(max_days=30)
     if deleted:
         logger.info("过期报告清理完成: %s 个文件", deleted)
+
+    # 定时任务调度循环（单 worker 内；测试模式不启动后台循环）
+    # （异常隔离：DB 不可用等不阻塞应用启动）
+    scheduler = None
+    if os.environ.get("_AUTOPILOT_TEST_MODE") != "1":
+        try:
+            from app.services.scheduler_service import scheduler_service
+            scheduler = scheduler_service
+            await scheduler.start()
+            logger.info("定时任务调度器已启动（tick=%ss）", scheduler.tick_seconds)
+        except Exception as e:
+            logger.warning("调度器启动跳过（不影响启动）: %s", str(e)[:200])
+
     yield
+
+    if scheduler is not None:
+        try:
+            await scheduler.stop()
+            logger.info("定时任务调度器已停止")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("调度器停止异常: %s", str(e)[:200])
     logger.info("应用关闭")
 
 
@@ -132,6 +153,7 @@ app.include_router(executions_router, prefix=api)
 app.include_router(reports_router, prefix=api)
 app.include_router(metrics_router, prefix=api)
 app.include_router(ai_drafts_router, prefix=api)
+app.include_router(schedules_router, prefix=api)
 
 # ── 健康检查（无前缀） ──
 
