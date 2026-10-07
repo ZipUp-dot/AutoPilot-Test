@@ -20,6 +20,10 @@
         <el-icon><Document /></el-icon>
         <span>报告中心</span>
       </el-menu-item>
+      <el-menu-item index="/metrics">
+        <el-icon><TrendCharts /></el-icon>
+        <span>KPI 指标</span>
+      </el-menu-item>
     </el-menu>
     <div class="collapse-btn" @click="$emit('toggle')">
       <el-icon :size="18"><component :is="collapsed ? 'Expand' : 'Fold'" /></el-icon>
@@ -39,6 +43,7 @@ const activeRoute = computed(() => {
   if (route.path === '/dashboard' || route.path === '/') return '/dashboard'
   if (route.path.startsWith('/projects')) return '/projects'
   if (route.path.startsWith('/reports')) return '/reports'
+  if (route.path.startsWith('/metrics')) return '/metrics'
   return '/dashboard'
 })
 </script>

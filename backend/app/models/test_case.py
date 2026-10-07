@@ -30,6 +30,9 @@ class TestCase(Base):
     expected_result = Column(Text)
     source_excel = Column(String(255))
     excel_row = Column(Integer)
+    # provenance（8.8）：仅来源标记 ∈ {excel, ai_draft}；
+    # 禁止进入 StepCanonicalizer / source_steps_hash（默认 excel，既有路径零变化）
+    source = Column(String(16), nullable=False, default="excel", server_default="excel")
     status = Column(String(20), default="pending")
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

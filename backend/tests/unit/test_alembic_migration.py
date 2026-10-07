@@ -97,11 +97,13 @@ _ALL_TABLES = {
     "heal_records",
     "batch_cases",
     "batch_records",
+    "evidence_snapshots",
+    "ai_case_drafts",
 }
 
 
 def _assert_full_schema(url: str) -> None:
-    """断言 10 张业务表 + alembic_version 全部存在，且含关键列 / FK / UNIQUE"""
+    """断言 12 张业务表 + alembic_version 全部存在，且含关键列 / FK / UNIQUE"""
     engine = create_engine(url)
     try:
         inspector = inspect(engine)
@@ -199,6 +201,42 @@ class TestSQLiteMigration:
         try:
             tables = set(inspect(engine).get_table_names())
             assert _ALL_TABLES.isdisjoint(tables), f"downgrade 后仍存在表: {_ALL_TABLES & tables}"
+        finally:
+            engine.dispose()
+
+    def test_ai_case_drafts_0004_upgrade_and_downgrade(self, tmp_path, monkeypatch):
+        """0004_ai_case_drafts：upgrade 建 2 表 + 2 改列；downgrade 到 0003 精确回退
+
+        硬边界增补 4：迁移正确性必须由 alembic 级 upgrade+downgrade 证据支撑，
+        create_all 的 GREEN 不构成迁移正确性证明。
+        """
+        url = self._sqlite_url(tmp_path)
+        _run_upgrade(url, monkeypatch)
+
+        engine = create_engine(url)
+        try:
+            insp = inspect(engine)
+            tables = set(insp.get_table_names())
+            assert {"evidence_snapshots", "ai_case_drafts"}.issubset(tables), tables
+            assert "source" in {c["name"] for c in insp.get_columns("test_cases")}
+            assert "snapshot_id" in {c["name"] for c in insp.get_columns("page_elements")}
+            uqs = [tuple(u["column_names"]) for u in insp.get_unique_constraints("ai_case_drafts")]
+            assert ("project_id", "draft_key", "draft_version") in uqs, uqs
+        finally:
+            engine.dispose()
+
+        cfg = _alembic_config()
+        monkeypatch.setenv("AUTOPILOT_ALEMBIC_URL", url)
+        command.downgrade(cfg, "0003_batch_jobs")
+
+        engine = create_engine(url)
+        try:
+            insp = inspect(engine)
+            tables = set(insp.get_table_names())
+            assert "evidence_snapshots" not in tables
+            assert "ai_case_drafts" not in tables
+            assert "source" not in {c["name"] for c in insp.get_columns("test_cases")}
+            assert "snapshot_id" not in {c["name"] for c in insp.get_columns("page_elements")}
         finally:
             engine.dispose()
 

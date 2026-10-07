@@ -35,6 +35,9 @@ class PageElement(Base):
     platform = Column(String(10), default="web", nullable=False)
     selector_type = Column(String(20), nullable=True)
     element_metadata = Column("metadata", Text, nullable=True)
+    # EXT-AITC-10A：元素归属的抓取快照（NULL = legacy 历史行，不回填）
+    snapshot_id = Column(Integer, ForeignKey("evidence_snapshots.id", ondelete="RESTRICT"),
+                         nullable=True)
     created_at = Column(DateTime, default=func.now())
 
 

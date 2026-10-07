@@ -191,6 +191,22 @@ class AIService:
         )
 
     # ═══════════════════════════════════════════════
+    # AI TestCase 候选生成（EXT-AITC-10A）
+    # ═══════════════════════════════════════════════
+
+    def generate_test_cases(self, prompt: str,
+                            *, remaining: Optional[float] = None) -> str:
+        """生成 TestCase 候选（JSON 文本）
+
+        强制复用既有调用链（_call_openai → _chat_http_attempt），天然满足
+        §13（1 Attempt = 1 Quota = 1 Slot）与超时/限流治理；禁止新写 HTTP 客户端。
+        无 API Key（Mock 模式）→ 返回确定性 mock JSON，不发起真实调用。
+        """
+        if not settings.OPENAI_API_KEY:
+            return _mock_case_json()
+        return _call_openai(prompt, settings.OPENAI_MODEL, remaining=remaining)
+
+    # ═══════════════════════════════════════════════
     # 元素匹配
     # ═══════════════════════════════════════════════
 
@@ -816,6 +832,22 @@ def _validate_syntax(code: str) -> None:
         ast.parse(code)
     except SyntaxError as e:
         raise SyntaxError(f"语法错误 (行 {e.lineno}, 列 {e.offset}): {e.msg}")
+
+
+def _mock_case_json() -> str:
+    """Mock 模式下的确定性 AI TestCase 候选（零副作用，供无 Key 环境与测试）"""
+    return json.dumps({
+        "schema_version": 1,
+        "cases": [{
+            "case_name": "Mock 候选用例",
+            "priority": "P1",
+            "preconditions": [],
+            "steps": [{"step_number": 1, "action": "navigate",
+                       "target": "https://example.com"}],
+            "expected_result": "页面加载成功",
+            "ai_assessment": "needs_review",
+        }],
+    }, ensure_ascii=False)
 
 
 def _mock_code(target_url: str = "", steps_json: str = "", platform: str = "web") -> str:

@@ -22,6 +22,7 @@
     <el-tabs :model-value="activeTab" @update:model-value="onTabChange" type="border-card">
       <el-tab-pane label="元素抓取" name="elements" />
       <el-tab-pane label="用例管理" name="cases" />
+      <el-tab-pane label="AI 用例审核" name="ai-review" />
       <el-tab-pane label="执行面板" name="executions" />
       <el-tab-pane label="报告查看" name="reports" />
     </el-tabs>
@@ -122,6 +123,7 @@ async function loadProject() {
 function syncTabFromRoute() {
   const path = route.path
   if (path.endsWith('/cases')) activeTab.value = 'cases'
+  else if (path.endsWith('/ai-review')) activeTab.value = 'ai-review'
   else if (path.endsWith('/executions')) activeTab.value = 'executions'
   else if (path.endsWith('/reports')) activeTab.value = 'reports'
   else activeTab.value = 'elements'

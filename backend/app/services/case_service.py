@@ -78,6 +78,41 @@ class CaseService:
         self._db = db
 
     # ═══════════════════════════════════════════════
+    # 单条创建（EXT-AITC-10A：Promote 复用入口，不重写 CRUD）
+    # ═══════════════════════════════════════════════
+
+    def create(self, project_id: int, case_name: str, steps: list[dict], *,
+               source: str = "excel", case_no: Optional[str] = None,
+               priority: str = "P1", pre_conditions: Optional[str] = None,
+               expected_result: Optional[str] = None,
+               source_excel: Optional[str] = None,
+               excel_row: Optional[int] = None) -> TestCase:
+        """创建单条 TestCase
+
+        source 仅 provenance（默认 'excel' —— Excel 入口行为零变化）；
+        禁止进入 StepCanonicalizer / source_steps_hash（8.8）。
+        """
+        if source not in ("excel", "ai_draft"):
+            raise ValueError(f"非法 source: {source}")
+        case = TestCase(
+            project_id=project_id,
+            case_name=case_name,
+            case_no=case_no,
+            priority=priority,
+            pre_condition=pre_conditions,
+            steps=json.dumps(steps or [], ensure_ascii=False),
+            expected_result=expected_result,
+            source_excel=source_excel,
+            excel_row=excel_row,
+            source=source,
+            status="pending",
+        )
+        self._db.add(case)
+        self._db.commit()
+        self._db.refresh(case)
+        return case
+
+    # ═══════════════════════════════════════════════
     # 导入
     # ═══════════════════════════════════════════════
 

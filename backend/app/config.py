@@ -67,8 +67,6 @@ class Settings(BaseSettings):
     # ── 自愈 ──
     HEAL_MAX_RETRY_SAME_ERROR: int = 3  # 同一 step 同类错误快速失败阈值
     PRE_EXECUTION_CHECK: bool = True     # 执行前目标环境健康检查
-    # Heal Skill 开关（诊断基建默认 OFF，禁止默认启用）
-    HEAL_SKILL_ENABLED: bool = False
     # 执行心跳超时（秒）：服务重启后 running/healing 任务心跳超过该值视为孤儿
     EXECUTION_HEARTBEAT_TIMEOUT: int = 180
 

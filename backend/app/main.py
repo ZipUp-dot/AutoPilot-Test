@@ -33,6 +33,7 @@ from app.routers import (
     files_router,
     metrics_router,
 )
+from app.routers.ai_drafts import router as ai_drafts_router
 
 # ── 日志 ──
 logging.basicConfig(
@@ -130,6 +131,7 @@ app.include_router(heal_router, prefix=api)
 app.include_router(executions_router, prefix=api)
 app.include_router(reports_router, prefix=api)
 app.include_router(metrics_router, prefix=api)
+app.include_router(ai_drafts_router, prefix=api)
 
 # ── 健康检查（无前缀） ──
 

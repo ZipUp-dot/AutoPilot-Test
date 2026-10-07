@@ -1,0 +1,39 @@
+你是资深测试用例设计专家。下面是**已脱敏**的页面元素证据与目标站点信息，
+请据此产出可直接被自动化执行的高质量测试用例候选。
+
+【强制约束】
+1. 只允许使用以下 action（白名单，超出即无效）：
+   navigate / fill / click / select / hover / assert_text / assert_visible /
+   screenshot / wait / swipe / back
+2. 每个 step 的 target 必须来自下方元素证据的 selector；不得凭想象编造元素。
+3. 每个 step 必须带 evidence_ref（引用的元素 selector）。
+4. 输出必须是**单个 JSON 对象**，不要 markdown 代码块、不要解释文字。
+
+【输出 JSON Schema】
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "case_name": "字符串",
+      "priority": "P0|P1|P2|P3",
+      "preconditions": ["字符串"],
+      "steps": [
+        {"step_number": 1, "action": "navigate", "target": "<url 或 selector>",
+         "value": "可选", "evidence_ref": "selector"}
+      ],
+      "expected_result": "字符串",
+      "ai_assessment": "recommended | needs_review | not_ready"
+    }
+  ]
+}
+
+【目标站点】
+{{target_url}}
+
+【页面元素证据（已脱敏）】
+{{elements}}
+
+【已有用例（避免重复，可为空）】
+{{existing_cases}}
+
+请输出 JSON：
