@@ -4,10 +4,10 @@
   - executions 表：批次信息、总耗时、执行模式
   - executions.manifest_json：环境/名称快照（project name/target_url，Admission 时
     冻结；改 Project 后旧报告不变）
-  - executions.runtime_state_json：case 终态事实源（Seal 时 Resolver 计算一次写入；
-    Seal 后 Report/Metrics/Detail 只读 sealed case_status + terminal_reason，
-    禁止重跑 Resolver）
-  - execution_steps 表：每步的执行状态、截图、日志、错误
+  - execution_steps 表：每步的执行状态、截图、日志、错误（case 终态事实源——与
+    Detail 同族，统一由 CaseStateResolver 对步骤事实 resolve() 推出）
+  - executions.runtime_state_json：Seal 时 Resolver 持久化的 sealed case_status +
+    terminal_reason（Report 不再据此自行重解释；Metrics 只读此 sealed 值）
   - test_cases 表：用例名称、优先级、预期结果
   - heal_records 表：自愈记录
 
@@ -59,6 +59,7 @@ from app.models.heal_record import HealRecord
 from app.models.project import Project
 from app.models.report import Report
 from app.models.test_case import TestCase
+from app.utils.case_state_resolver import resolve, step_to_dict
 
 logger = logging.getLogger("autopilot.report")
 
@@ -390,21 +391,13 @@ class ReportService:
     ) -> dict:
         """聚合所有数据为报告数据结构。
 
-        case 终态两阶段钉死：Seal 时 Resolver 算一次写入 runtime_state → 此处只读
-        sealed case_status + terminal_reason，禁止重跑 Resolver、禁止自判状态。
+        case 终态唯一真源 = CaseStateResolver：此处对 execution_steps 事实调
+        resolve() 推出终态（与 Detail 同族）；禁止 Report 自判/兜底重解释。
         """
         # ── 概览统计 ──
         case_steps = defaultdict(list)
         for s in steps:
             case_steps[s.case_id].append(s)
-
-        # sealed runtime_state（唯一持久化真源；无 case_status 的 case 报告归 skipped）
-        runtime_state: dict = {}
-        if execution.runtime_state_json:
-            try:
-                runtime_state = json.loads(execution.runtime_state_json)
-            except (TypeError, ValueError):
-                runtime_state = {}
 
         # Manifest project 快照（环境/名称；Admission 时冻结，改 Project 后旧报告不变）
         manifest: dict = {}
@@ -428,11 +421,8 @@ class ReportService:
             if not case:
                 continue
 
-            entry = runtime_state.get(str(case_id), {}) or {}
-            final_status = entry.get("case_status") or "unknown"
-            # 报告展示值域仅 success/failed/skipped；unknown/pending/running 兜底 skipped
-            if final_status not in ("success", "failed", "skipped"):
-                final_status = "skipped"
+            # case 终态唯一真源 = CaseStateResolver（读步骤事实；禁止自判兜底）
+            final_status, _ = resolve([step_to_dict(s) for s in case_steps_list])
             case_duration = sum(s.duration_ms or 0 for s in case_steps_list)
             total_duration_ms += case_duration
 
