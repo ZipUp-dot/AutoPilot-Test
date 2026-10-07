@@ -1,11 +1,11 @@
 ﻿============================= test session starts =============================
-platform win32 -- Python 3.13.3, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\24833\AppData\Local\Programs\Python\Python313\python.exe
+platform win32 -- Python 3.13.3, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Scripts\python.exe
 rootdir: C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend
 configfile: pytest.ini
 testpaths: tests
-plugins: Faker-40.36.0, cov-7.1.0, allure-pytest-2.15.0, anyio-4.9.0, assume-2.4.3, asyncio-1.4.0, base-url-2.1.0, dependency-0.5.1, mock-3.15.1, playwright-0.7.1, rerunfailures-16.1, xdist-3.8.0
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0, mock-3.15.1
 asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
-collecting ... collected 1491 items
+collecting ... collected 1494 items
 
 tests/integration/test_golden_path_real_chromium.py::test_golden_path_real_chromium PASSED [  0%]
 tests/integration/test_integration_main.py::TestHealth::test_health_returns_ok PASSED [  0%]
@@ -185,7 +185,7 @@ tests/services/test_execution_seal.py::TestSealGuard::test_heal_claim_rejected_o
 tests/services/test_execution_seal.py::TestTerminalCommitAtomicity::test_seal_failed_writes_runtime_state_and_counters_in_one_commit PASSED [ 11%]
 tests/services/test_execution_seal.py::TestTerminalCommitAtomicity::test_seal_completed_normal_success PASSED [ 11%]
 tests/services/test_execution_seal.py::TestTerminalCommitAtomicity::test_seal_preserves_existing_runtime_code_id PASSED [ 11%]
-tests/services/test_execution_seal.py::TestTerminalCommitAtomicity::test_seal_stopped_user_stopped PASSED [ 12%]
+tests/services/test_execution_seal.py::TestTerminalCommitAtomicity::test_seal_stopped_user_stopped PASSED [ 11%]
 tests/services/test_extractor_shared_by_crawl_and_heal.py::TestSharedImportPaths::test_element_service_imports_shared_extract PASSED [ 12%]
 tests/services/test_extractor_shared_by_crawl_and_heal.py::TestSharedImportPaths::test_element_service_imports_shared_generate PASSED [ 12%]
 tests/services/test_extractor_shared_by_crawl_and_heal.py::TestSharedImportPaths::test_element_service_imports_shared_is_unique PASSED [ 12%]
@@ -200,7 +200,7 @@ tests/services/test_extractor_shared_by_crawl_and_heal.py::TestSharedBehavior::t
 tests/services/test_extractor_shared_by_crawl_and_heal.py::TestSharedBehavior::test_element_service_extract_delegates_to_shared PASSED [ 12%]
 tests/services/test_extractor_shared_by_crawl_and_heal.py::TestSharedBehavior::test_element_extractor_module_is_thread_local_singleton PASSED [ 12%]
 tests/services/test_heal_ai_attempt.py::TestAIAttemptMapping::test_success_maps_to_ok PASSED [ 12%]
-tests/services/test_heal_ai_attempt.py::TestAIAttemptMapping::test_429_maps_to_rate_limited PASSED [ 13%]
+tests/services/test_heal_ai_attempt.py::TestAIAttemptMapping::test_429_maps_to_rate_limited PASSED [ 12%]
 tests/services/test_heal_ai_attempt.py::TestAIAttemptMapping::test_5xx_maps_to_server_error PASSED [ 13%]
 tests/services/test_heal_ai_attempt.py::TestAIAttemptMapping::test_connect_reset_maps_to_connect_error PASSED [ 13%]
 tests/services/test_heal_ai_attempt.py::TestAIAttemptMapping::test_timeout_maps_to_read_timeout PASSED [ 13%]
@@ -215,7 +215,7 @@ tests/services/test_heal_ai_attempt.py::TestRoundRetryAuthority::test_budget_exh
 tests/services/test_heal_ai_attempt.py::TestRoundRetryAuthority::test_round_never_calls_private_heal_ai PASSED [ 13%]
 tests/services/test_heal_candidate_isolation.py::TestCandidateIsolation::test_failed_candidate_not_in_generated_codes PASSED [ 13%]
 tests/services/test_heal_candidate_isolation.py::TestCandidateIsolation::test_winning_candidate_persisted_as_healed PASSED [ 13%]
-tests/services/test_heal_diagnose.py::TestDiagnoseFixture::test_three_records_match_fixture PASSED [ 14%]
+tests/services/test_heal_diagnose.py::TestDiagnoseFixture::test_three_records_match_fixture PASSED [ 13%]
 tests/services/test_heal_diagnose.py::TestDiagnoseFixture::test_script_is_read_only PASSED [ 14%]
 tests/services/test_heal_diagnose.py::TestDiagnoseFixture::test_inference_never_written_to_db PASSED [ 14%]
 tests/services/test_heal_diagnose.py::TestAttemptsSchemaBranch::test_parse_a_schema PASSED [ 14%]
@@ -230,7 +230,7 @@ tests/services/test_heal_finalization.py::TestFinalization::test_phase_a_failure
 tests/services/test_heal_recovery.py::TestRecoveryConvergence::test_recovery_cancels_open_rounds PASSED [ 14%]
 tests/services/test_heal_recovery.py::TestRecoveryConvergence::test_infra_rerun_failure_upgrades_execution_failed PASSED [ 14%]
 tests/services/test_heal_recovery.py::TestRecoveryConvergence::test_heal_exhausted_mixed_failure PASSED [ 14%]
-tests/services/test_heal_round_guard.py::TestClaimRoundGuard::test_concurrent_claim_only_one_succeeds PASSED [ 15%]
+tests/services/test_heal_round_guard.py::TestClaimRoundGuard::test_concurrent_claim_only_one_succeeds PASSED [ 14%]
 tests/services/test_heal_round_guard.py::TestClaimRoundGuard::test_duplicate_claim_rejected PASSED [ 15%]
 tests/services/test_heal_round_guard.py::TestClaimRoundGuard::test_claim_rejected_when_execution_terminal PASSED [ 15%]
 tests/services/test_heal_round_guard.py::TestClaimRoundGuard::test_no_failed_step_skips_heal PASSED [ 15%]
@@ -245,7 +245,7 @@ tests/services/test_mock_runs_under_new_rules.py::TestMockExecution::test_web_mo
 tests/services/test_mock_runs_under_new_rules.py::TestMockExecution::test_android_mock_executes_under_new_namespace PASSED [ 15%]
 tests/services/test_mock_runs_under_new_rules.py::TestMockExecution::test_namespace_driver_is_proxy PASSED [ 15%]
 tests/services/test_no_import_in_namespace.py::TestAllowedBuiltinsNoImport::test_web_allowed_builtins_no_import PASSED [ 15%]
-tests/services/test_no_import_in_namespace.py::TestAllowedBuiltinsNoImport::test_android_allowed_builtins_no_import PASSED [ 16%]
+tests/services/test_no_import_in_namespace.py::TestAllowedBuiltinsNoImport::test_android_allowed_builtins_no_import PASSED [ 15%]
 tests/services/test_no_import_in_namespace.py::TestAllowedBuiltinsNoImport::test_web_namespace_builtins_no_import PASSED [ 16%]
 tests/services/test_no_import_in_namespace.py::TestAllowedBuiltinsNoImport::test_android_namespace_builtins_no_import PASSED [ 16%]
 tests/services/test_no_import_in_namespace.py::TestNamespaceNoStdlibModules::test_web_namespace_no_stdlib_modules PASSED [ 16%]
@@ -349,7 +349,7 @@ tests/services/test_service_ai.py::TestRateLimiter::test_acquire_returns_false_w
 tests/services/test_service_ai.py::TestRateLimiter::test_window_expiry_cleans_old_records PASSED [ 22%]
 tests/services/test_service_ai.py::TestRateLimiter::test_recent_count_cleans_expired PASSED [ 22%]
 tests/services/test_service_ai.py::TestExtractCode::test_extract_code_from_markdown_python PASSED [ 22%]
-tests/services/test_service_ai.py::TestExtractCode::test_extract_code_from_markdown_plain PASSED [ 23%]
+tests/services/test_service_ai.py::TestExtractCode::test_extract_code_from_markdown_plain PASSED [ 22%]
 tests/services/test_service_ai.py::TestExtractCode::test_extract_code_plain PASSED [ 23%]
 tests/services/test_service_ai.py::TestExtractCode::test_extract_code_whitespace PASSED [ 23%]
 tests/services/test_service_ai.py::TestExtractCode::test_extract_code_no_closing_fence PASSED [ 23%]
@@ -364,7 +364,7 @@ tests/services/test_service_ai.py::TestGetLatestCode::test_get_latest_code_with_
 tests/services/test_service_ai.py::TestGetLatestCode::test_get_latest_code_no_code PASSED [ 23%]
 tests/services/test_service_ai.py::TestGetLatestCode::test_get_latest_code_nonexistent_case PASSED [ 23%]
 tests/services/test_service_ai.py::TestMockCode::test_mock_code_structure PASSED [ 23%]
-tests/services/test_service_ai.py::TestMockCode::test_mock_code_with_steps PASSED [ 24%]
+tests/services/test_service_ai.py::TestMockCode::test_mock_code_with_steps PASSED [ 23%]
 tests/services/test_service_ai.py::TestMockCode::test_mock_code_click_without_target PASSED [ 24%]
 tests/services/test_service_ai.py::TestMockCode::test_mock_code_select_without_target PASSED [ 24%]
 tests/services/test_service_ai.py::TestMockCode::test_mock_code_wait_action PASSED [ 24%]
@@ -379,7 +379,7 @@ tests/services/test_service_ai.py::TestMockAndroidCode::test_click_with_target P
 tests/services/test_service_ai.py::TestMockAndroidCode::test_click_without_target PASSED [ 24%]
 tests/services/test_service_ai.py::TestMockAndroidCode::test_fill_with_target PASSED [ 24%]
 tests/services/test_service_ai.py::TestMockAndroidCode::test_fill_without_target PASSED [ 24%]
-tests/services/test_service_ai.py::TestMockAndroidCode::test_wait_with_numeric_value PASSED [ 25%]
+tests/services/test_service_ai.py::TestMockAndroidCode::test_wait_with_numeric_value PASSED [ 24%]
 tests/services/test_service_ai.py::TestMockAndroidCode::test_wait_with_non_numeric_value PASSED [ 25%]
 tests/services/test_service_ai.py::TestMockAndroidCode::test_back_action PASSED [ 25%]
 tests/services/test_service_ai.py::TestMockAndroidCode::test_screenshot_action PASSED [ 25%]
@@ -394,7 +394,7 @@ tests/services/test_service_android_crawl.py::TestMapElementType::test_radio_but
 tests/services/test_service_android_crawl.py::TestMapElementType::test_switch PASSED [ 25%]
 tests/services/test_service_android_crawl.py::TestMapElementType::test_toggle_button PASSED [ 25%]
 tests/services/test_service_android_crawl.py::TestMapElementType::test_spinner PASSED [ 25%]
-tests/services/test_service_android_crawl.py::TestMapElementType::test_image PASSED [ 26%]
+tests/services/test_service_android_crawl.py::TestMapElementType::test_image PASSED [ 25%]
 tests/services/test_service_android_crawl.py::TestMapElementType::test_text_view PASSED [ 26%]
 tests/services/test_service_android_crawl.py::TestMapElementType::test_clickable_fallback PASSED [ 26%]
 tests/services/test_service_android_crawl.py::TestMapElementType::test_container_default PASSED [ 26%]
@@ -409,7 +409,7 @@ tests/services/test_service_android_crawl.py::TestParseAttributes::test_hyphen_a
 tests/services/test_service_android_crawl.py::TestParseAttributes::test_namespace_prefix_stripped PASSED [ 26%]
 tests/services/test_service_android_crawl.py::TestParsePageSource::test_parse_basic_elements PASSED [ 26%]
 tests/services/test_service_android_crawl.py::TestParsePageSource::test_parse_empty_hierarchy PASSED [ 26%]
-tests/services/test_service_android_crawl.py::TestParsePageSource::test_parse_invalid_xml_raises PASSED [ 27%]
+tests/services/test_service_android_crawl.py::TestParsePageSource::test_parse_invalid_xml_raises PASSED [ 26%]
 tests/services/test_service_android_crawl.py::TestParsePageSource::test_dedup_identical_elements PASSED [ 27%]
 tests/services/test_service_android_crawl.py::TestParsePageSource::test_clickable_non_interactive_class_included PASSED [ 27%]
 tests/services/test_service_android_crawl.py::TestParsePageSource::test_depth_limit_skips_deep_nodes PASSED [ 27%]
@@ -424,7 +424,7 @@ tests/services/test_service_appium.py::TestAppiumExecuteCase::test_click PASSED 
 tests/services/test_service_appium.py::TestAppiumExecuteCase::test_input PASSED [ 27%]
 tests/services/test_service_appium.py::TestAppiumExecuteCase::test_wait PASSED [ 27%]
 tests/services/test_service_appium.py::TestAppiumExecuteCase::test_back PASSED [ 27%]
-tests/services/test_service_appium.py::TestAppiumExecuteCase::test_start_activity PASSED [ 28%]
+tests/services/test_service_appium.py::TestAppiumExecuteCase::test_start_activity PASSED [ 27%]
 tests/services/test_service_appium.py::TestAppiumExecuteCase::test_screenshot PASSED [ 28%]
 tests/services/test_service_appium.py::TestAppiumExecuteCase::test_failure_step_recorded PASSED [ 28%]
 tests/services/test_service_appium.py::TestAppiumExecuteCase::test_failure_exception_type PASSED [ 28%]
@@ -439,7 +439,7 @@ tests/services/test_service_appium.py::TestAppiumSessionConfig::test_execute_syn
 tests/services/test_service_appium.py::TestAppiumSessionConfig::test_execute_sync_fallback_config PASSED [ 28%]
 tests/services/test_service_appium.py::TestAppiumStartupFailure::test_remote_connection_failure PASSED [ 28%]
 tests/services/test_service_appium.py::TestAppiumStartupFailure::test_driver_quit_on_startup_failure PASSED [ 28%]
-tests/services/test_service_appium.py::TestAppiumCreateExecutionEdgeCases::test_create_execution_skips_invalid_json_steps PASSED [ 29%]
+tests/services/test_service_appium.py::TestAppiumCreateExecutionEdgeCases::test_create_execution_skips_invalid_json_steps PASSED [ 28%]
 tests/services/test_service_appium.py::TestAppiumCreateExecutionEdgeCases::test_create_execution_skips_case_without_steps PASSED [ 29%]
 tests/services/test_service_appium.py::TestAppiumExecuteSyncFailures::test_case_exception_triggers_healing PASSED [ 29%]
 tests/services/test_service_appium.py::TestAppiumExecuteSyncFailures::test_driver_quit_exception_ignored PASSED [ 29%]
@@ -454,7 +454,7 @@ tests/services/test_service_appium.py::TestAppiumHelpers::test_init_steps_skips_
 tests/services/test_service_appium.py::TestAppiumHelpers::test_update_execution_not_found PASSED [ 29%]
 tests/services/test_service_appium.py::TestAppiumHelpers::test_update_execution_db_error_logged PASSED [ 29%]
 tests/services/test_service_appium.py::TestAppiumHelpers::test_update_execution_status_sets_end_time PASSED [ 29%]
-tests/services/test_service_appium.py::TestAppiumHelpers::test_update_execution_status_not_found PASSED [ 30%]
+tests/services/test_service_appium.py::TestAppiumHelpers::test_update_execution_status_not_found PASSED [ 29%]
 tests/services/test_service_appium.py::TestAppiumHelpers::test_ensure_dir PASSED [ 30%]
 tests/services/test_service_appium.py::TestSyncMonitorHooksEdgeCases::test_on_step_before_screenshot_fails PASSED [ 30%]
 tests/services/test_service_appium.py::TestSyncMonitorHooksEdgeCases::test_on_step_after_passed_sets_success PASSED [ 30%]
@@ -469,7 +469,7 @@ tests/services/test_service_case.py::TestCaseServiceImportExcel::test_import_pla
 tests/services/test_service_case.py::TestCaseServiceImportExcel::test_import_action_target_value_columns PASSED [ 30%]
 tests/services/test_service_case.py::TestCaseServiceImportExcel::test_import_duplicate_case_no_skipped PASSED [ 30%]
 tests/services/test_service_case.py::TestCaseServiceImportExcel::test_import_duplicate_case_no_within_file_skipped PASSED [ 30%]
-tests/services/test_service_case.py::TestCaseServiceImportExcel::test_import_duplicate_case_name_within_file_skipped PASSED [ 31%]
+tests/services/test_service_case.py::TestCaseServiceImportExcel::test_import_duplicate_case_name_within_file_skipped PASSED [ 30%]
 tests/services/test_service_case.py::TestCaseServiceImportExcel::test_import_duplicate_case_name_against_db_skipped PASSED [ 31%]
 tests/services/test_service_case.py::TestCaseServiceImportExcel::test_import_empty_file PASSED [ 31%]
 tests/services/test_service_case.py::TestCaseServiceImportExcel::test_import_non_xlsx_extension PASSED [ 31%]
@@ -484,7 +484,7 @@ tests/services/test_service_case.py::TestCaseServiceListPaginated::test_steps_su
 tests/services/test_service_case.py::TestCaseServiceGetDetail::test_full_steps_returned_not_truncated PASSED [ 31%]
 tests/services/test_service_case.py::TestCaseServiceGetDetail::test_nonexistent_case_raises_not_found PASSED [ 31%]
 tests/services/test_service_case.py::TestCaseServiceDelete::test_delete_one PASSED [ 31%]
-tests/services/test_service_case.py::TestCaseServiceDelete::test_delete_one_nonexistent PASSED [ 32%]
+tests/services/test_service_case.py::TestCaseServiceDelete::test_delete_one_nonexistent PASSED [ 31%]
 tests/services/test_service_case.py::TestCaseServiceDelete::test_delete_batch PASSED [ 32%]
 tests/services/test_service_case.py::TestCaseServiceDelete::test_delete_batch_some_ids_missing PASSED [ 32%]
 tests/services/test_service_element.py::TestCrawl::test_project_not_found_raises_not_found PASSED [ 32%]
@@ -499,7 +499,7 @@ tests/services/test_service_element.py::TestCrawl::test_crawl_url_construction_w
 tests/services/test_service_element.py::TestExtractElements::test_extract_multiple_elements PASSED [ 32%]
 tests/services/test_service_element.py::TestExtractElements::test_extract_empty_page_returns_empty_list PASSED [ 32%]
 tests/services/test_service_element.py::TestExtractElements::test_extract_playwright_not_installed PASSED [ 32%]
-tests/services/test_service_element.py::TestExtractElements::test_extract_browser_launch_failure PASSED [ 33%]
+tests/services/test_service_element.py::TestExtractElements::test_extract_browser_launch_failure PASSED [ 32%]
 tests/services/test_service_element.py::TestExtractElements::test_extract_page_goto_failure PASSED [ 33%]
 tests/services/test_service_element.py::TestExtractElements::test_extract_evaluate_failure PASSED [ 33%]
 tests/services/test_service_element.py::TestAiAssistedNavigation::test_vision_unavailable_returns_false PASSED [ 33%]
@@ -513,7 +513,7 @@ tests/services/test_service_element.py::TestGenerateSelector::test_level_1_data_
 tests/services/test_service_element.py::TestGenerateSelector::test_level_2_id PASSED [ 33%]
 tests/services/test_service_element.py::TestGenerateSelector::test_level_3_name PASSED [ 33%]
 tests/services/test_service_element.py::TestGenerateSelector::test_level_4_placeholder_with_tag PASSED [ 33%]
-tests/services/test_service_element.py::TestGenerateSelector::test_level_5_stable_class PASSED [ 34%]
+tests/services/test_service_element.py::TestGenerateSelector::test_level_5_stable_class PASSED [ 33%]
 tests/services/test_service_element.py::TestGenerateSelector::test_level_6_text_content PASSED [ 34%]
 tests/services/test_service_element.py::TestGenerateSelector::test_level_7_hierarchy_fallback PASSED [ 34%]
 tests/services/test_service_element.py::TestGenerateSelector::test_falls_through_to_id_when_data_testid_empty PASSED [ 34%]
@@ -528,7 +528,7 @@ tests/services/test_service_element.py::TestListPaginated::test_with_multiple_el
 tests/services/test_service_element.py::TestListPaginated::test_pagination PASSED [ 34%]
 tests/services/test_service_element.py::TestListPaginated::test_filter_by_element_type PASSED [ 34%]
 tests/services/test_service_element.py::TestListPaginated::test_filter_by_keyword_matches_text PASSED [ 34%]
-tests/services/test_service_element.py::TestListPaginated::test_filter_by_keyword_matches_selector PASSED [ 35%]
+tests/services/test_service_element.py::TestListPaginated::test_filter_by_keyword_matches_selector PASSED [ 34%]
 tests/services/test_service_element.py::TestListPaginated::test_returns_crawled_element_objects PASSED [ 35%]
 tests/services/test_service_element.py::TestClearAll::test_clear_all_removes_all_elements PASSED [ 35%]
 tests/services/test_service_element.py::TestClearAll::test_clear_all_empty_project_returns_zero PASSED [ 35%]
@@ -543,7 +543,7 @@ tests/services/test_service_element.py::TestCssEscape::test_escape_multiple_spec
 tests/services/test_service_element.py::TestCssEscape::test_no_special_chars_returns_unchanged PASSED [ 35%]
 tests/services/test_service_element.py::TestFilterStableClasses::test_filters_css_in_js_pattern PASSED [ 35%]
 tests/services/test_service_element.py::TestFilterStableClasses::test_filters_underscore_hash_classes PASSED [ 35%]
-tests/services/test_service_element.py::TestFilterStableClasses::test_filters_hex_suffix_classes PASSED [ 36%]
+tests/services/test_service_element.py::TestFilterStableClasses::test_filters_hex_suffix_classes PASSED [ 35%]
 tests/services/test_service_element.py::TestFilterStableClasses::test_filters_styled_components PASSED [ 36%]
 tests/services/test_service_element.py::TestFilterStableClasses::test_filters_long_ant_design_classes PASSED [ 36%]
 tests/services/test_service_element.py::TestFilterStableClasses::test_keeps_short_ant_design_classes PASSED [ 36%]
@@ -558,7 +558,7 @@ tests/services/test_service_element.py::TestOrmToCrawled::test_converts_empty_el
 tests/services/test_service_heal.py::TestClassifyError::test_timeout PASSED [ 36%]
 tests/services/test_service_heal.py::TestClassifyError::test_element_not_found_locator PASSED [ 36%]
 tests/services/test_service_heal.py::TestClassifyError::test_element_not_found_element PASSED [ 36%]
-tests/services/test_service_heal.py::TestClassifyError::test_assertion_failed PASSED [ 37%]
+tests/services/test_service_heal.py::TestClassifyError::test_assertion_failed PASSED [ 36%]
 tests/services/test_service_heal.py::TestClassifyError::test_assertion_expect PASSED [ 37%]
 tests/services/test_service_heal.py::TestClassifyError::test_navigation_error PASSED [ 37%]
 tests/services/test_service_heal.py::TestClassifyError::test_unknown PASSED [ 37%]
@@ -573,7 +573,7 @@ tests/services/test_service_heal.py::TestExtractCode::test_plain_code PASSED [ 3
 tests/services/test_service_heal.py::TestExtractCode::test_only_opening_backticks PASSED [ 37%]
 tests/services/test_service_heal.py::TestExtractCode::test_markdown_multiline PASSED [ 37%]
 tests/services/test_service_heal.py::TestValidateHealed::test_valid_code_returns_none PASSED [ 37%]
-tests/services/test_service_heal.py::TestValidateHealed::test_dangerous_import_os PASSED [ 38%]
+tests/services/test_service_heal.py::TestValidateHealed::test_dangerous_import_os PASSED [ 37%]
 tests/services/test_service_heal.py::TestValidateHealed::test_dangerous_import_subprocess PASSED [ 38%]
 tests/services/test_service_heal.py::TestValidateHealed::test_missing_run_test PASSED [ 38%]
 tests/services/test_service_heal.py::TestValidateHealed::test_syntax_error PASSED [ 38%]
@@ -588,7 +588,7 @@ tests/services/test_service_heal.py::TestCaptureFailureContext::test_handles_dom
 tests/services/test_service_heal.py::TestCaptureFailureContext::test_handles_elements_failure_gracefully PASSED [ 38%]
 tests/services/test_service_heal.py::TestCaptureFailureContext::test_truncates_error_message PASSED [ 38%]
 tests/services/test_service_heal.py::TestGetOriginalCode::test_returns_code_when_exists PASSED [ 38%]
-tests/services/test_service_heal.py::TestGetOriginalCode::test_returns_empty_when_no_code PASSED [ 39%]
+tests/services/test_service_heal.py::TestGetOriginalCode::test_returns_empty_when_no_code PASSED [ 38%]
 tests/services/test_service_heal.py::TestGetOriginalCode::test_returns_empty_when_code_invalid PASSED [ 39%]
 tests/services/test_service_heal.py::TestRecrawlElements::test_returns_elements_list PASSED [ 39%]
 tests/services/test_service_heal.py::TestRecrawlElements::test_returns_empty_list_when_no_elements PASSED [ 39%]
@@ -603,7 +603,7 @@ tests/services/test_service_heal.py::TestGenerateSelector::test_selector_fallbac
 tests/services/test_service_heal.py::TestIsUnique::test_unique_selector_returns_true PASSED [ 39%]
 tests/services/test_service_heal.py::TestIsUnique::test_non_unique_selector_returns_false PASSED [ 39%]
 tests/services/test_service_heal.py::TestIsUnique::test_locator_count_error_returns_false PASSED [ 39%]
-tests/services/test_service_heal.py::TestFormatElementsCompact::test_formats_single_element PASSED [ 40%]
+tests/services/test_service_heal.py::TestFormatElementsCompact::test_formats_single_element PASSED [ 39%]
 tests/services/test_service_heal.py::TestFormatElementsCompact::test_formats_multiple_elements PASSED [ 40%]
 tests/services/test_service_heal.py::TestFormatElementsCompact::test_empty_list_returns_placeholder PASSED [ 40%]
 tests/services/test_service_heal.py::TestFormatElementsCompact::test_skips_optional_fields PASSED [ 40%]
@@ -618,7 +618,7 @@ tests/services/test_service_heal.py::TestRetryExecution::test_exec_failure_retur
 tests/services/test_service_heal.py::TestTryHeal::test_heal_success_first_attempt PASSED [ 40%]
 tests/services/test_service_heal.py::TestTryHeal::test_heal_fails_all_retries PASSED [ 40%]
 tests/services/test_service_heal.py::TestTryHeal::test_heal_unable_to_heal PASSED [ 40%]
-tests/services/test_service_heal.py::TestTryHeal::test_heal_ai_call_exception PASSED [ 41%]
+tests/services/test_service_heal.py::TestTryHeal::test_heal_ai_call_exception PASSED [ 40%]
 tests/services/test_service_heal.py::TestTryHealManual::test_manual_heal_success PASSED [ 41%]
 tests/services/test_service_heal.py::TestTryHealManual::test_manual_heal_fails_all_retries PASSED [ 41%]
 tests/services/test_service_heal.py::TestTryHealManual::test_manual_heal_ai_exception PASSED [ 41%]
@@ -633,7 +633,7 @@ tests/services/test_service_heal.py::TestFilterStableClasses::test_filters_dynam
 tests/services/test_service_heal.py::TestFilterStableClasses::test_filters_hash_like_classes PASSED [ 41%]
 tests/services/test_service_heal.py::TestFilterStableClasses::test_filters_scoped_classes PASSED [ 41%]
 tests/services/test_service_heal.py::TestFilterStableClasses::test_filters_short_classes PASSED [ 41%]
-tests/services/test_service_heal.py::TestFilterStableClasses::test_filters_long_ant_classes PASSED [ 42%]
+tests/services/test_service_heal.py::TestFilterStableClasses::test_filters_long_ant_classes PASSED [ 41%]
 tests/services/test_service_heal.py::TestFilterStableClasses::test_empty_input PASSED [ 42%]
 tests/services/test_service_heal.py::TestAndroidElements::test_parse_android_elements_basic PASSED [ 42%]
 tests/services/test_service_heal.py::TestAndroidElements::test_parse_android_empty_source PASSED [ 42%]
@@ -648,7 +648,7 @@ tests/services/test_service_heal.py::TestHealAndroidContext::test_android_heal_p
 tests/services/test_service_heal.py::TestHealHistoryPersistence::test_heal_record_persists PASSED [ 42%]
 tests/services/test_service_heal.py::TestHealHistoryPersistence::test_heal_records_by_execution PASSED [ 42%]
 tests/services/test_service_heal.py::TestHealOriginalCode::test_uses_original_code_from_db PASSED [ 42%]
-tests/services/test_service_heal.py::TestHealOriginalCode::test_original_code_unchanged_across_attempts PASSED [ 43%]
+tests/services/test_service_heal.py::TestHealOriginalCode::test_original_code_unchanged_across_attempts PASSED [ 42%]
 tests/services/test_service_heal.py::TestCheckEnvReachable::test_web_reachable_returns_true PASSED [ 43%]
 tests/services/test_service_heal.py::TestCheckEnvReachable::test_web_unreachable_returns_false PASSED [ 43%]
 tests/services/test_service_heal.py::TestCheckEnvReachable::test_no_target_url_returns_true PASSED [ 43%]
@@ -663,7 +663,7 @@ tests/services/test_service_heal.py::TestHealRateLimit::test_circuit_breaker_rai
 tests/services/test_service_heal.py::TestTryHealEntryBoundaries::test_try_heal_env_unreachable_returns_false PASSED [ 43%]
 tests/services/test_service_heal.py::TestTryHealEntryBoundaries::test_try_heal_validation_error_skips_retry PASSED [ 43%]
 tests/services/test_service_heal.py::TestTryHealEntryBoundaries::test_try_heal_manual_env_unreachable PASSED [ 43%]
-tests/services/test_service_heal.py::TestTryHealEntryBoundaries::test_try_heal_manual_quick_fail PASSED [ 44%]
+tests/services/test_service_heal.py::TestTryHealEntryBoundaries::test_try_heal_manual_quick_fail PASSED [ 43%]
 tests/services/test_service_heal.py::TestAndroidContextFailure::test_page_source_failure_fallback PASSED [ 44%]
 tests/services/test_service_heal.py::TestAndroidContextFailure::test_page_source_success_extracts_elements PASSED [ 44%]
 tests/services/test_service_heal.py::TestBuildHealPromptFallback::test_fallback_template_when_file_missing PASSED [ 44%]
@@ -677,8 +677,8 @@ tests/services/test_service_heal.py::TestRetryExecutionSync::test_sync_run_test_
 tests/services/test_service_heal.py::TestRetryExecutionSync::test_sync_run_test_exception PASSED [ 44%]
 tests/services/test_service_heal.py::TestRetryExecutionSync::test_sync_inject_failure_uses_original PASSED [ 44%]
 tests/services/test_service_heal.py::TestUpdateHealRecordEdgeCases::test_record_not_found PASSED [ 44%]
-tests/services/test_service_heal.py::TestUpdateHealRecordEdgeCases::test_invalid_attempts_json PASSED [ 45%]
-tests/services/test_service_orchestrator.py::TestRunFullPipeline::test_all_pre_generated_returns_execution_id PASSED [ 45%]
+tests/services/test_service_heal.py::TestUpdateHealRecordEdgeCases::test_invalid_attempts_json PASSED [ 44%]
+tests/services/test_service_orchestrator.py::TestRunFullPipeline::test_all_pre_generated_returns_execution_id PASSED [ 44%]
 tests/services/test_service_orchestrator.py::TestRunFullPipeline::test_need_generation_returns_generated_count PASSED [ 45%]
 tests/services/test_service_orchestrator.py::TestRunFullPipeline::test_generation_partial_failure_blocks_execution PASSED [ 45%]
 tests/services/test_service_orchestrator.py::TestRunFullPipeline::test_generation_infra_failure_blocks_execution PASSED [ 45%]
@@ -692,8 +692,8 @@ tests/services/test_service_orchestrator.py::TestClearStopFlag::test_clear_stop_
 tests/services/test_service_orchestrator.py::TestRunFullPipelineEdgeCases::test_all_cases_need_generation_all_succeed PASSED [ 45%]
 tests/services/test_service_orchestrator.py::TestRunFullPipelineEdgeCases::test_background_thread_exception_fallback PASSED [ 45%]
 tests/services/test_service_orchestrator.py::TestRunFullPipelineEdgeCases::test_background_thread_fallback_db_error_pass PASSED [ 45%]
-tests/services/test_service_orchestrator.py::TestRunExecuteOnlyEdgeCases::test_background_thread_exception_fallback PASSED [ 46%]
-tests/services/test_service_orchestrator.py::TestRunExecuteOnlyEdgeCases::test_background_thread_fallback_db_error_pass PASSED [ 46%]
+tests/services/test_service_orchestrator.py::TestRunExecuteOnlyEdgeCases::test_background_thread_exception_fallback PASSED [ 45%]
+tests/services/test_service_orchestrator.py::TestRunExecuteOnlyEdgeCases::test_background_thread_fallback_db_error_pass PASSED [ 45%]
 tests/services/test_service_orchestrator.py::TestRunExecuteOnlyEdgeCases::test_without_batch_name_still_works PASSED [ 46%]
 tests/services/test_service_orchestrator.py::TestCheckCasesNeedGenerationEdgeCases::test_case_with_invalid_code_needs_generation PASSED [ 46%]
 tests/services/test_service_orchestrator.py::TestCheckCasesNeedGenerationEdgeCases::test_all_cases_have_valid_code_returns_empty PASSED [ 46%]
@@ -707,8 +707,8 @@ tests/services/test_service_orchestrator.py::TestMonitorAndGenerateReport::test_
 tests/services/test_service_orchestrator.py::TestMonitorAndGenerateReport::test_monitor_exception_is_caught PASSED [ 46%]
 tests/services/test_service_orchestrator.py::TestMonitorAndGenerateReport::test_report_generation_failure_is_handled PASSED [ 46%]
 tests/services/test_service_orchestrator.py::TestMonitorAndGenerateReport::test_timeout_exits_loop_normally PASSED [ 46%]
-tests/services/test_service_orchestrator.py::TestGetExecutionStatus::test_returns_status_for_existing_execution PASSED [ 47%]
-tests/services/test_service_orchestrator.py::TestGetExecutionStatus::test_returns_none_for_missing_execution PASSED [ 47%]
+tests/services/test_service_orchestrator.py::TestGetExecutionStatus::test_returns_status_for_existing_execution PASSED [ 46%]
+tests/services/test_service_orchestrator.py::TestGetExecutionStatus::test_returns_none_for_missing_execution PASSED [ 46%]
 tests/services/test_service_orchestrator.py::TestGetExecutionStatus::test_db_error_returns_none PASSED [ 47%]
 tests/services/test_service_orchestrator.py::TestGetExecutor::test_get_executor_web PASSED [ 47%]
 tests/services/test_service_orchestrator.py::TestGetExecutor::test_get_executor_android PASSED [ 47%]
@@ -722,8 +722,8 @@ tests/services/test_service_orchestrator.py::TestPreExecutionCheck::test_disable
 tests/services/test_service_orchestrator.py::TestPreExecutionCheck::test_project_not_found_returns_error PASSED [ 47%]
 tests/services/test_service_orchestrator.py::TestPreExecutionCheck::test_web_unreachable_returns_error PASSED [ 47%]
 tests/services/test_service_orchestrator.py::TestPreExecutionCheck::test_web_reachable_returns_none PASSED [ 47%]
-tests/services/test_service_orchestrator.py::TestPreExecutionCheck::test_no_target_url_returns_none PASSED [ 48%]
-tests/services/test_service_orchestrator.py::TestPreExecutionCheck::test_android_unreachable_returns_error PASSED [ 48%]
+tests/services/test_service_orchestrator.py::TestPreExecutionCheck::test_no_target_url_returns_none PASSED [ 47%]
+tests/services/test_service_orchestrator.py::TestPreExecutionCheck::test_android_unreachable_returns_error PASSED [ 47%]
 tests/services/test_service_orchestrator.py::TestRunExecuteOnlyHealthCheck::test_pre_check_failure_raises_validation PASSED [ 48%]
 tests/services/test_service_orchestrator.py::TestRunExecuteOnlyHealthCheck::test_pre_check_ok_creates_execution PASSED [ 48%]
 tests/services/test_service_playwright.py::TestCreateExecution::test_create_execution_returns_id PASSED [ 48%]
@@ -737,8 +737,8 @@ tests/services/test_service_playwright.py::TestUpdateExecution::test_update_exec
 tests/services/test_service_playwright.py::TestUpdateExecution::test_update_execution_not_found PASSED [ 48%]
 tests/services/test_service_playwright.py::TestUpdateExecution::test_update_execution_db_error_logged PASSED [ 48%]
 tests/services/test_service_playwright.py::TestUpdateExecutionStatus::test_update_execution_status PASSED [ 48%]
-tests/services/test_service_playwright.py::TestUpdateExecutionStatus::test_update_execution_status_not_found PASSED [ 49%]
-tests/services/test_service_playwright.py::TestEnsureDir::test_ensure_dir_creates_and_returns PASSED [ 49%]
+tests/services/test_service_playwright.py::TestUpdateExecutionStatus::test_update_execution_status_not_found PASSED [ 48%]
+tests/services/test_service_playwright.py::TestEnsureDir::test_ensure_dir_creates_and_returns PASSED [ 48%]
 tests/services/test_service_playwright.py::TestStopFlag::test_set_stop_flag_and_check PASSED [ 49%]
 tests/services/test_service_playwright.py::TestStopFlag::test_clear_stop_flag PASSED [ 49%]
 tests/services/test_service_playwright.py::TestMonitorHooks::test_on_step_before_creates_record PASSED [ 49%]
@@ -752,7 +752,7 @@ tests/services/test_service_playwright.py::TestBuildNamespace::test_build_namesp
 tests/services/test_service_playwright.py::TestExecuteCase::test_execute_case_success PASSED [ 49%]
 tests/services/test_service_playwright.py::TestExecuteCase::test_execute_case_no_generated_code PASSED [ 49%]
 tests/services/test_service_playwright.py::TestExecuteCase::test_execute_case_validation_fails PASSED [ 49%]
-tests/services/test_service_playwright.py::TestExecuteCase::test_execute_case_exec_compile_error PASSED [ 50%]
+tests/services/test_service_playwright.py::TestExecuteCase::test_execute_case_exec_compile_error PASSED [ 49%]
 tests/services/test_service_playwright.py::TestExecuteCase::test_execute_case_missing_run_test PASSED [ 50%]
 tests/services/test_service_playwright.py::TestExecuteCase::test_execute_case_run_test_returns_false PASSED [ 50%]
 tests/services/test_service_playwright.py::TestExecuteCase::test_execute_case_timeout PASSED [ 50%]
@@ -767,7 +767,7 @@ tests/services/test_service_playwright.py::TestExecuteAsync::test_execute_async_
 tests/services/test_service_playwright.py::TestExecuteAsync::test_execute_async_case_raises_counts_failed PASSED [ 50%]
 tests/services/test_service_playwright.py::TestExecuteEntry::test_execute_exception_sets_failed PASSED [ 50%]
 tests/services/test_service_playwright.py::TestMonitorHooksErrorHandling::test_upsert_step_db_commit_error PASSED [ 50%]
-tests/services/test_service_playwright.py::TestMonitorHooksErrorHandling::test_on_step_before_screenshot_fails PASSED [ 51%]
+tests/services/test_service_playwright.py::TestMonitorHooksErrorHandling::test_on_step_before_screenshot_fails PASSED [ 50%]
 tests/services/test_service_playwright.py::TestMonitorHooksErrorHandling::test_on_step_after_screenshot_fails PASSED [ 51%]
 tests/services/test_service_playwright.py::TestBuildNamespaceEdgeCases::test_build_namespace_contains_all_allowed_builtins PASSED [ 51%]
 tests/services/test_service_project.py::TestProjectServiceCreate::test_create_with_valid_data PASSED [ 51%]
@@ -782,7 +782,7 @@ tests/services/test_service_project.py::TestProjectServiceGetOr404::test_get_exi
 tests/services/test_service_project.py::TestProjectServiceGetOr404::test_get_nonexistent_raises_not_found PASSED [ 51%]
 tests/services/test_service_project.py::TestProjectServiceListPaginated::test_with_multiple_projects PASSED [ 51%]
 tests/services/test_service_project.py::TestProjectServiceListPaginated::test_with_zero_projects PASSED [ 51%]
-tests/services/test_service_project.py::TestProjectServiceListPaginated::test_includes_case_count PASSED [ 52%]
+tests/services/test_service_project.py::TestProjectServiceListPaginated::test_includes_case_count PASSED [ 51%]
 tests/services/test_service_project.py::TestProjectServiceUpdate::test_update_partial_fields PASSED [ 52%]
 tests/services/test_service_project.py::TestProjectServiceUpdate::test_update_nonexistent_raises_not_found PASSED [ 52%]
 tests/services/test_service_project.py::TestProjectServiceUpdate::test_update_headless_bool_stored_as_int PASSED [ 52%]
@@ -797,7 +797,7 @@ tests/services/test_service_report.py::TestGenerate::test_generate_concurrent_ca
 tests/services/test_service_report.py::TestAnalyzeErrors::test_correct_error_type_counts PASSED [ 52%]
 tests/services/test_service_report.py::TestAnalyzeErrors::test_no_errors_returns_empty PASSED [ 52%]
 tests/services/test_service_report.py::TestClassifyErrorType::test_timeout PASSED [ 52%]
-tests/services/test_service_report.py::TestClassifyErrorType::test_element_not_found PASSED [ 53%]
+tests/services/test_service_report.py::TestClassifyErrorType::test_element_not_found PASSED [ 52%]
 tests/services/test_service_report.py::TestClassifyErrorType::test_element_locator PASSED [ 53%]
 tests/services/test_service_report.py::TestClassifyErrorType::test_assertion PASSED [ 53%]
 tests/services/test_service_report.py::TestClassifyErrorType::test_expect PASSED [ 53%]
@@ -812,7 +812,7 @@ tests/services/test_service_report.py::TestGetReportInfo::test_existing_returns_
 tests/services/test_service_report.py::TestGetReportInfo::test_nonexistent_returns_none PASSED [ 53%]
 tests/services/test_service_report.py::TestCleanupOldReports::test_no_reports_dir_returns_zero PASSED [ 53%]
 tests/services/test_service_report.py::TestCleanupOldReports::test_cleans_old_reports PASSED [ 53%]
-tests/services/test_service_report.py::TestReportHealed::test_report_with_healed_steps PASSED [ 54%]
+tests/services/test_service_report.py::TestReportHealed::test_report_with_healed_steps PASSED [ 53%]
 tests/services/test_service_report.py::TestReportHealed::test_healed_count_in_report PASSED [ 54%]
 tests/services/test_service_report.py::TestReportExceptionTypes::test_nosuchelement_exception PASSED [ 54%]
 tests/services/test_service_report.py::TestReportExceptionTypes::test_staleelement_exception PASSED [ 54%]
@@ -827,7 +827,7 @@ tests/services/test_stop_semantics.py::TestRunningStop::test_running_stop_only_s
 tests/services/test_stop_semantics.py::TestRunningStop::test_loop_end_seals_stopped_six_steps PASSED [ 54%]
 tests/services/test_stop_semantics.py::TestQueuedStop::test_queued_stop_seals_immediately PASSED [ 54%]
 tests/services/test_stop_semantics.py::TestRepeatStop::test_repeat_stop_running_idempotent PASSED [ 54%]
-tests/services/test_stop_semantics.py::TestRepeatStop::test_repeat_stop_queued_after_sealed PASSED [ 55%]
+tests/services/test_stop_semantics.py::TestRepeatStop::test_repeat_stop_queued_after_sealed PASSED [ 54%]
 tests/services/test_stop_semantics.py::TestRecoveryStopPath::test_recovery_stop_in_flight_recovered_after_stop PASSED [ 55%]
 tests/services/test_stop_semantics.py::TestRecoveryStopPath::test_recovery_stop_remaining_pending_skipped PASSED [ 55%]
 tests/services/test_stop_semantics.py::TestRecoveryStopPath::test_recovery_stop_preserves_real_failure_evidence PASSED [ 55%]
@@ -841,8 +841,8 @@ tests/services/test_terminal_convergence.py::TestSealPaths::test_seal_completed 
 tests/services/test_terminal_convergence.py::TestSealPaths::test_seal_stopped_user_stopped PASSED [ 55%]
 tests/services/test_terminal_convergence.py::TestSealPaths::test_seal_failed_incomplete PASSED [ 55%]
 tests/services/test_terminal_convergence.py::TestSealPaths::test_seal_interrupted_skipped PASSED [ 55%]
-tests/services/test_terminal_convergence.py::TestIntegrityAnomaly::test_malformed_step_forces_integrity PASSED [ 56%]
-tests/services/test_terminal_convergence.py::TestIntegrityAnomaly::test_integrity_kept_across_stop PASSED [ 56%]
+tests/services/test_terminal_convergence.py::TestIntegrityAnomaly::test_malformed_step_forces_integrity PASSED [ 55%]
+tests/services/test_terminal_convergence.py::TestIntegrityAnomaly::test_integrity_kept_across_stop PASSED [ 55%]
 tests/services/test_terminal_convergence.py::TestCountersAndIdempotency::test_counters_match_resolver PASSED [ 56%]
 tests/services/test_terminal_convergence.py::TestCountersAndIdempotency::test_seal_idempotent_snapshot PASSED [ 56%]
 tests/services/test_terminal_convergence.py::TestCountersAndIdempotency::test_seal_unknown_execution PASSED [ 56%]
@@ -856,8 +856,8 @@ tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImp
 tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImports::test_any_import_rejected_at_validator_stage[web-async def run_test(page) -> dict:\n    steps_result = []\n    await safe.goto("https://example.com")\n    steps_result.append({"step": 1, "status": "passed"})\n    return {"success": True, "message": "ok", "steps": steps_result}\n-import requests-requests] PASSED [ 56%]
 tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImports::test_any_import_rejected_at_validator_stage[web-async def run_test(page) -> dict:\n    steps_result = []\n    await safe.goto("https://example.com")\n    steps_result.append({"step": 1, "status": "passed"})\n    return {"success": True, "message": "ok", "steps": steps_result}\n-import socket-socket] PASSED [ 56%]
 tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImports::test_any_import_rejected_at_validator_stage[web-async def run_test(page) -> dict:\n    steps_result = []\n    await safe.goto("https://example.com")\n    steps_result.append({"step": 1, "status": "passed"})\n    return {"success": True, "message": "ok", "steps": steps_result}\n-from datetime import datetime-datetime] PASSED [ 56%]
-tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImports::test_any_import_rejected_at_validator_stage[web-async def run_test(page) -> dict:\n    steps_result = []\n    await safe.goto("https://example.com")\n    steps_result.append({"step": 1, "status": "passed"})\n    return {"success": True, "message": "ok", "steps": steps_result}\n-from playwright.async_api import Page-Page] PASSED [ 57%]
-tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImports::test_any_import_rejected_at_validator_stage[web-async def run_test(page) -> dict:\n    steps_result = []\n    await safe.goto("https://example.com")\n    steps_result.append({"step": 1, "status": "passed"})\n    return {"success": True, "message": "ok", "steps": steps_result}\n-from app.config import settings-settings] PASSED [ 57%]
+tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImports::test_any_import_rejected_at_validator_stage[web-async def run_test(page) -> dict:\n    steps_result = []\n    await safe.goto("https://example.com")\n    steps_result.append({"step": 1, "status": "passed"})\n    return {"success": True, "message": "ok", "steps": steps_result}\n-from playwright.async_api import Page-Page] PASSED [ 56%]
+tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImports::test_any_import_rejected_at_validator_stage[web-async def run_test(page) -> dict:\n    steps_result = []\n    await safe.goto("https://example.com")\n    steps_result.append({"step": 1, "status": "passed"})\n    return {"success": True, "message": "ok", "steps": steps_result}\n-from app.config import settings-settings] PASSED [ 56%]
 tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImports::test_any_import_rejected_at_validator_stage[android-def run_test(driver) -> dict:\n    steps_result = []\n    try:\n        print("[\u6267\u884c] \u6d4b\u8bd5")\n        driver.find_element(AppiumBy.ID, "btn").click()\n        steps_result.append({"step": 1, "status": "passed"})\n    except Exception as e:\n        return {"success": False, "message": str(e), "steps": steps_result}\n    return {"success": True, "message": "\u6d4b\u8bd5\u901a\u8fc7", "steps": steps_result}\n-import os-os] PASSED [ 57%]
 tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImports::test_any_import_rejected_at_validator_stage[android-def run_test(driver) -> dict:\n    steps_result = []\n    try:\n        print("[\u6267\u884c] \u6d4b\u8bd5")\n        driver.find_element(AppiumBy.ID, "btn").click()\n        steps_result.append({"step": 1, "status": "passed"})\n    except Exception as e:\n        return {"success": False, "message": str(e), "steps": steps_result}\n    return {"success": True, "message": "\u6d4b\u8bd5\u901a\u8fc7", "steps": steps_result}\n-import json-json] PASSED [ 57%]
 tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImports::test_any_import_rejected_at_validator_stage[android-def run_test(driver) -> dict:\n    steps_result = []\n    try:\n        print("[\u6267\u884c] \u6d4b\u8bd5")\n        driver.find_element(AppiumBy.ID, "btn").click()\n        steps_result.append({"step": 1, "status": "passed"})\n    except Exception as e:\n        return {"success": False, "message": str(e), "steps": steps_result}\n    return {"success": True, "message": "\u6d4b\u8bd5\u901a\u8fc7", "steps": steps_result}\n-import time-time] PASSED [ 57%]
@@ -871,8 +871,8 @@ tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImp
 tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImports::test_import_in_middle_of_body_rejected PASSED [ 57%]
 tests/services/test_validator_rejects_all_imports.py::TestValidatorRejectsAllImports::test_multiline_import_rejected PASSED [ 57%]
 tests/unit/test_ai_deadline_propagation.py::TestRemainingShortCircuit::test_deadline_zero_raises_without_request PASSED [ 57%]
-tests/unit/test_ai_deadline_propagation.py::TestRemainingShortCircuit::test_chat_http_attempt_remaining_zero_deadline PASSED [ 58%]
-tests/unit/test_ai_deadline_propagation.py::TestRemainingShortCircuit::test_request_timeout_short_circuits PASSED [ 58%]
+tests/unit/test_ai_deadline_propagation.py::TestRemainingShortCircuit::test_chat_http_attempt_remaining_zero_deadline PASSED [ 57%]
+tests/unit/test_ai_deadline_propagation.py::TestRemainingShortCircuit::test_request_timeout_short_circuits PASSED [ 57%]
 tests/unit/test_ai_deadline_propagation.py::TestRemainingPropagation::test_request_timeout_read_bounded_by_small_remaining PASSED [ 58%]
 tests/unit/test_ai_deadline_propagation.py::TestRemainingPropagation::test_remaining_reflects_deadline PASSED [ 58%]
 tests/unit/test_ai_deadline_propagation.py::TestWallClockChunkedTermination::test_chunked_stream_exceeds_deadline_produces_deadline_exceeded PASSED [ 58%]
@@ -886,8 +886,8 @@ tests/unit/test_ai_limiter_semantics.py::TestQuotaSlotErrorSemantics::test_quota
 tests/unit/test_ai_limiter_semantics.py::TestQuotaSlotErrorSemantics::test_slot_timeout_raises_non_retryable PASSED [ 58%]
 tests/unit/test_ai_rate_limiter.py::TestConcurrencySemaphore::test_concurrency_limits_active_calls PASSED [ 58%]
 tests/unit/test_ai_rate_limiter.py::TestConcurrencySemaphore::test_concurrency_waits_for_release PASSED [ 58%]
-tests/unit/test_ai_rate_limiter.py::TestConcurrencySemaphore::test_slot_timeout_returns_false PASSED [ 59%]
-tests/unit/test_ai_rate_limiter.py::TestConcurrencySemaphore::test_active_count_tracks_inflight PASSED [ 59%]
+tests/unit/test_ai_rate_limiter.py::TestConcurrencySemaphore::test_slot_timeout_returns_false PASSED [ 58%]
+tests/unit/test_ai_rate_limiter.py::TestConcurrencySemaphore::test_active_count_tracks_inflight PASSED [ 58%]
 tests/unit/test_ai_rate_limiter.py::TestConcurrencySemaphore::test_rate_acquire_thread_safe PASSED [ 59%]
 tests/unit/test_ai_rate_limiter.py::TestSharedLimiter::test_ai_and_heal_share_same_limiter PASSED [ 59%]
 tests/unit/test_ai_rate_limiter.py::TestSharedLimiter::test_get_limiter_returns_shared_instance PASSED [ 59%]
@@ -901,8 +901,8 @@ tests/unit/test_ai_retry_classification.py::TestNonRetryable::test_4xx_no_retry_
 tests/unit/test_ai_retry_classification.py::TestNonRetryable::test_4xx_no_retry_fast[400] PASSED [ 59%]
 tests/unit/test_ai_retry_classification.py::TestNonRetryable::test_5xx_is_retryable PASSED [ 59%]
 tests/unit/test_ai_retry_classification.py::TestReadTimeoutCompression::test_request_timeout_read_bounded_by_remaining PASSED [ 59%]
-tests/unit/test_ai_retry_classification.py::TestReadTimeoutCompression::test_request_timeout_short_circuits_when_no_remaining PASSED [ 60%]
-tests/unit/test_ai_retry_classification.py::TestStructuredLog::test_success_logs_structured_line PASSED [ 60%]
+tests/unit/test_ai_retry_classification.py::TestReadTimeoutCompression::test_request_timeout_short_circuits_when_no_remaining PASSED [ 59%]
+tests/unit/test_ai_retry_classification.py::TestStructuredLog::test_success_logs_structured_line PASSED [ 59%]
 tests/unit/test_ai_retry_classification.py::TestStructuredLog::test_failure_logs_structured_line PASSED [ 60%]
 tests/unit/test_ai_timeout_no_hang.py::TestWatchdogHardTermination::test_cancel_immune_post_does_not_hang PASSED [ 60%]
 tests/unit/test_ai_timeout_no_hang.py::TestWatchdogHardTermination::test_never_completing_post_does_not_hang PASSED [ 60%]
@@ -916,8 +916,8 @@ tests/unit/test_alembic_migration.py::TestMySQLMigration::test_mysql_upgrade_hea
 tests/unit/test_alembic_migration.py::TestMySQLOffline::test_mysql_offline_sql_generation PASSED [ 60%]
 tests/unit/test_appium_caps.py::test_build_caps_base_defaults PASSED     [ 60%]
 tests/unit/test_appium_caps.py::test_build_caps_optional_fields_only_when_set PASSED [ 60%]
-tests/unit/test_appium_caps.py::test_build_caps_optional_fields_absent_when_missing PASSED [ 61%]
-tests/unit/test_appium_caps.py::test_build_caps_extra_caps_override PASSED [ 61%]
+tests/unit/test_appium_caps.py::test_build_caps_optional_fields_absent_when_missing PASSED [ 60%]
+tests/unit/test_appium_caps.py::test_build_caps_extra_caps_override PASSED [ 60%]
 tests/unit/test_appium_caps.py::test_build_caps_extra_caps_non_dict_ignored PASSED [ 61%]
 tests/unit/test_appium_caps.py::test_build_caps_forces_skip_caps PASSED  [ 61%]
 tests/unit/test_appium_caps.py::test_build_caps_does_not_mutate_input PASSED [ 61%]
@@ -931,8 +931,8 @@ tests/unit/test_batch_persistence.py::test_kpi_bucket_counts_mock_deadline_slot_
 tests/unit/test_batch_persistence.py::test_resume_open_job_skips_terminal_and_regenerates_rest PASSED [ 61%]
 tests/unit/test_batch_persistence.py::test_resume_no_open_jobs_returns_zero PASSED [ 61%]
 tests/unit/test_case_deadline.py::test_batch_deadline_short_circuit_before_claim PASSED [ 61%]
-tests/unit/test_case_deadline.py::test_inflight_overrun_valid_code_persisted_not_kpi PASSED [ 62%]
-tests/unit/test_case_state_resolver.py::TestTruthTable::test_all_pending PASSED [ 62%]
+tests/unit/test_case_deadline.py::test_inflight_overrun_valid_code_persisted_not_kpi PASSED [ 61%]
+tests/unit/test_case_state_resolver.py::TestTruthTable::test_all_pending PASSED [ 61%]
 tests/unit/test_case_state_resolver.py::TestTruthTable::test_success_plus_pending_running PASSED [ 62%]
 tests/unit/test_case_state_resolver.py::TestTruthTable::test_success_plus_running_running PASSED [ 62%]
 tests/unit/test_case_state_resolver.py::TestTruthTable::test_success_plus_skipped_failed PASSED [ 62%]
@@ -946,8 +946,8 @@ tests/unit/test_case_state_resolver.py::TestPairInvariant::test_bare_status_no_e
 tests/unit/test_case_state_resolver.py::TestPairInvariant::test_failed_no_evidence_with_normal_success_context PASSED [ 62%]
 tests/unit/test_case_state_resolver.py::TestPairInvariant::test_skipped_with_normal_success_context PASSED [ 62%]
 tests/unit/test_case_state_resolver.py::TestPairInvariant::test_success_context_never_leaks_to_failed PASSED [ 62%]
-tests/unit/test_case_state_resolver.py::TestPairInvariant::test_pending_running_reason_null PASSED [ 63%]
-tests/unit/test_case_state_resolver.py::TestSkipReasonMapping::test_user_stopped PASSED [ 63%]
+tests/unit/test_case_state_resolver.py::TestPairInvariant::test_pending_running_reason_null PASSED [ 62%]
+tests/unit/test_case_state_resolver.py::TestSkipReasonMapping::test_user_stopped PASSED [ 62%]
 tests/unit/test_case_state_resolver.py::TestSkipReasonMapping::test_interrupted PASSED [ 63%]
 tests/unit/test_case_state_resolver.py::TestSkipReasonMapping::test_execution_failed_skips[circuit_open] PASSED [ 63%]
 tests/unit/test_case_state_resolver.py::TestSkipReasonMapping::test_execution_failed_skips[deadline_exceeded] PASSED [ 63%]
@@ -961,8 +961,8 @@ tests/unit/test_case_state_resolver.py::TestContextMapping::test_interrupted_con
 tests/unit/test_case_state_resolver.py::TestContextMapping::test_failed_context_execution_failed PASSED [ 63%]
 tests/unit/test_case_state_resolver.py::TestContextMapping::test_unknown_context PASSED [ 63%]
 tests/unit/test_case_state_resolver.py::TestPriority::test_integrity_beats_execution PASSED [ 63%]
-tests/unit/test_case_state_resolver.py::TestPriority::test_execution_beats_business PASSED [ 64%]
-tests/unit/test_case_state_resolver.py::TestPriority::test_business_beats_user_stopped PASSED [ 64%]
+tests/unit/test_case_state_resolver.py::TestPriority::test_execution_beats_business PASSED [ 63%]
+tests/unit/test_case_state_resolver.py::TestPriority::test_business_beats_user_stopped PASSED [ 63%]
 tests/unit/test_case_state_resolver.py::TestPriority::test_business_beats_context_user_stopped PASSED [ 64%]
 tests/unit/test_case_state_resolver.py::TestPriority::test_user_stopped_beats_interrupted PASSED [ 64%]
 tests/unit/test_case_state_resolver.py::TestPriority::test_business_alone PASSED [ 64%]
@@ -976,8 +976,8 @@ tests/unit/test_case_state_resolver.py::TestExceptionHints::test_business_assert
 tests/unit/test_case_state_resolver.py::TestExceptionHints::test_incomplete_execution_is_neutral PASSED [ 64%]
 tests/unit/test_case_state_resolver.py::TestExceptionHints::test_incomplete_execution_alone_falls_back_execution PASSED [ 64%]
 tests/unit/test_circuit.py::test_three_consecutive_retryable_failures_open_circuit PASSED [ 64%]
-tests/unit/test_circuit.py::test_success_resets_streak PASSED            [ 65%]
-tests/unit/test_circuit.py::test_mock_success_does_not_break_streak PASSED [ 65%]
+tests/unit/test_circuit.py::test_success_resets_streak PASSED            [ 64%]
+tests/unit/test_circuit.py::test_mock_success_does_not_break_streak PASSED [ 64%]
 tests/unit/test_circuit.py::test_slot_timeout_not_counted_streak_or_cohort PASSED [ 65%]
 tests/unit/test_circuit.py::test_circuit_skip_not_counted_streak_or_cohort PASSED [ 65%]
 tests/unit/test_code_validator_unified.py::TestGenerateSingleUnifiedValidation::test_getattr_code_now_invalid PASSED [ 65%]
@@ -991,8 +991,8 @@ tests/unit/test_config.py::TestSettingsDefaults::test_default_openai_api_key_is_
 tests/unit/test_config.py::TestSettingsDefaults::test_default_openai_model_is_deepseek PASSED [ 65%]
 tests/unit/test_config.py::TestSettingsDefaults::test_default_playwright_timeout_is_30000 PASSED [ 65%]
 tests/unit/test_config.py::TestSettingsDefaults::test_default_playwright_headless_is_true PASSED [ 65%]
-tests/unit/test_config.py::TestSettingsDefaults::test_default_upload_dir PASSED [ 66%]
-tests/unit/test_config.py::TestSettingsDefaults::test_default_report_dir PASSED [ 66%]
+tests/unit/test_config.py::TestSettingsDefaults::test_default_upload_dir PASSED [ 65%]
+tests/unit/test_config.py::TestSettingsDefaults::test_default_report_dir PASSED [ 65%]
 tests/unit/test_config.py::TestSettingsDefaults::test_default_screenshot_dir PASSED [ 66%]
 tests/unit/test_config.py::TestSettingsDefaults::test_default_video_dir PASSED [ 66%]
 tests/unit/test_config.py::TestSettingsDefaults::test_default_excel_dir PASSED [ 66%]
@@ -1005,8 +1005,8 @@ tests/unit/test_config.py::TestSettingsDefaults::test_default_port PASSED [ 66%]
 tests/unit/test_config.py::TestSettingsDefaults::test_default_max_heal_retry PASSED [ 66%]
 tests/unit/test_config.py::TestSettingsDefaults::test_default_openai_base_url_is_deepseek PASSED [ 66%]
 tests/unit/test_config.py::TestSettingsDefaults::test_default_openai_max_calls_per_min PASSED [ 66%]
-tests/unit/test_config.py::TestSettingsDefaults::test_default_heal_max_retry_same_error PASSED [ 67%]
-tests/unit/test_config.py::TestSettingsDefaults::test_default_pre_execution_check PASSED [ 67%]
+tests/unit/test_config.py::TestSettingsDefaults::test_default_heal_max_retry_same_error PASSED [ 66%]
+tests/unit/test_config.py::TestSettingsDefaults::test_default_pre_execution_check PASSED [ 66%]
 tests/unit/test_config.py::TestEnvVarOverride::test_env_var_overrides_database_url PASSED [ 67%]
 tests/unit/test_config.py::TestEnvVarOverride::test_env_var_overrides_openai_api_key PASSED [ 67%]
 tests/unit/test_config.py::TestEnvVarOverride::test_env_var_overrides_openai_model PASSED [ 67%]
@@ -1020,8 +1020,8 @@ tests/unit/test_config.py::TestLoadSettings::test_load_settings_creates_director
 tests/unit/test_config.py::TestLoadSettings::test_load_settings_warns_when_openai_api_key_empty PASSED [ 67%]
 tests/unit/test_config.py::TestLoadSettings::test_load_settings_creates_all_required_dirs PASSED [ 67%]
 tests/unit/test_config.py::TestLoadSettings::test_load_settings_mkdir_with_parents PASSED [ 67%]
-tests/unit/test_config.py::TestSettingsEdgeCases::test_settings_config_has_env_file PASSED [ 68%]
-tests/unit/test_config.py::TestSettingsEdgeCases::test_settings_model_dump PASSED [ 68%]
+tests/unit/test_config.py::TestSettingsEdgeCases::test_settings_config_has_env_file PASSED [ 67%]
+tests/unit/test_config.py::TestSettingsEdgeCases::test_settings_model_dump PASSED [ 67%]
 tests/unit/test_config.py::TestSettingsEdgeCases::test_secret_key_default PASSED [ 68%]
 tests/unit/test_config.py::TestProductionSecretKey::test_app_env_alias_sets_env PASSED [ 68%]
 tests/unit/test_config.py::TestProductionSecretKey::test_legacy_env_alias_still_works PASSED [ 68%]
@@ -1035,8 +1035,8 @@ tests/unit/test_database.py::TestLegacyBridge::test_empty_db_returns_without_str
 tests/unit/test_database.py::TestLegacyBridge::test_legacy_compatible_db_stamps_baseline PASSED [ 68%]
 tests/unit/test_database.py::TestLegacyBridge::test_legacy_incompatible_db_raises_with_diff_list PASSED [ 68%]
 tests/unit/test_database.py::TestSqliteForeignKeyPragma::test_connect_listener_enables_foreign_keys PASSED [ 68%]
-tests/unit/test_database.py::TestGetDb::test_get_db_yields_session_and_closes PASSED [ 69%]
-tests/unit/test_database.py::TestGetDb::test_get_db_closes_on_exception PASSED [ 69%]
+tests/unit/test_database.py::TestGetDb::test_get_db_yields_session_and_closes PASSED [ 68%]
+tests/unit/test_database.py::TestGetDb::test_get_db_closes_on_exception PASSED [ 68%]
 tests/unit/test_database.py::TestEngineCreation::test_base_has_metadata PASSED [ 69%]
 tests/unit/test_database.py::TestEngineCreation::test_session_local_is_callable PASSED [ 69%]
 tests/unit/test_dependencies.py::TestPaginationParams::test_defaults PASSED [ 69%]
@@ -1050,8 +1050,8 @@ tests/unit/test_dependencies.py::TestPaginate::test_paginate_25_items_page_1_siz
 tests/unit/test_dependencies.py::TestPaginate::test_paginate_25_items_page_3_size_10 PASSED [ 69%]
 tests/unit/test_dependencies.py::TestPaginate::test_paginate_zero_items PASSED [ 69%]
 tests/unit/test_dependencies.py::TestPaginate::test_paginate_items_less_than_page_size PASSED [ 69%]
-tests/unit/test_dependencies.py::TestPaginate::test_paginate_single_item_page_1_size_20 PASSED [ 70%]
-tests/unit/test_dependencies.py::TestPaginate::test_paginate_page_beyond_total_returns_empty PASSED [ 70%]
+tests/unit/test_dependencies.py::TestPaginate::test_paginate_single_item_page_1_size_20 PASSED [ 69%]
+tests/unit/test_dependencies.py::TestPaginate::test_paginate_page_beyond_total_returns_empty PASSED [ 69%]
 tests/unit/test_dependencies.py::TestPaginate::test_paginate_100_items_page_1_size_10 PASSED [ 70%]
 tests/unit/test_dependencies.py::TestPaginate::test_paginate_100_items_page_5_size_10 PASSED [ 70%]
 tests/unit/test_dependencies.py::TestPaginate::test_paginate_items_are_in_order PASSED [ 70%]
@@ -1065,8 +1065,8 @@ tests/unit/test_element_locator.py::TestElementLocatorPriority::test_element_wit
 tests/unit/test_element_locator.py::TestElementLocatorPriority::test_element_xpath_fallback PASSED [ 70%]
 tests/unit/test_element_locator.py::TestElementMissingLocator::test_element_without_selector_type PASSED [ 70%]
 tests/unit/test_element_locator.py::TestElementMissingLocator::test_element_without_platform_defaults_to_web PASSED [ 70%]
-tests/unit/test_element_locator.py::TestElementMissingLocator::test_element_with_empty_selector PASSED [ 71%]
-tests/unit/test_element_locator.py::TestElementPlatformMismatch::test_web_element_not_visible_to_android PASSED [ 71%]
+tests/unit/test_element_locator.py::TestElementMissingLocator::test_element_with_empty_selector PASSED [ 70%]
+tests/unit/test_element_locator.py::TestElementPlatformMismatch::test_web_element_not_visible_to_android PASSED [ 70%]
 tests/unit/test_element_locator.py::TestElementPlatformMismatch::test_android_element_not_visible_to_web PASSED [ 71%]
 tests/unit/test_element_locator.py::TestElementPlatformMismatch::test_mixed_platform_elements_query PASSED [ 71%]
 tests/unit/test_exceptions.py::TestAppException::test_defaults PASSED    [ 71%]
@@ -1080,8 +1080,8 @@ tests/unit/test_exceptions.py::TestNotFoundException::test_custom_message PASSED
 tests/unit/test_exceptions.py::TestNotFoundException::test_is_subclass_of_app_exception PASSED [ 71%]
 tests/unit/test_exceptions.py::TestValidationException::test_defaults PASSED [ 71%]
 tests/unit/test_exceptions.py::TestValidationException::test_custom_message PASSED [ 71%]
-tests/unit/test_exceptions.py::TestValidationException::test_is_subclass_of_app_exception PASSED [ 72%]
-tests/unit/test_exceptions.py::TestAIException::test_defaults PASSED     [ 72%]
+tests/unit/test_exceptions.py::TestValidationException::test_is_subclass_of_app_exception PASSED [ 71%]
+tests/unit/test_exceptions.py::TestAIException::test_defaults PASSED     [ 71%]
 tests/unit/test_exceptions.py::TestAIException::test_custom_message PASSED [ 72%]
 tests/unit/test_exceptions.py::TestAIException::test_is_subclass_of_app_exception PASSED [ 72%]
 tests/unit/test_exceptions.py::TestPlaywrightException::test_defaults PASSED [ 72%]
@@ -1095,8 +1095,8 @@ tests/unit/test_exceptions.py::TestAppExceptionHandler::test_with_not_found_exce
 tests/unit/test_exceptions.py::TestAppExceptionHandler::test_with_ai_exception PASSED [ 72%]
 tests/unit/test_exceptions.py::TestHttpExceptionHandler::test_returns_json_response_with_correct_format PASSED [ 72%]
 tests/unit/test_exceptions.py::TestHttpExceptionHandler::test_with_500_status PASSED [ 72%]
-tests/unit/test_exceptions.py::TestHttpExceptionHandler::test_with_403_status PASSED [ 73%]
-tests/unit/test_exceptions.py::TestValidationExceptionHandler::test_single_field_error PASSED [ 73%]
+tests/unit/test_exceptions.py::TestHttpExceptionHandler::test_with_403_status PASSED [ 72%]
+tests/unit/test_exceptions.py::TestValidationExceptionHandler::test_single_field_error PASSED [ 72%]
 tests/unit/test_exceptions.py::TestValidationExceptionHandler::test_multiple_field_errors_aggregated_with_semicolons PASSED [ 73%]
 tests/unit/test_exceptions.py::TestValidationExceptionHandler::test_nested_loc_path PASSED [ 73%]
 tests/unit/test_exceptions.py::TestValidationExceptionHandler::test_empty_errors PASSED [ 73%]
@@ -1110,8 +1110,8 @@ tests/unit/test_execution_recovery.py::TestRecoverOrphanExecutions::test_running
 tests/unit/test_execution_recovery.py::TestRecoverOrphanExecutions::test_healing_with_stale_heartbeat_becomes_interrupted PASSED [ 73%]
 tests/unit/test_execution_recovery.py::TestRecoverOrphanExecutions::test_terminal_states_untouched PASSED [ 73%]
 tests/unit/test_execution_recovery.py::TestRecoverOrphanExecutions::test_mixed_recovery_count PASSED [ 73%]
-tests/unit/test_execution_recovery.py::TestExecutionHeartbeat::test_execute_updates_progress_and_heartbeat PASSED [ 74%]
-tests/unit/test_fk_enforcement.py::TestPragmaEnforcement::test_delete_project_with_execution_raises_integrity_error PASSED [ 74%]
+tests/unit/test_execution_recovery.py::TestExecutionHeartbeat::test_execute_updates_progress_and_heartbeat PASSED [ 73%]
+tests/unit/test_fk_enforcement.py::TestPragmaEnforcement::test_delete_project_with_execution_raises_integrity_error PASSED [ 73%]
 tests/unit/test_fk_enforcement.py::TestPragmaEnforcement::test_pragma_is_on PASSED [ 74%]
 tests/unit/test_fk_enforcement.py::TestOrmDeleteEnforcement::test_delete_test_case_with_generated_code_blocked PASSED [ 74%]
 tests/unit/test_fk_enforcement.py::TestOrmDeleteEnforcement::test_delete_execution_with_steps_blocked PASSED [ 74%]
@@ -1125,8 +1125,8 @@ tests/unit/test_fk_enforcement.py::TestBatchFacts::test_batch_case_code_id_nulla
 tests/unit/test_kpi_eligibility.py::test_non_mock_success_is_kpi_eligible PASSED [ 74%]
 tests/unit/test_kpi_eligibility.py::test_mock_success_not_kpi_eligible PASSED [ 74%]
 tests/unit/test_kpi_eligibility.py::test_slot_timeout_not_kpi_eligible PASSED [ 74%]
-tests/unit/test_kpi_eligibility.py::test_validation_failure_in_cohort_but_not_first_gen_valid PASSED [ 75%]
-tests/unit/test_metrics.py::TestFirstGenerationSuccessRate::test_aggregates_batch_records_summary PASSED [ 75%]
+tests/unit/test_kpi_eligibility.py::test_validation_failure_in_cohort_but_not_first_gen_valid PASSED [ 74%]
+tests/unit/test_metrics.py::TestFirstGenerationSuccessRate::test_aggregates_batch_records_summary PASSED [ 74%]
 tests/unit/test_metrics.py::TestFirstGenerationSuccessRate::test_ignores_generated_codes_valid_flag PASSED [ 75%]
 tests/unit/test_metrics.py::TestFirstGenerationSuccessRate::test_empty_returns_none PASSED [ 75%]
 tests/unit/test_metrics.py::TestFirstGenerationSuccessRate::test_kpi_eligible_denominator_zero_returns_none PASSED [ 75%]
@@ -1140,8 +1140,8 @@ tests/unit/test_metrics.py::TestCoverage::test_pipeline_coverage PASSED  [ 75%]
 tests/unit/test_metrics.py::TestOverview::test_overview_returns_four_metrics PASSED [ 75%]
 tests/unit/test_middlewares.py::TestTimingMiddleware::test_timing_middleware_adds_header PASSED [ 75%]
 tests/unit/test_middlewares.py::TestTimingMiddleware::test_timing_middleware_on_api_endpoint PASSED [ 75%]
-tests/unit/test_middlewares.py::TestLoggingMiddleware::test_logging_middleware_does_not_break_request PASSED [ 76%]
-tests/unit/test_middlewares.py::TestLoggingMiddleware::test_logging_middleware_with_404 PASSED [ 76%]
+tests/unit/test_middlewares.py::TestLoggingMiddleware::test_logging_middleware_does_not_break_request PASSED [ 75%]
+tests/unit/test_middlewares.py::TestLoggingMiddleware::test_logging_middleware_with_404 PASSED [ 75%]
 tests/unit/test_middlewares.py::TestLoggingMiddleware::test_logging_middleware_does_not_leak_sensitive_data PASSED [ 76%]
 tests/unit/test_middlewares.py::TestBothMiddlewares::test_both_middlewares_on_health PASSED [ 76%]
 tests/unit/test_middlewares.py::TestBothMiddlewares::test_both_middlewares_on_api PASSED [ 76%]
@@ -1155,8 +1155,8 @@ tests/unit/test_migration.py::TestLegacyTypeDialectNormalization::test_mysql_dia
 tests/unit/test_migration.py::TestLegacyTypeDialectNormalization::test_non_string_type_mismatch_still_rejected PASSED [ 76%]
 tests/unit/test_migration_preflight.py::TestPreflightClean::test_clean_legacy_db_passes PASSED [ 76%]
 tests/unit/test_migration_preflight.py::TestPreflightOrphanRows::test_orphan_execution_detected_with_samples PASSED [ 76%]
-tests/unit/test_migration_preflight.py::TestPreflightOrphanRows::test_orphan_case_reference_detected PASSED [ 77%]
-tests/unit/test_migration_preflight.py::TestPreflightOrphanRows::test_null_fk_ignored PASSED [ 77%]
+tests/unit/test_migration_preflight.py::TestPreflightOrphanRows::test_orphan_case_reference_detected PASSED [ 76%]
+tests/unit/test_migration_preflight.py::TestPreflightOrphanRows::test_null_fk_ignored PASSED [ 76%]
 tests/unit/test_migration_preflight.py::TestPreflightUniqueConflicts::test_execution_steps_unique_conflict_detected PASSED [ 77%]
 tests/unit/test_migration_preflight.py::TestPreflightUniqueConflicts::test_execution_reports_unique_conflict_detected PASSED [ 77%]
 tests/unit/test_migration_preflight.py::TestPreflightUniqueConflicts::test_unique_check_skips_missing_columns PASSED [ 77%]
@@ -1169,9 +1169,9 @@ tests/unit/test_models.py::TestTestCaseModel::test_create_with_steps_json PASSED
 tests/unit/test_models.py::TestTestCaseModel::test_steps_json_round_trip PASSED [ 77%]
 tests/unit/test_models.py::TestGeneratedCodeModel::test_create_with_case_fk PASSED [ 77%]
 tests/unit/test_models.py::TestGeneratedCodeModel::test_is_valid_and_is_healed_defaults PASSED [ 77%]
-tests/unit/test_models.py::TestExecutionModel::test_default_status_queued PASSED [ 78%]
-tests/unit/test_models.py::TestExecutionModel::test_datetime_fields PASSED [ 78%]
-tests/unit/test_models.py::TestExecutionStepModel::test_create_with_all_action_types PASSED [ 78%]
+tests/unit/test_models.py::TestExecutionModel::test_default_status_queued PASSED [ 77%]
+tests/unit/test_models.py::TestExecutionModel::test_datetime_fields PASSED [ 77%]
+tests/unit/test_models.py::TestExecutionStepModel::test_create_with_all_action_types PASSED [ 77%]
 tests/unit/test_models.py::TestReportModel::test_create_report PASSED    [ 78%]
 tests/unit/test_models.py::TestReportModel::test_unique_execution_and_type PASSED [ 78%]
 tests/unit/test_models.py::TestHealRecordModel::test_create_heal_record PASSED [ 78%]
@@ -1184,9 +1184,9 @@ tests/unit/test_platform.py::TestPlatformCreate::test_create_web_project PASSED 
 tests/unit/test_platform.py::TestPlatformCreate::test_create_android_project PASSED [ 78%]
 tests/unit/test_platform.py::TestPlatformCreate::test_create_unknown_platform_raises PASSED [ 78%]
 tests/unit/test_platform.py::TestPlatformCreate::test_invalid_platform_raises PASSED [ 78%]
-tests/unit/test_platform.py::TestPlatformCreate::test_create_default_platform PASSED [ 79%]
-tests/unit/test_platform.py::TestPlatformUpdateProtection::test_cannot_update_platform_web_to_android PASSED [ 79%]
-tests/unit/test_platform.py::TestPlatformUpdateProtection::test_cannot_update_platform_android_to_web PASSED [ 79%]
+tests/unit/test_platform.py::TestPlatformCreate::test_create_default_platform PASSED [ 78%]
+tests/unit/test_platform.py::TestPlatformUpdateProtection::test_cannot_update_platform_web_to_android PASSED [ 78%]
+tests/unit/test_platform.py::TestPlatformUpdateProtection::test_cannot_update_platform_android_to_web PASSED [ 78%]
 tests/unit/test_platform.py::TestPlatformUpdateProtection::test_other_fields_still_updatable PASSED [ 79%]
 tests/unit/test_platform.py::TestPlatformUpdateProtection::test_platform_immutable_after_persist PASSED [ 79%]
 tests/unit/test_platform.py::TestPlatformQuery::test_list_contains_platform PASSED [ 79%]
@@ -1198,6 +1198,9 @@ tests/unit/test_security_hardening.py::TestReportHtmlSafety::test_html_in_case_f
 tests/unit/test_security_hardening.py::TestReportHtmlSafety::test_report_json_script_breakout_prevented PASSED [ 79%]
 tests/unit/test_security_hardening.py::TestReportHtmlSafety::test_report_contains_csp_meta PASSED [ 79%]
 tests/unit/test_security_hardening.py::TestFileResponseSecurityHeaders::test_report_response_has_csp_and_nosniff PASSED [ 79%]
+tests/unit/test_slot_async.py::test_wait_does_not_block_loop PASSED      [ 79%]
+tests/unit/test_slot_async.py::test_cancelled_wait_releases_late_acquire PASSED [ 79%]
+tests/unit/test_slot_async.py::test_wait_respects_deadline PASSED        [ 79%]
 tests/unit/test_step_canonicalizer.py::TestCanonicalizeSteps::test_same_steps_different_key_order_same_canonical PASSED [ 79%]
 tests/unit/test_step_canonicalizer.py::TestCanonicalizeSteps::test_same_steps_whitespace_irrelevant PASSED [ 80%]
 tests/unit/test_step_canonicalizer.py::TestCanonicalizeSteps::test_business_string_content_preserved PASSED [ 80%]
@@ -1258,7 +1261,7 @@ tests/unit/test_utils_appium_injector.py::TestAppiumCodeInjectorEdgeCases::test_
 tests/unit/test_utils_appium_injector.py::TestAppiumCodeInjectorEdgeCases::test_inject_unparse_error_raises_security PASSED [ 83%]
 tests/unit/test_utils_excel.py::TestParseJsonSteps::test_json_steps_parsed PASSED [ 83%]
 tests/unit/test_utils_excel.py::TestParseJsonSteps::test_json_steps_with_description PASSED [ 83%]
-tests/unit/test_utils_excel.py::TestParsePlainTextSteps::test_numbered_text_steps PASSED [ 83%]
+tests/unit/test_utils_excel.py::TestParsePlainTextSteps::test_numbered_text_steps PASSED [ 84%]
 tests/unit/test_utils_excel.py::TestParsePlainTextSteps::test_numbered_steps_with_chinese_dot PASSED [ 84%]
 tests/unit/test_utils_excel.py::TestParseActionTargetValueColumns::test_three_column_merge PASSED [ 84%]
 tests/unit/test_utils_excel.py::TestParseActionTargetValueColumns::test_three_column_with_value PASSED [ 84%]
@@ -1273,7 +1276,7 @@ tests/unit/test_utils_excel.py::TestActionNormalization::test_chinese_action_nor
 tests/unit/test_utils_excel.py::TestActionNormalization::test_chinese_action_normalized[\u5bfc\u822a-navigate] PASSED [ 84%]
 tests/unit/test_utils_excel.py::TestActionNormalization::test_chinese_action_normalized[\u9009\u62e9-select] PASSED [ 84%]
 tests/unit/test_utils_excel.py::TestActionNormalization::test_chinese_action_normalized[\u60ac\u505c-hover] PASSED [ 84%]
-tests/unit/test_utils_excel.py::TestActionNormalization::test_chinese_action_normalized[\u9a8c\u8bc1-assert_text] PASSED [ 84%]
+tests/unit/test_utils_excel.py::TestActionNormalization::test_chinese_action_normalized[\u9a8c\u8bc1-assert_text] PASSED [ 85%]
 tests/unit/test_utils_excel.py::TestActionNormalization::test_chinese_action_normalized[\u622a\u56fe-screenshot] PASSED [ 85%]
 tests/unit/test_utils_excel.py::TestActionNormalization::test_chinese_action_normalized[\u7b49\u5f85-wait] PASSED [ 85%]
 tests/unit/test_utils_excel.py::TestActionNormalization::test_english_action_preserved PASSED [ 85%]
@@ -1288,7 +1291,7 @@ tests/unit/test_utils_excel.py::TestPriorityNormalization::test_priority_normali
 tests/unit/test_utils_excel.py::TestPriorityNormalization::test_priority_normalized[-P1] PASSED [ 85%]
 tests/unit/test_utils_excel.py::TestDuplicateCaseNo::test_duplicate_case_no_accepted PASSED [ 85%]
 tests/unit/test_utils_excel.py::TestStepCountValidation::test_step_count_matches PASSED [ 85%]
-tests/unit/test_utils_excel.py::TestStepCountValidation::test_step_count_mismatch_rejected PASSED [ 85%]
+tests/unit/test_utils_excel.py::TestStepCountValidation::test_step_count_mismatch_rejected PASSED [ 86%]
 tests/unit/test_utils_excel.py::TestStepCountValidation::test_step_count_handles_suffix_text PASSED [ 86%]
 tests/unit/test_utils_excel.py::TestEmptyFileValidation::test_only_header_row_returns_error PASSED [ 86%]
 tests/unit/test_utils_excel.py::TestEmptyFileValidation::test_empty_case_name_counted_as_failed PASSED [ 86%]
@@ -1303,7 +1306,7 @@ tests/unit/test_utils_excel.py::TestReadSheetReturnsNone::test_read_sheet_return
 tests/unit/test_utils_excel.py::TestStepsColumnIsMergeColumn::test_steps_column_is_merge_column PASSED [ 86%]
 tests/unit/test_utils_excel.py::TestNoStepsAndNoMerge::test_no_steps_no_merge_columns PASSED [ 86%]
 tests/unit/test_utils_excel.py::TestStepValidationErrors::test_invalid_action_in_json_steps PASSED [ 86%]
-tests/unit/test_utils_excel.py::TestStepValidationErrors::test_invalid_action_in_merge_columns PASSED [ 86%]
+tests/unit/test_utils_excel.py::TestStepValidationErrors::test_invalid_action_in_merge_columns PASSED [ 87%]
 tests/unit/test_utils_excel.py::TestRowProcessingException::test_exception_during_row_processing PASSED [ 87%]
 tests/unit/test_utils_excel.py::TestEmptySteps::test_empty_steps_cell PASSED [ 87%]
 tests/unit/test_utils_excel.py::TestMalformedJsonSteps::test_malformed_json_falls_through PASSED [ 87%]
@@ -1318,7 +1321,7 @@ tests/unit/test_utils_excel.py::TestClassifyTextStepBranches::test_screenshot_ac
 tests/unit/test_utils_excel.py::TestClassifyTextStepBranches::test_wait_action PASSED [ 87%]
 tests/unit/test_utils_excel.py::TestClassifyTextStepBranches::test_fallback_text_action PASSED [ 87%]
 tests/unit/test_utils_excel.py::TestMultiLineMergeColumns::test_multi_line_action_target_value PASSED [ 87%]
-tests/unit/test_utils_excel.py::TestEmptyStepsAfterValidation::test_empty_steps_after_validation PASSED [ 87%]
+tests/unit/test_utils_excel.py::TestEmptyStepsAfterValidation::test_empty_steps_after_validation PASSED [ 88%]
 tests/unit/test_utils_excel.py::TestXlrdFallback::test_xls_with_xlrd_not_installed PASSED [ 88%]
 tests/unit/test_utils_excel.py::TestXlrdFallback::test_xls_with_xlrd_available PASSED [ 88%]
 tests/unit/test_utils_excel.py::TestFloatCellValue::test_float_cell_value_via_cell_function PASSED [ 88%]
@@ -1500,8 +1503,8 @@ tests/unit/test_validator_android.py::TestValidatorCodeStyle::test_android_mixed
 tests/unit/test_validator_android.py::TestValidatorCodeStyle::test_web_chain_call_not_restricted PASSED [100%]
 
 ============================== warnings summary ===============================
-..\..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\pydantic\_internal\_config.py:323
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\pydantic\_internal\_config.py:323: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+.venv\Lib\site-packages\pydantic\_internal\_config.py:323
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\pydantic\_internal\_config.py:323: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
     warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
 
 app\models\test_case.py:15
@@ -1712,7 +1715,7 @@ tests/services/test_heal_ai_attempt.py::TestRoundRetryAuthority::test_retryable_
 tests/services/test_heal_ai_attempt.py::TestRoundRetryAuthority::test_non_retryable_breaks_immediately
 tests/services/test_heal_ai_attempt.py::TestRoundRetryAuthority::test_budget_exhausted_closes_as_deadline
 tests/services/test_heal_ai_attempt.py::TestRoundRetryAuthority::test_round_never_calls_private_heal_ai
-  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\services\test_heal_ai_attempt.py:71: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\services\test_heal_ai_attempt.py:75: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
     start_time=dt.utcnow(),
 
 tests/services/test_heal_ai_attempt.py: 11 warnings
@@ -1969,38 +1972,32 @@ tests/services/test_terminal_convergence.py: 12 warnings
   C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\services\test_terminal_convergence.py:32: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
     start_time=datetime.utcnow(),
 
-tests/unit/test_database.py::TestDatabaseInit::test_init_runs_legacy_bridge_then_alembic_upgrade
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:2193: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002624546C310>
+tests/unit/test_database.py::TestLegacyBridge::test_legacy_compatible_db_stamps_baseline
+  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:2193: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000254052F6980>
     setattr(_type, entry, MagicProxy(entry, self))
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_database.py::TestDatabaseInit::test_init_runs_legacy_bridge_then_alembic_upgrade
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:2193: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245B2C8B0>
+tests/unit/test_database.py::TestLegacyBridge::test_legacy_compatible_db_stamps_baseline
+  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:2193: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002540555BD30>
     setattr(_type, entry, MagicProxy(entry, self))
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_database.py::TestDatabaseInit::test_init_runs_legacy_bridge_then_alembic_upgrade
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:2193: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245CF14E0>
+tests/unit/test_database.py::TestLegacyBridge::test_legacy_compatible_db_stamps_baseline
+  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:2193: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002540552A200>
     setattr(_type, entry, MagicProxy(entry, self))
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_database.py::TestDatabaseInit::test_init_runs_legacy_bridge_then_alembic_upgrade
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:2193: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245D2F790>
+tests/unit/test_database.py::TestLegacyBridge::test_legacy_compatible_db_stamps_baseline
+  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:2193: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000254057A46D0>
     setattr(_type, entry, MagicProxy(entry, self))
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_database.py::TestDatabaseInit::test_init_runs_legacy_bridge_then_alembic_upgrade
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:2193: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245D31B70>
-    setattr(_type, entry, MagicProxy(entry, self))
-  Enable tracemalloc to get traceback where the object was allocated.
-  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
-
-tests/unit/test_database.py::TestDatabaseInit::test_init_runs_legacy_bridge_then_alembic_upgrade
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:2193: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245E254E0>
+tests/unit/test_database.py::TestLegacyBridge::test_legacy_compatible_db_stamps_baseline
+  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:2193: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000254057A7790>
     setattr(_type, entry, MagicProxy(entry, self))
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
@@ -2045,20 +2042,32 @@ tests/unit/test_execution_recovery.py::TestExecutionHeartbeat::test_execute_upda
     start_time=datetime.utcnow(),
 
 tests/unit/test_fk_enforcement.py::TestOrmDeleteEnforcement::test_delete_test_case_with_generated_code_blocked
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\sql\crud.py:519: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245C9B4C0>
-    _column_as_key = functools.partial(
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:404: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000254055598A0>
+    list(co.co_varnames[:nargs]),
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_fk_enforcement.py::TestOrmDeleteEnforcement::test_delete_execution_with_report_blocked
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\util\langhelpers.py:446: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245D2CB80>
-    ctr = cls.__dict__.get("__init__", False)
+tests/unit/test_fk_enforcement.py::TestOrmDeleteEnforcement::test_delete_generated_code_used_as_original_code_id_blocked
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:404: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000025405552D40>
+    list(co.co_varnames[:nargs]),
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_fk_enforcement.py::TestOrmDeleteEnforcement::test_delete_execution_with_report_blocked
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\util\langhelpers.py:446: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245C9BA60>
-    ctr = cls.__dict__.get("__init__", False)
+tests/unit/test_fk_enforcement.py::TestOrmDeleteEnforcement::test_delete_generated_code_used_as_original_code_id_blocked
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:404: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002540555A020>
+    list(co.co_varnames[:nargs]),
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_fk_enforcement.py::TestOrmDeleteEnforcement::test_delete_generated_code_used_as_original_code_id_blocked
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:404: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000254052F75B0>
+    list(co.co_varnames[:nargs]),
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_fk_enforcement.py::TestOrmDeleteEnforcement::test_delete_generated_code_used_as_original_code_id_blocked
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:404: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000254057A4310>
+    list(co.co_varnames[:nargs]),
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
@@ -2078,56 +2087,44 @@ tests/unit/test_metrics.py::TestCoverage::test_execution_start_coverage
     start_time=datetime.utcnow(),
 
 tests/unit/test_migration.py::TestLegacyBridgeBehavior::test_legacy_compatible_db_stamped_and_upgraded
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\sql\schema.py:5416: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245CF1C60>
-    def __init__(
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\sql\base.py:1593: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000025405301120>
+    def __getitem__(
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_migration.py::TestLegacyBridgeBehavior::test_legacy_compatible_db_stamped_and_upgraded
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\sql\schema.py:5416: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245C99210>
+tests/unit/test_migration_preflight.py::TestPreflightOrphanRows::test_orphan_execution_detected_with_samples
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\engine\cursor.py:348: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000025405888C70>
     def __init__(
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
 tests/unit/test_migration_preflight.py::TestPreflightOrphanRows::test_orphan_execution_detected_with_samples
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\util\langhelpers.py:1142: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245CF07C0>
-    def __get__(self, obj, cls):
-  Enable tracemalloc to get traceback where the object was allocated.
-  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
-
-tests/unit/test_migration_preflight.py::TestPreflightOrphanRows::test_orphan_execution_detected_with_samples
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\util\langhelpers.py:1142: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000262470D2B60>
-    def __get__(self, obj, cls):
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\engine\cursor.py:348: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000025405AD89A0>
+    def __init__(
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
 tests/unit/test_migration_preflight.py::TestPreflightUniqueConflicts::test_execution_steps_unique_conflict_detected
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\default.py:1790: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000262470D25C0>
-    def get_result_processor(self, type_, colname, coltype):
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\engine\cursor.py:666: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002540588BC40>
+    for idx, rec in enumerate(cursor_description):
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
 tests/unit/test_migration_preflight.py::TestPreflightUniqueConflicts::test_execution_steps_unique_conflict_detected
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\default.py:1790: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245CF0F40>
-    def get_result_processor(self, type_, colname, coltype):
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\engine\cursor.py:666: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002540588BE20>
+    for idx, rec in enumerate(cursor_description):
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_migration_preflight.py::TestPreflightUniqueConflicts::test_execution_steps_unique_conflict_detected
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\default.py:1790: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245CF3B50>
-    def get_result_processor(self, type_, colname, coltype):
+tests/unit/test_models.py::TestGeneratedCodeModel::test_is_valid_and_is_healed_defaults
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\sql\compiler.py:3964: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000025405888220>
+    accumulate_bind_names.add(name)
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_models.py::TestExecutionModel::test_default_status_queued
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\cursor.py:1131: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245D2D300>
-    def fetchall(
-  Enable tracemalloc to get traceback where the object was allocated.
-  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
-
-tests/unit/test_models.py::TestExecutionModel::test_default_status_queued
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\cursor.py:1131: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245D2C220>
-    def fetchall(
+tests/unit/test_models.py::TestGeneratedCodeModel::test_is_valid_and_is_healed_defaults
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\sql\compiler.py:3964: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000025405AD8400>
+    accumulate_bind_names.add(name)
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
@@ -2139,39 +2136,45 @@ tests/unit/test_models.py::TestDateTimeAutoPopulation::test_created_at_set_on_cr
   C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\tests\unit\test_models.py:535: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
     delta = (datetime.utcnow() - project.created_at).total_seconds()
 
-tests/unit/test_utils_safe_playwright.py::TestSafeAPI::test_assert_text_delegates_to_expect
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py:847: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245B2F3D0>
-    handle = events.Handle(callback, args, self, context)
+tests/unit/test_platform.py::TestPlatformCreate::test_create_android_project
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\sql\base.py:253: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000025405AD8F40>
+    return itertools.chain.from_iterable(
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_utils_safe_playwright.py::TestSafeAPI::test_assert_text_delegates_to_expect
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py:847: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002624587F970>
-    handle = events.Handle(callback, args, self, context)
+tests/unit/test_platform.py::TestPlatformCreate::test_create_android_project
+  C:\Users\24833\Desktop\Complete_Info\PersonalProject\AutoPilot\backend\.venv\Lib\site-packages\sqlalchemy\sql\base.py:253: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000025405AD86D0>
+    return itertools.chain.from_iterable(
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_utils_safe_playwright.py::TestSafeAPI::test_assert_text_delegates_to_expect
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py:847: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245CF3790>
-    handle = events.Handle(callback, args, self, context)
+tests/unit/test_utils_safe_playwright.py::TestSafeAPI::test_wait_delegates_to_wait_for_timeout
+  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:359: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000254052F5E40>
+    return getattr(self, _the_name)
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_utils_safe_playwright.py::TestSafeAPI::test_assert_text_delegates_to_expect
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py:847: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245CF1120>
-    handle = events.Handle(callback, args, self, context)
+tests/unit/test_utils_safe_playwright.py::TestSafeAPI::test_wait_delegates_to_wait_for_timeout
+  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:359: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000025405550B80>
+    return getattr(self, _the_name)
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_utils_safe_playwright.py::TestSafeAPI::test_assert_text_delegates_to_expect
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py:847: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245B2E2F0>
-    handle = events.Handle(callback, args, self, context)
+tests/unit/test_utils_safe_playwright.py::TestSafeAPI::test_wait_delegates_to_wait_for_timeout
+  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:359: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000254055522F0>
+    return getattr(self, _the_name)
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
-tests/unit/test_utils_safe_playwright.py::TestSafeAPI::test_assert_text_delegates_to_expect
-  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py:847: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x0000026245B1F790>
-    handle = events.Handle(callback, args, self, context)
+tests/unit/test_utils_safe_playwright.py::TestSafeAPI::test_wait_delegates_to_wait_for_timeout
+  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:359: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000254057A58A0>
+    return getattr(self, _the_name)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/test_utils_safe_playwright.py::TestSafeAPI::test_wait_delegates_to_wait_for_timeout
+  C:\Users\24833\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:359: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x00000254057A73D0>
+    return getattr(self, _the_name)
   Enable tracemalloc to get traceback where the object was allocated.
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
@@ -2237,7 +2240,7 @@ app\services\playwright_service.py              399     40     84     12    89% 
 app\services\project_service.py                  77      5     28      3    90%   107-110, 115, 117->116
 app\services\report_service.py                  314     23    124     13    92%   143-146, 178-182, 232-233, 315, 334, 406-407, 414-415, 429, 442, 453, 459, 474-475, 487->485, 488->487, 533->527, 558, 772-773
 app\utils\__init__.py                             6      0      0      0   100%
-app\utils\ai_rate_limiter.py                     70      1     20      4    94%   51, 114->116, 116->exit, 159->165
+app\utils\ai_rate_limiter.py                     97      2     28      5    94%   52, 115->117, 117->exit, 127, 212->218
 app\utils\appium_caps.py                         17      0     10      0   100%
 app\utils\appium_code_injector.py               185     18     92     20    86%   132, 163, 168->173, 201, 203, 205, 255, 257, 271, 274, 278, 280, 282, 284, 298, 312, 320, 326->323, 329, 353
 app\utils\appium_proxy.py                        84     12     10      0    85%   29-31, 64, 70, 73, 76, 84-85, 94, 102, 146
@@ -2254,6 +2257,6 @@ app\utils\terminal_reason.py                     25      0     10      0   100%
 app\utils\url_builder.py                          4      0      0      0   100%
 app\utils\url_policy.py                         145     13     62      7    90%   78, 81, 84, 86->76, 109-110, 115-116, 159, 178, 188, 215, 221-222
 -----------------------------------------------------------------------------------------
-TOTAL                                          7605    651   2144    225    90%
+TOTAL                                          7632    652   2152    226    90%
 Coverage HTML written to dir htmlcov
-========== 1489 passed, 2 skipped, 706 warnings in 63.96s (0:01:03) ===========
+========== 1492 passed, 2 skipped, 706 warnings in 84.47s (0:01:24) ===========
